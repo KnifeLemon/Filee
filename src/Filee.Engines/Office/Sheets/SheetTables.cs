@@ -18,7 +18,7 @@
 // The built-in styles are those of ECMA-376 Part 1's presetTableStyles.xml (OfficeOpenXML-SpreadsheetMLStyles.zip),
 // kept here in a short form: per part "type[/band size]:" and then b (bold), i (italic), c<theme>[~tint] (font colour),
 // f<theme>[~tint] (fill) and L|R|T|B|V|H<line style>@<theme>[~tint] (left, right, top, bottom, vertical, horizontal
-// border). That file's dxfId values count from 1 for its table styles (from 0 for its pivot styles, left out here).
+// border). That file's dxfId values count from 1 for its table styles (from 0 for its pivot styles: SheetPivots).
 //
 // The cells a table colours are put on the sheet: blank ones too (when the style fills or borders them) while the
 // workbook's TableBudget lasts, then only the cells the sheet has, so a table over whole columns costs what its cells
@@ -108,10 +108,12 @@ internal static class SheetTables
 
     /// <summary>The built-in style of a name ("TableStyleMedium2"), its theme colours through <paramref name="color"/>; null for another name.</summary>
     /// <param name="color">A theme colour index (SpreadsheetML's: 0 lt1, 1 dk1, 2 lt2, 3 dk2, 4–9 accents) and tint as "#RRGGBB".</param>
-    public static TableStyle? BuiltIn(string? name, Func<int, double, string?> color)
+    public static TableStyle? BuiltIn(string? name, Func<int, double, string?> color) =>
+        name is not null && BuiltInStyles.TryGetValue(name, out var definition) ? Parse(definition, color) : null;
+
+    /// <summary>A built-in style kept in the short form above, its theme colours through <paramref name="color"/>.</summary>
+    internal static TableStyle Parse(string definition, Func<int, double, string?> color)
     {
-        if (name is null || !BuiltInStyles.TryGetValue(name, out var definition))
-            return null;
         var parts = new Dictionary<string, TableStylePart>(StringComparer.Ordinal);
         foreach (var part in definition.Split(';'))
         {
@@ -194,6 +196,34 @@ internal static class SheetTables
     }
 
     private static readonly TableStyle NoStyle = new(new Dictionary<string, TableStylePart>());
+
+    /// <summary>Cell styles by name one workbook keeps at most (Excel allows 64,000).</summary>
+    public const int MaxCellStyles = 65_536;
+
+    /// <summary>
+    /// What a named cell style (a table's headerRowCellStyle / dataCellStyle / totalsRowCellStyle, XLSB stStyle*)
+    /// gives the cells of a table's area: its solid fill, font colour and the bold, italic, underline and strike it
+    /// turns on, and its visible borders, as far as they differ from the Normal style; null when it gives nothing.
+    /// </summary>
+    /// <param name="look">The cell style's formatting (only what the style includes: XLSX apply*, XLSB xfGrbitAtr).</param>
+    public static TableStylePart? CellStylePart(CellStyle look, CellStyle normal)
+    {
+        static CellBorder? Visible(CellBorder side) => side.IsVisible ? side : null;
+        var style = new DifferentialStyle
+        {
+            Fill = look.FillPattern is null && look.Gradient is null ? look.Fill : null,
+            Color = look.Color is { } color && color != normal.Color ? color : null,
+            Bold = look.Bold && !normal.Bold ? true : null,
+            Italic = look.Italic && !normal.Italic ? true : null,
+            Underline = look.Underline && !normal.Underline ? true : null,
+            Strike = look.Strike && !normal.Strike ? true : null,
+            Left = Visible(look.Left),
+            Right = Visible(look.Right),
+            Top = Visible(look.Top),
+            Bottom = Visible(look.Bottom),
+        };
+        return style == new DifferentialStyle() ? null : new TableStylePart(style);
+    }
 
     /// <summary>
     /// Puts the look of <paramref name="style"/> on the cells of <paramref name="table"/>: every cell of its rows while
@@ -308,11 +338,11 @@ internal static class SheetTables
         }
     }
 
-    private static (int First, int Second) Band(TableStyle style, string first, string second) =>
+    internal static (int First, int Second) Band(TableStyle style, string first, string second) =>
         (Math.Clamp(style.Parts.GetValueOrDefault(first)?.Size ?? 1, 1, 9), Math.Clamp(style.Parts.GetValueOrDefault(second)?.Size ?? 1, 1, 9));
 
     /// <summary>The stripe an offset falls in, as the offsets of its first and last row (or column); null in the other stripe.</summary>
-    private static (int Start, int End)? Stripe(int offset, (int First, int Second) band, bool first)
+    internal static (int Start, int End)? Stripe(int offset, (int First, int Second) band, bool first)
     {
         var cycle = band.First + band.Second;
         var at = offset % cycle;
@@ -323,7 +353,7 @@ internal static class SheetTables
     }
 
     /// <summary>What the parts that cover one cell give it, the later part winning property by property.</summary>
-    private sealed class Look
+    internal sealed class Look
     {
         private string? _fill, _color;
         private bool? _bold, _italic, _underline, _strike;

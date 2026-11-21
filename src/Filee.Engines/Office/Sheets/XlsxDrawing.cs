@@ -1,9 +1,10 @@
 // The pictures and shapes of a worksheet's drawing part (xl/drawings/drawingN.xml, DrawingML's spreadsheet drawing,
 // ECMA-376 Part 1, 20.5), read for the sheet printer: pictures with their turn, mirroring and cropping (a:xfrm rot,
 // flipH, flipV and a:srcRect), preset shapes with one fill and one outline colour (the shape's own or its theme
-// style's, through the slide renderer's preset definitions) with their text (paragraphs and runs of the txBody, the
-// body's anchor, insets and wrap), and groups of both, each child placed in its share of the group's anchor. What the
-// printer doesn't draw is named instead: charts, SmartArt, embedded objects, ink, text linked to a cell, freeform
+// style's, through the slide renderer's preset definitions) with their text (paragraphs and runs of the txBody with
+// their bullets, indents and line spacing, the body's anchor, insets, wrap, vertical text and saved autofit shrink;
+// text linked to a cell is that cell's text, LinkTexts), and groups of both, each child placed in its share of the
+// group's anchor. What the printer doesn't draw is named instead: charts, SmartArt, embedded objects, ink, freeform
 // shapes, gradient, pattern and picture fills, arrowheads, turned groups, EMF / WMF / TIFF and linked
 // pictures. SheetCapabilities asks for that name, so such a workbook can go to LibreOffice where it is installed.
 // Charts are read from their chart part (ChartReader, with the workbook's theme) and drawn, Office 2016 charts
@@ -52,6 +53,9 @@ internal sealed class XlsxDrawing
 
     /// <summary>Characters of one shape's text read at most (Excel's limit for a cell's text).</summary>
     private const int MaxTextCharacters = 32_767;
+
+    /// <summary>The longest textlink reference followed (a sheet name of 31 characters, quoted, and a range).</summary>
+    private const int MaxLinkLength = 255;
 
     /// <summary>The largest EMU value taken from a position or size (about 4 km); larger ones are clamped.</summary>
     private const long MaxEmu = 50_000_000_000;
@@ -401,9 +405,8 @@ internal sealed class XlsxDrawing
             LeftOut($"the preset shape {preset}");
             return;
         }
-        // Text linked to a cell (textlink="$A$1") would show the cell's value, which isn't followed.
-        if (!string.IsNullOrEmpty((string?)shape.Attribute("textlink")))
-            LeftOut("text linked to cells");
+        // Text linked to a cell (textlink="$A$1") shows the cell's text: the readers put it in once the sheets are read.
+        var link = (string?)shape.Attribute("textlink") is { Length: > 0 and <= MaxLinkLength } linked ? linked : null;
 
         var style = shape.Element(_ns + "style");
         var fill = Fill(properties, style?.Element(A + "fillRef"));
@@ -421,7 +424,8 @@ internal sealed class XlsxDrawing
             Line = line,
             LineWidth = width,
             Dash = dash,
-            Text = TextOf(shape),
+            Text = TextOf(shape, link is not null),
+            TextLink = link,
         };
         Add(Placed(drawing, box, space, properties?.Element(A + "xfrm")));
     }
@@ -430,25 +434,41 @@ internal sealed class XlsxDrawing
 
     /// <summary>
     /// The text of a shape or text box (xdr:txBody, DrawingML text: ECMA-376 Part 1, 21.1.2): its paragraphs (a:p with
-    /// a:pPr algn), runs (a:r, a:fld, a:br) in their a:rPr fonts (latin typeface, sz, b, i, u, strike, solidFill) over
-    /// the shape style's font reference (a:fontRef: the theme's minor or major font and its colour, Excel's 11 pt), and
-    /// a:bodyPr's anchor, insets and wrap; null when it has no text.
+    /// a:pPr algn, lvl, marL, indent, lnSpc and bullets: buChar in its buFont, buAutoNum, buClr, buSzPct / buSzPts),
+    /// runs (a:r, a:fld, a:br) in their a:rPr fonts (latin typeface, sz, b, i, u, strike, solidFill) over the list
+    /// style's level (a:lstStyle lvlNpPr) and the shape style's font reference (a:fontRef: the theme's minor or major
+    /// font and its colour, Excel's 11 pt), and a:bodyPr's anchor, insets, wrap, vertical text (vert) and the shrink
+    /// that "shrink text on overflow" saved (normAutofit fontScale and lnSpcReduction); null when it has no text and
+    /// isn't linked to a cell (<paramref name="linked"/>).
     /// </summary>
-    private ShapeText? TextOf(XElement shape)
+    private ShapeText? TextOf(XElement shape, bool linked)
     {
-        if (shape.Element(_ns + "txBody") is not { } body || !body.Descendants(A + "t").Any(t => !string.IsNullOrWhiteSpace(t.Value)))
+        var body = shape.Element(_ns + "txBody");
+        if (!linked && (body is null || !body.Descendants(A + "t").Any(t => !string.IsNullOrWhiteSpace(t.Value))))
             return null;
         var fontRef = shape.Element(_ns + "style")?.Element(A + "fontRef");
         var baseColor = _colors.Color(fontRef);
         var baseFont = (string?)fontRef?.Attribute("idx") == "major" ? MajorFont() : _themeFont;
-        var list = body.Element(A + "lstStyle")?.Element(A + "lvl1pPr");
-        var listRun = Run(list?.Element(A + "defRPr"), new CellRun(""));
+        var bodyPr = body?.Element(A + "bodyPr");
+        // "Shrink text on overflow": the size and line spacing Excel shrank the text to when it was saved.
+        var autofit = bodyPr?.Element(A + "normAutofit");
+        var fontScale = Math.Clamp(Number(autofit?.Attribute("fontScale"), 100_000) / 100_000, 0.01, 1);
+        var spacingReduction = Math.Clamp(Number(autofit?.Attribute("lnSpcReduction"), 0) / 100_000, 0, 0.9);
+        var lists = body?.Element(A + "lstStyle");
         var characters = 0;
+        var counters = new int[9];
+        var numbered = new bool[9];
         var paragraphs = new List<ShapeParagraph>();
-        foreach (var paragraph in body.Elements(A + "p").Take(MaxParagraphs))
+        foreach (var paragraph in body?.Elements(A + "p").Take(MaxParagraphs) ?? [])
         {
             var properties = paragraph.Element(A + "pPr");
-            var paragraphRun = Run(properties?.Element(A + "defRPr"), listRun);
+            var level = (int)Math.Clamp(Number(properties?.Attribute("lvl"), 0), 0, 8);
+            var list = lists?.Element(A + $"lvl{level + 1}pPr");
+            XElement?[] chain = [properties, list];
+            XAttribute? Attribute(string name) => chain.Select(e => e?.Attribute(name)).FirstOrDefault(v => v is not null);
+            XElement? Child(params string[] names) =>
+                chain.Select(e => e?.Elements().FirstOrDefault(c => names.Contains(c.Name.LocalName))).FirstOrDefault(c => c is not null);
+            var paragraphRun = Run(properties?.Element(A + "defRPr"), Run(list?.Element(A + "defRPr"), new CellRun("")));
             var runs = new List<CellRun>();
             foreach (var piece in paragraph.Elements())
             {
@@ -464,21 +484,32 @@ internal sealed class XlsxDrawing
                     continue;
                 text = text[..Math.Min(text.Length, MaxTextCharacters - characters)];
                 characters += text.Length;
-                var run = Run(piece.Element(A + "rPr"), paragraphRun) with { Text = text };
+                var run = Scaled(Run(piece.Element(A + "rPr"), paragraphRun) with { Text = text }, fontScale);
                 if (runs.Count > 0 && runs[^1] with { Text = "" } == run with { Text = "" })
                     runs[^1] = runs[^1] with { Text = runs[^1].Text + text };
                 else
                     runs.Add(run);
             }
-            var align = (string?)properties?.Attribute("algn") ?? (string?)list?.Attribute("algn");
-            paragraphs.Add(new ShapeParagraph(runs, align switch
+            // The first run's font (or the paragraph's end mark's) is the bullet's.
+            var mark = runs.FirstOrDefault() ?? Scaled(Run(paragraph.Element(A + "endParaRPr"), paragraphRun), fontScale);
+            var spacing = Child("lnSpc");
+            var exact = spacing?.Element(A + "spcPts")?.Attribute("val") is { } points ? Math.Clamp(Number(points, 0) / 100 * fontScale, 0.5, 1584) : (double?)null;
+            var multiple = spacing?.Element(A + "spcPct")?.Attribute("val") is { } percent ? Number(percent, 100_000) / 100_000 : 1;
+            paragraphs.Add(new ShapeParagraph(runs, (string?)Attribute("algn") switch
             {
                 "ctr" => CellAlign.Center,
                 "r" => CellAlign.Right,
                 _ => CellAlign.Left,
-            }));
+            })
+            {
+                Bullet = Bullet(Child("buNone", "buChar", "buAutoNum", "buBlip"), Child("buClr", "buClrTx"), Child("buSzPct", "buSzPts", "buSzTx"),
+                    Child("buFont", "buFontTx"), mark, runs.Count > 0, level, counters, numbered),
+                Left = Math.Clamp(Number(Attribute("marL"), 0) * PointsPerEmu, 0, 4000),
+                Indent = Math.Clamp(Number(Attribute("indent"), 0) * PointsPerEmu, -4000, 4000),
+                LineSpacing = Math.Clamp(multiple - spacingReduction, 0.1, 10),
+                LineHeight = exact,
+            });
         }
-        var bodyPr = body.Element(A + "bodyPr");
         double Inset(string name, double fallback) =>
             bodyPr?.Attribute(name) is { } value ? Math.Clamp(Signed(value) * PointsPerEmu, 0, 1000) : fallback;
         return new ShapeText(paragraphs)
@@ -486,7 +517,7 @@ internal sealed class XlsxDrawing
             Font = new CellStyle
             {
                 FontName = baseFont,
-                FontSize = 11,
+                FontSize = 11 * fontScale,
                 Color = baseColor is { } color ? Hex(color) : null,
             },
             Anchor = (string?)bodyPr?.Attribute("anchor") switch
@@ -497,7 +528,134 @@ internal sealed class XlsxDrawing
             },
             Insets = (Inset("lIns", 7.2), Inset("tIns", 3.6), Inset("rIns", 7.2), Inset("bIns", 3.6)),
             Wrap = (string?)bodyPr?.Attribute("wrap") != "none",
+            Flow = (string?)bodyPr?.Attribute("vert") switch
+            {
+                "vert" => ShapeTextFlow.Down,
+                "vert270" => ShapeTextFlow.Up,
+                "eaVert" or "mongolianVert" => ShapeTextFlow.EastAsian,
+                "wordArtVert" or "wordArtVertRtl" => ShapeTextFlow.Stacked,
+                _ => ShapeTextFlow.Across,
+            },
         };
+    }
+
+    /// <summary>
+    /// Puts into each shape linked to a cell (textlink: "$A$1" on the shape's own sheet, "Sheet2!$B$3", "'My
+    /// sheet'!C4") that cell's text as the sheet shows it, in the font and alignment of the shape's first paragraph and
+    /// run. A link to a sheet that isn't read (hidden) or to a defined name keeps the text Excel saved with the shape.
+    /// </summary>
+    internal static void LinkTexts(Workbook book)
+    {
+        foreach (var sheet in book.Sheets)
+        {
+            for (var i = 0; i < sheet.Drawings.Count; i++)
+            {
+                if (sheet.Drawings[i] is not SheetShape { TextLink: { } link } shape || !Linked(book, sheet, link, out var cell))
+                    continue;
+                var text = shape.Text ?? new ShapeText([]);
+                var first = text.Paragraphs.FirstOrDefault();
+                var run = first?.Runs.FirstOrDefault() ?? new CellRun("");
+                var shown = cell?.Text ?? "";
+                var paragraph = new ShapeParagraph(shown.Length == 0 ? [] : [run with { Text = shown[..Math.Min(shown.Length, MaxTextCharacters)] }],
+                    first?.Align ?? CellAlign.Left)
+                {
+                    Bullet = shown.Length == 0 ? null : first?.Bullet,
+                    Left = first?.Left ?? 0,
+                    Indent = first?.Indent ?? 0,
+                    LineSpacing = first?.LineSpacing ?? 1,
+                    LineHeight = first?.LineHeight,
+                };
+                sheet.Drawings[i] = shape with { Text = text with { Paragraphs = [paragraph] } };
+            }
+        }
+    }
+
+    /// <summary>Whether a textlink reference names a cell of a read sheet, and that cell (null when it is empty).</summary>
+    private static bool Linked(Workbook book, Worksheet own, string link, out SheetCell? cell)
+    {
+        cell = null;
+        var reference = link.TrimStart('=').Trim();
+        var sheet = own;
+        var bang = reference.LastIndexOf('!');
+        if (bang >= 0)
+        {
+            var name = reference[..bang];
+            if (name.Length >= 2 && name[0] == '\'' && name[^1] == '\'')
+                name = name[1..^1].Replace("''", "'", StringComparison.Ordinal);
+            sheet = book.Sheets.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+            reference = reference[(bang + 1)..];
+        }
+        if (sheet is null || CellRange.Parse(reference) is not { } range || range.Top > SheetPagination.MaxRow || range.Left is < 0 or > SheetPagination.MaxColumn)
+            return false;
+        cell = sheet.Get(range.Top, range.Left);
+        return true;
+    }
+
+    /// <summary>A run with its size (or, setting none, Excel's 11 pt) shrunk by <paramref name="scale"/>.</summary>
+    private static CellRun Scaled(CellRun run, double scale) =>
+        scale >= 1 ? run : run with { FontSize = Math.Max(1, (run.FontSize ?? 11) * scale) };
+
+    /// <summary>
+    /// A DrawingML number (EMU, a count, or a percentage: ST_Percentage's 100000 = 100 %, "62.5%" in strict files),
+    /// or <paramref name="fallback"/>.
+    /// </summary>
+    private static double Number(XAttribute? value, double fallback)
+    {
+        var text = (string?)value;
+        if (text is null)
+            return fallback;
+        var percent = text.EndsWith('%');
+        return double.TryParse(percent ? text[..^1] : text, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) && double.IsFinite(number)
+            ? Math.Clamp(percent ? number * 1000 : number, -MaxEmu, MaxEmu)
+            : fallback;
+    }
+
+    /// <summary>
+    /// A paragraph's bullet or number (buChar in its buFont, a symbol font's as the Unicode it shows; buAutoNum counted
+    /// per level as PowerPoint counts), in the first run's font with buClr and buSzPct / buSzPts; null for none
+    /// (buNone, no bullet element, or a paragraph without text).
+    /// </summary>
+    private CellRun? Bullet(XElement? kind, XElement? color, XElement? size, XElement? font, CellRun text, bool hasText, int level,
+        int[] counters, bool[] numbered)
+    {
+        for (var deeper = level + 1; deeper < counters.Length; deeper++)
+            (counters[deeper], numbered[deeper]) = (0, false);
+        if (!hasText || kind is null || kind.Name.LocalName == "buNone")
+        {
+            if (hasText)
+                numbered[level] = false;
+            return null;
+        }
+        string label;
+        var face = font?.Name.LocalName == "buFont" && (string?)font.Attribute("typeface") is { Length: > 0 } typeface ? typeface : null;
+        switch (kind.Name.LocalName)
+        {
+            case "buAutoNum":
+                var start = (int)Math.Clamp(Number(kind.Attribute("startAt"), 1), 1, 32767);
+                counters[level] = numbered[level] ? Math.Min(counters[level] + 1, 32767) : start;
+                numbered[level] = true;
+                label = Hwp.Hwpx.Pptx.PptxReader.Number((string?)kind.Attribute("type") ?? "arabicPeriod", counters[level]);
+                face = null;
+                break;
+            case "buChar":
+                numbered[level] = false;
+                label = (string?)kind.Attribute("char") is { Length: > 0 } character ? character[..Math.Min(character.Length, 8)] : "•";
+                if (Hwp.Hwpx.SymbolFonts.Map(face, label) is { } mapped)
+                    (label, face) = (mapped, null);
+                break;
+            default:
+                // A picture bullet: a plain one in its place.
+                numbered[level] = false;
+                (label, face) = ("•", null);
+                break;
+        }
+        var points = text.FontSize ?? 11;
+        if (size?.Name.LocalName == "buSzPct")
+            points *= Math.Clamp(Number(size.Attribute("val"), 100_000) / 100_000, 0.25, 4);
+        else if (size?.Name.LocalName == "buSzPts")
+            points = Math.Clamp(Number(size.Attribute("val"), points * 100) / 100, 1, 4000);
+        var shade = color?.Name.LocalName == "buClr" && _colors.Color(color) is { } bulletColor ? Hex(bulletColor) : text.Color;
+        return new CellRun(label) { FontName = face ?? text.FontName, FontSize = points, Color = shade, Bold = text.Bold, Italic = text.Italic };
     }
 
     /// <summary>A run's font from DrawingML run properties over <paramref name="under"/> (what they don't set stays).</summary>

@@ -12,8 +12,9 @@
 // too) and chart sheets (their page setup and the chart of their drawing, with what is placed over it).
 // Conditional formats are read as the XLSX reader reads them (BrtBeginConditionalFormatting, BrtBeginCFRule with its
 // differential format from styles.bin's BrtDXF, colour scales' BrtCFVO and BrtColor). Tables are read as the XLSX
-// reader reads them (BrtBeginListParts / BrtListPart → the table part's BrtBeginList with its formats, BrtBeginListCol
-// and BrtTableStyleClient; the workbook's own styles from BrtBeginTableStyle / BrtTableStyleElement), and the notes on
+// reader reads them (BrtBeginListParts / BrtListPart → the table part's BrtBeginList with its formats and the cell
+// styles it names, BrtBeginListCol and BrtTableStyleClient; the workbook's own styles from BrtBeginTableStyle /
+// BrtTableStyleElement, cell styles by name from BrtStyle), PivotTables from their parts (ReadPivot), and the notes on
 // cells (the comments part's BrtCommentAuthor, BrtBeginComment and BrtCommentText; shown or not from the
 // BrtLegacyDrawing VML; threaded comments from the same XML parts as in XLSX) with BrtPageSetup's fNotes / fEndNotes. Left out, as by the XLSX reader: data validation, rules with formulas of their own, data bars and
 // icon sets.
@@ -65,6 +66,7 @@ internal sealed class XlsbReader
     private const int Fill = 45;
     private const int Border = 46;
     private const int Xf = 47;
+    private const int StyleRecord = 48;
     private const int ColInfo = 60;
     private const int CellRString = 62;
     private const int BeginWsView = 137;
@@ -91,6 +93,15 @@ internal sealed class XlsbReader
     private const int BeginTableStyle = 510;
     private const int EndTableStyle = 511;
     private const int TableStyleClient = 513;
+    private const int BeginSXLI = 297;
+    private const int BeginSXLIRws = 299;
+    private const int EndSXLIRws = 300;
+    private const int BeginSXLICols = 301;
+    private const int EndSXLICols = 302;
+    private const int BeginISXVDRws = 309;
+    private const int BeginISXVDCols = 311;
+    private const int BeginSXLocation = 314;
+    private const int BeginSXPIs = 291;
     private const int LegacyDrawing = 551;
     private const int CommentAuthor = 632;
     private const int BeginComment = 635;
@@ -148,6 +159,12 @@ internal sealed class XlsbReader
     /// <summary>The workbook's own table styles by name (BrtBeginTableStyle).</summary>
     private readonly Dictionary<string, TableStyle> _tableStyles = new(StringComparer.Ordinal);
 
+    /// <summary>The workbook's own PivotTable styles by name (BrtBeginTableStyle with fIsPivot).</summary>
+    private readonly Dictionary<string, TableStyle> _pivotStyles = new(StringComparer.Ordinal);
+
+    /// <summary>What each named cell style gives a table's area (BrtStyle → its cell style BrtXF), by name.</summary>
+    private readonly Dictionary<string, TableStylePart> _cellStyles = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>The look of a cell that sets nothing (the Normal style's font).</summary>
     private CellStyle _normal = CellStyle.Default;
 
@@ -155,6 +172,7 @@ internal sealed class XlsbReader
     private readonly TableBudget _tableBudget = new();
 
     private int _tables;
+    private int _pivots;
     private OoxmlColors _colors = OoxmlColors.FromTheme(null);
     private XDocument? _theme;
     private readonly Charts.ChartBudget _charts = new();
@@ -376,6 +394,7 @@ internal sealed class XlsbReader
             result.Sheets.Add(sheet);
             _all?.Add((index, relationship.Target, entry.State != 0));
         }
+        XlsxDrawing.LinkTexts(result);
         return result;
     }
 
@@ -458,14 +477,18 @@ internal sealed class XlsbReader
         var fills = new List<(string? Color, string? Pattern, string? Background, CellGradient? Gradient)>();
         var borders = new List<(CellBorder Left, CellBorder Right, CellBorder Top, CellBorder Bottom, CellBorder Up, CellBorder Down)>();
         var styleFonts = new List<int>();
+        // Cell style XFs (font, fill, border, xfGrbitAtr) and the named cell styles pointing at them.
+        var styleXfs = new List<(int Font, int Fill, int Border, int Ignored)>();
+        var namedStyles = new List<(string Name, uint Xf)>();
         var cellXfs = new List<(int Format, int Font, int Fill, int Border, int Rotation, int Indent, int Alignment)>();
         var inCellXfs = false;
         var inStyleXfs = false;
         var inDxfs = false;
         // The table style being read and its parts (dxf ids into the BrtDXFs).
         string? tableStyle = null;
+        var tableUse = 0;
         List<(string Type, int Size, uint Dxf)>? tableParts = null;
-        var ownStyles = new List<(string Name, List<(string Type, int Size, uint Dxf)> Parts)>();
+        var ownStyles = new List<(string Name, int Use, List<(string Type, int Size, uint Dxf)> Parts)>();
         var records = new Records(stream, partPath, this);
         while (records.Next())
         {
@@ -510,22 +533,30 @@ internal sealed class XlsbReader
                     break;
                 case BeginTableStyle:
                     var begin = records.Fields();
-                    var tableFlags = begin.U16();
+                    // fIsPivot (0x02) and fIsTable (0x04): what the style is for.
+                    tableUse = begin.U16() & 0x06;
                     begin.U32(); // ctse
-                    tableStyle = (tableFlags & 0x04) != 0 ? begin.String(nullable: true) : null;
+                    tableStyle = tableUse != 0 ? begin.String(nullable: true) : null;
                     tableParts = [];
                     break;
-                case TableStyleRecord when tableParts is not null && tableParts.Count < 32:
+                case TableStyleRecord when tableParts is not null && tableParts.Count < 64:
                     var element = records.Fields();
                     var tse = element.U32();
                     var size = element.U32();
                     var dxfId = element.U32();
-                    if (SheetTables.PartOf(tse) is { } part)
+                    if (SheetPivots.PartOf(tse) is { } part)
                         tableParts.Add((part, (int)Math.Clamp(size, 1, 9), dxfId));
+                    break;
+                case StyleRecord when namedStyles.Count < SheetTables.MaxCellStyles:
+                    var named = records.Fields();
+                    var styleXf = named.U32();
+                    named.Skip(4); // grbitObj1, iStyBuiltIn, iLevel
+                    if (named.String(nullable: true) is { Length: > 0 } styleName)
+                        namedStyles.Add((styleName, styleXf));
                     break;
                 case EndTableStyle:
                     if (tableStyle is { Length: > 0 } && tableParts is not null && ownStyles.Count < SheetTables.MaxTables)
-                        ownStyles.Add((tableStyle, tableParts));
+                        ownStyles.Add((tableStyle, tableUse, tableParts));
                     (tableStyle, tableParts) = (null, null);
                     break;
                 case Xf when inCellXfs || inStyleXfs:
@@ -539,7 +570,11 @@ internal sealed class XlsbReader
                     var indent = xf.U8();
                     var alignment = xf.U16();
                     if (inStyleXfs)
+                    {
                         styleFonts.Add(font);
+                        if (styleXfs.Count < SheetTables.MaxCellStyles)
+                            styleXfs.Add((font, fill, border, xf.Left >= 2 ? xf.U16() & 0x3F : 0));
+                    }
                     else
                         cellXfs.Add((numberFormat, font, fill, border, rotation, indent, alignment));
                     break;
@@ -554,15 +589,48 @@ internal sealed class XlsbReader
             book.DefaultFontSize = fontSize;
         if (normal is not null)
             _normal = new CellStyle { Bold = normal.Bold, Italic = normal.Italic, Underline = normal.Underline, Strike = normal.Strike, Color = normal.Color };
-        // The table styles' parts point into the BrtDXFs, which may come before or after them.
-        foreach (var (name, parts) in ownStyles)
+        // The cell styles by name, for tables that name one for an area: the font, fill and borders their cell style XF
+        // includes (xfGrbitAtr: bit 1 font, 3 border, 4 fill set when left out).
+        foreach (var (styleName, xfIndex) in namedStyles)
         {
-            _tableStyles[name] = new TableStyle(parts.Where(p => p.Dxf < _dxfs.Count)
+            if (xfIndex >= styleXfs.Count)
+                continue;
+            var (fontId, fillId, borderId, ignored) = styleXfs[(int)xfIndex];
+            var font = (ignored & 0x02) == 0 && fontId < _fonts.Count ? _fonts[fontId] : null;
+            var fill = (ignored & 0x10) == 0 && fillId < fills.Count ? fills[fillId] : default;
+            var border = (ignored & 0x08) == 0 && borderId < borders.Count ? borders[borderId] : NoBorders;
+            var look = new CellStyle
+            {
+                Bold = font?.Bold ?? false,
+                Italic = font?.Italic ?? false,
+                Underline = font?.Underline ?? false,
+                Strike = font?.Strike ?? false,
+                Color = font?.Color,
+                Fill = fill.Color,
+                FillPattern = fill.Pattern,
+                Gradient = fill.Gradient,
+                Left = border.Left,
+                Right = border.Right,
+                Top = border.Top,
+                Bottom = border.Bottom,
+            };
+            if (SheetTables.CellStylePart(look, _normal) is { } part)
+                _cellStyles.TryAdd(styleName, part);
+        }
+
+        // The table and PivotTable styles' parts point into the BrtDXFs, which may come before or after them.
+        foreach (var (name, use, parts) in ownStyles)
+        {
+            var style = new TableStyle(parts.Where(p => p.Dxf < _dxfs.Count)
                 .GroupBy(p => p.Type).ToDictionary(g => g.Key, g =>
                 {
                     var (_, size, dxf) = g.First();
                     return new TableStylePart(_dxfs[(int)dxf], _dxfInner[(int)dxf].Vertical, _dxfInner[(int)dxf].Horizontal, size);
                 }, StringComparer.Ordinal));
+            if ((use & 0x04) != 0)
+                _tableStyles[name] = style;
+            if ((use & 0x02) != 0)
+                _pivotStyles[name] = style;
         }
 
         foreach (var (formatId, fontId, fillId, borderId, rotation, indent, alignment) in cellXfs)
@@ -697,6 +765,10 @@ internal sealed class XlsbReader
     /// <summary>A table style by name: the workbook's own, else a built-in one in the workbook's theme colours.</summary>
     private TableStyle? TableStyleOf(string? name) =>
         name is null ? null : _tableStyles.TryGetValue(name, out var own) ? own : SheetTables.BuiltIn(name, ThemeColor);
+
+    /// <summary>A PivotTable style by name: the workbook's own, else a built-in one in the workbook's theme colours.</summary>
+    private TableStyle? PivotStyleOf(string? name) =>
+        name is null ? null : _pivotStyles.TryGetValue(name, out var own) ? own : SheetPivots.BuiltIn(name, ThemeColor);
 
     private string? ThemeColor(int theme, double tint) => _colors.Spreadsheet(new XElement("color", new XAttribute("theme", theme),
         new XAttribute("tint", tint.ToString("R", CultureInfo.InvariantCulture))));
@@ -979,6 +1051,15 @@ internal sealed class XlsbReader
                 tables.Add(table);
         }
         SheetTables.Apply(sheet, tables, TableStyleOf, _normal, _tableBudget);
+        var pivots = new List<SheetPivot>();
+        foreach (var relationship in _package.Relationships(partPath).Values)
+        {
+            // The PivotTable parts are implicit relationships of the sheet ([MS-XLSB] 2.1.7.40: …/PivotTable).
+            if (!relationship.External && relationship.Type.EndsWith("/pivotTable", StringComparison.OrdinalIgnoreCase)
+                && ++_pivots <= SheetPivots.MaxPivots && ReadPivot(relationship.Target) is { } pivot)
+                pivots.Add(pivot);
+        }
+        SheetPivots.Apply(sheet, pivots, PivotStyleOf, _normal, _tableBudget);
         if (_package.TargetOfType(partPath, "/comments") is { } commentsPart)
             ReadComments(commentsPart, sheet, SheetComments.Vml(_package, _package.Target(partPath, notes)));
         SheetComments.Threaded(_package, partPath, sheet, () => _persons ??= SheetComments.Persons(_package, _package.MainPartPath ?? "xl/workbook.bin"));
@@ -988,9 +1069,10 @@ internal sealed class XlsbReader
     }
 
     /// <summary>
-    /// A table part ([MS-XLSB] 2.1.7.51): BrtBeginList's range, header / total rows and formats (nDxfHeader, nDxfData,
-    /// nDxfAgg and the border ones), each BrtBeginListCol's formats (nDxfHdr, nDxfInsertRow taken as its data rows',
-    /// nDxfAgg), BrtTableStyleClient's style and options; null without a range.
+    /// A table part ([MS-XLSB] 2.1.7.51): BrtBeginList's range, header / total rows, the cell styles it names
+    /// (stStyleHeader, stStyleData, stStyleAgg) and formats (nDxfHeader, nDxfData, nDxfAgg and the border ones), each
+    /// BrtBeginListCol's (stStyleHeader, stStyleInsertRow and nDxfInsertRow taken as its data rows', stStyleAgg;
+    /// nDxfHdr, nDxfAgg), BrtTableStyleClient's style and options; null without a range.
     /// </summary>
     private SheetTable? ReadTable(string partPath)
     {
@@ -1005,6 +1087,14 @@ internal sealed class XlsbReader
             if (dxf < _dxfs.Count)
                 formats.Add(new TableFormat(area, new TableStylePart(_dxfs[(int)dxf], _dxfInner[(int)dxf].Vertical, _dxfInner[(int)dxf].Horizontal), outline, at));
         }
+        // A cell style named for an area goes under that area's own formats.
+        void Named(string? name, TableArea area, int? at)
+        {
+            if (name is { Length: > 0 } && _cellStyles.TryGetValue(name, out var part))
+                formats.Add(new TableFormat(area, part, false, at));
+        }
+        // An XLNullableWideString at the end of a record, or null when the record ends before it.
+        static string? Optional(ref Fields fields) => fields.Left >= 4 ? fields.String(nullable: true) : null;
         var records = new Records(stream, partPath, this);
         while (records.Next())
         {
@@ -1023,6 +1113,17 @@ internal sealed class XlsbReader
                         list.Skip(4); // fShownTotalRow, fSingleCell, ...
                         var (headerDxf, dataDxf, totalsDxf) = (list.U32(), list.U32(), list.U32());
                         var (borderDxf, headerBorderDxf, totalsBorderDxf) = (list.U32(), list.U32(), list.U32());
+                        if (list.Left >= 4)
+                        {
+                            list.Skip(4); // dwConnID
+                            Optional(ref list); // stName
+                            Optional(ref list); // stDisplayName
+                            Optional(ref list); // stComment
+                            var (headerStyle, dataStyle, totalsStyle) = (Optional(ref list), Optional(ref list), Optional(ref list));
+                            Named(headerStyle, TableArea.Header, null);
+                            Named(dataStyle, TableArea.Data, null);
+                            Named(totalsStyle, TableArea.Totals, null);
+                        }
                         Format(headerDxf, TableArea.Header, false, null);
                         Format(dataDxf, TableArea.Data, false, null);
                         Format(totalsDxf, TableArea.Totals, false, null);
@@ -1043,6 +1144,17 @@ internal sealed class XlsbReader
                     {
                         listColumn.Skip(8); // idField, ilta
                         var (headerDxf, insertDxf, totalsDxf) = (listColumn.U32(), listColumn.U32(), listColumn.U32());
+                        if (listColumn.Left >= 4)
+                        {
+                            listColumn.Skip(4); // idqsif
+                            Optional(ref listColumn); // stName
+                            Optional(ref listColumn); // stCaption
+                            Optional(ref listColumn); // stTotal
+                            var (headerStyle, insertStyle, totalsStyle) = (Optional(ref listColumn), Optional(ref listColumn), Optional(ref listColumn));
+                            Named(headerStyle, TableArea.Header, column);
+                            Named(insertStyle, TableArea.Data, column);
+                            Named(totalsStyle, TableArea.Totals, column);
+                        }
                         Format(headerDxf, TableArea.Header, false, column);
                         Format(insertDxf, TableArea.Data, false, column);
                         Format(totalsDxf, TableArea.Totals, false, column);
@@ -1064,6 +1176,97 @@ internal sealed class XlsbReader
             }
         }
         return table is null ? null : table with { Formats = formats };
+    }
+
+    /// <summary>
+    /// A PivotTable part ([MS-XLSB] 2.1.7.40): BrtBeginSXLocation's body and where its header, data rows and data
+    /// columns start, the page fields (BrtBeginSXPIs, crwPage rows of them), the row and column fields
+    /// (BrtBeginISXVDRws / Cols), the row and column pivot lines (BrtBeginSXLI in SXLIRWS / SXLICOLS: itmtype, and the
+    /// level from cSic and cisxvis) and BrtTableStyleClient's style and options; null without a location.
+    /// </summary>
+    private SheetPivot? ReadPivot(string partPath)
+    {
+        using var stream = _package.OpenPart(partPath);
+        if (stream is null)
+            return null;
+        SheetPivot? pivot = null;
+        (int Rows, int Columns, int Fields) pages = (0, 0, 0);
+        var (rowFields, columnFields) = (0, 0);
+        var (rows, columns) = (new List<PivotItem>(), new List<PivotItem>());
+        List<PivotItem>? lines = null;
+        var records = new Records(stream, partPath, this);
+        while (records.Next())
+        {
+            switch (records.Type)
+            {
+                case BeginSXLocation when pivot is null:
+                    var location = records.Fields();
+                    var (top, bottom, left, right) = (location.U32(), location.U32(), location.U32(), location.U32());
+                    var (head, dataRow, dataColumn) = (location.U32(), location.U32(), location.U32());
+                    pages = ((int)Math.Clamp(location.I32(), 0, SheetPivots.MaxPageFields), (int)Math.Clamp(location.I32(), 0, SheetPivots.MaxPageFields), 0);
+                    if (top > bottom || left > right || bottom > SheetPagination.MaxRow || right > SheetPagination.MaxColumn)
+                        return null;
+                    pivot = new SheetPivot(new CellRange((int)top, (int)left, (int)bottom, (int)right), null)
+                    {
+                        FirstHeaderRow = (int)Math.Clamp((long)head - top, 0, bottom - top + 1),
+                        FirstDataRow = (int)Math.Clamp((long)dataRow - top, 0, bottom - top + 1),
+                        FirstDataColumn = (int)Math.Clamp((long)dataColumn - left, 0, right - left + 1),
+                    };
+                    break;
+                case BeginISXVDRws:
+                    rowFields = (int)Math.Min(records.Fields().U32(), 1000);
+                    break;
+                case BeginISXVDCols:
+                    columnFields = (int)Math.Min(records.Fields().U32(), 1000);
+                    break;
+                case BeginSXLIRws:
+                    lines = rows;
+                    break;
+                case BeginSXLICols:
+                    lines = columns;
+                    break;
+                case EndSXLIRws or EndSXLICols:
+                    lines = null;
+                    break;
+                case BeginSXLI when lines is not null && lines.Count <= SheetPagination.MaxRow:
+                    var line = records.Fields();
+                    var reused = line.U16();
+                    var type = line.U8();
+                    line.U8(); // reserved
+                    var entries = line.U32();
+                    lines.Add(new PivotItem(type switch
+                    {
+                        0 => PivotItemKind.Data,
+                        13 => PivotItemKind.Grand,
+                        14 => PivotItemKind.Blank,
+                        _ => PivotItemKind.Subtotal,
+                    }, (int)Math.Clamp(reused + (long)Math.Min(entries, 1000) - 1, 0, 1000)));
+                    break;
+                case BeginSXPIs:
+                    pages.Fields = (int)Math.Min(records.Fields().U32(), SheetPivots.MaxPageFields);
+                    break;
+                case TableStyleClient when pivot is not null:
+                    var client = records.Fields();
+                    var flags = client.U16();
+                    var range = pivot.Range;
+                    return pivot with
+                    {
+                        StyleName = client.String(nullable: true),
+                        Rows = rows,
+                        Columns = columns,
+                        RowFields = rowFields,
+                        ColumnFields = columnFields,
+                        // crwPage rows of page fields, down then over (ccolPage counts their columns of cells).
+                        PageFields = SheetPivots.PageCells(range, pages.Fields, pages.Rows, (pages.Fields + Math.Max(1, pages.Rows) - 1) / Math.Max(1, pages.Rows), false),
+                        LastColumn = (flags & 0x02) != 0,
+                        RowStripes = (flags & 0x04) != 0,
+                        ColumnStripes = (flags & 0x08) != 0,
+                        RowHeaders = (flags & 0x10) != 0,
+                        ColumnHeaders = (flags & 0x20) != 0,
+                    };
+            }
+        }
+        return null;
     }
 
     /// <summary>The notes of a comments part ([MS-XLSB] 2.1.7.8): authors, then each note's cell and rich text.</summary>

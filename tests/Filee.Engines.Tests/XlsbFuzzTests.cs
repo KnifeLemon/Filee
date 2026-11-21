@@ -1,6 +1,8 @@
 // Mutation fuzzing of the XLSB reader (Office/Sheets/XlsbReader): the seeds are XlsbTests' workbook with every kind of
 // cell, format and page setting, a small one, and one with notes, threaded comments and a table with its own formats
-// and style (NotesAndTables, also a seed of DocumentFuzzTests' XLSX printing), written in code. Most inputs change the BIFF12 records of a binary
+// and style (NotesAndTables), and one with a PivotTable in a custom PivotTable style, a table naming cell styles and
+// shapes with bullets, autofit, vertical and linked text (PivotsAndShapeText; both also seeds of DocumentFuzzTests' XLSX
+// printing), written in code. Most inputs change the BIFF12 records of a binary
 // part (a field set to an edge value, a record's size or type changed, records cut, dropped or repeated), some the
 // part's bytes, some the package (relationships, ZIP). Every input must be read or refused with InvalidDataException /
 // ConversionRefusedException, in time and on a 1 MB stack; what is read is checked for what the printer leaves out and
@@ -22,7 +24,8 @@ public class XlsbFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     [Fact]
     public void XlsbReader_reads_or_refuses_every_mutated_workbook() =>
-        new FuzzHarness(fx, QuickIterations, 20261119).Files("xlsb", "xlsb", [Seed(XlsbTests.Twin()), Seed(Small()), Seed(NotesAndTables())], Mutator, Read);
+        new FuzzHarness(fx, QuickIterations, 20261119).Files("xlsb", "xlsb",
+            [Seed(XlsbTests.Twin()), Seed(Small()), Seed(NotesAndTables()), Seed(PivotsAndShapeText())], Mutator, Read);
 
     private static void Read(string path, string media)
     {
@@ -57,6 +60,41 @@ public class XlsbFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         book.TableStyles.Add(("Own", [("headerRow", 0), ("firstRowStripe", 1)]));
         sheet.Tables.Add(((0, 0, 2, 1), "Own", true, true, true));
         sheet.TableFormats[0] = (0, 1, 0, 1, [(1, 0, 1, 0)]);
+        return book;
+    }
+
+    /// <summary>
+    /// A PivotTable (page field, subtotals, column items) in a custom PivotTable style, a table naming cell styles, and
+    /// a drawing of shapes with bullets, autofit, vertical text and text linked to a cell (an XML part in both packages).
+    /// </summary>
+    internal static XlsbBuilder PivotsAndShapeText()
+    {
+        var book = new XlsbBuilder();
+        var sheet = book.Sheet("Pivot").Text(0, 0, "Year").Text(0, 1, "(All)").Text(2, 0, "Row Labels").Text(2, 1, "A").Text(2, 2, "Total")
+            .Text(3, 0, "East").Number(3, 1, 1).Number(3, 2, 1).Text(4, 0, "East Total").Number(4, 1, 1).Number(4, 2, 1)
+            .Text(5, 0, "Grand Total").Number(5, 1, 1).Number(5, 2, 1).Text(7, 0, "Item").Text(7, 1, "Value").Text(8, 0, "x").Number(8, 1, 2);
+        book.Dxfs.Add((XlsbColor.Rgb(0xC00000), XlsbColor.Rgb(0xFFFFFF), true));
+        book.PivotStyles.Add(("Own pivot", [("headerRow", 0), ("firstSubtotalRow", 0), ("pageFieldLabels", 0)]));
+        sheet.Pivots.Add(new XlsbPivot((2, 0, 5, 2), 1, 1, 1, "Own pivot")
+        {
+            RowFields = 2,
+            ColumnFields = 1,
+            PageFields = 1,
+            Rows = [(null, 0, 2), ("default", 0, 1), ("grand", 0, 1)],
+            Columns = [(null, 0, 1), ("grand", 0, 1)],
+        });
+        book.CellStyles.Add(("Heading", 1, 2, 1));
+        sheet.Tables.Add(((7, 0, 8, 1), "TableStyleMedium2", true, true, false));
+        sheet.TableCellStyles[0] = ("Heading", "Heading", null, [(1, "Heading", null, null)]);
+        sheet.DrawingId = "rIdD";
+        sheet.Relationships.Add(("rIdD", "drawing", "../drawings/drawing1.xml"));
+        book.Parts["xl/drawings/drawing1.xml"] =
+            "<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">" +
+            "<xdr:absoluteAnchor><xdr:pos x=\"0\" y=\"1270000\"/><xdr:ext cx=\"2540000\" cy=\"1270000\"/><xdr:sp textlink=\"$A$1\"><xdr:nvSpPr><xdr:cNvPr id=\"2\" name=\"S\"/><xdr:cNvSpPr/></xdr:nvSpPr>" +
+            "<xdr:spPr><a:prstGeom prst=\"ellipse\"><a:avLst/></a:prstGeom></xdr:spPr><xdr:txBody><a:bodyPr vert=\"eaVert\"><a:normAutofit fontScale=\"62500\" lnSpcReduction=\"10000\"/></a:bodyPr><a:lstStyle/>" +
+            "<a:p><a:pPr marL=\"171450\" indent=\"-171450\"><a:buFont typeface=\"Wingdings\"/><a:buChar char=\"§\"/></a:pPr><a:r><a:t>세로 text</a:t></a:r></a:p>" +
+            "<a:p><a:pPr lvl=\"1\"><a:lnSpc><a:spcPct val=\"150000\"/></a:lnSpc><a:buAutoNum type=\"romanUcPeriod\" startAt=\"4\"/></a:pPr><a:r><a:t>four</a:t></a:r></a:p>" +
+            "</xdr:txBody></xdr:sp><xdr:clientData/></xdr:absoluteAnchor></xdr:wsDr>";
         return book;
     }
 

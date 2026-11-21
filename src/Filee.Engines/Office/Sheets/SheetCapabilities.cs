@@ -4,7 +4,7 @@
 // Only what prints is looked at: visible sheets, and drawings not set to stay off the printout.
 //  * XLSX: a visible chart sheet whose chart ChartReader doesn't draw, or with pictures or shapes over its chart
 //    ("charts", ...); in each visible worksheet's drawing what XlsxDrawing leaves out (charts
-//    ChartReader doesn't draw, SmartArt, embedded objects, ink, text linked to cells, freeform shapes, ...); form controls
+//    ChartReader doesn't draw, SmartArt, embedded objects, ink, freeform shapes, ...); form controls
 //    (ctrlProp parts, or legacy VML controls); embedded OLE objects. Comments are printed when the page setup asks for
 //    them (SheetComments) and are left out of the check.
 //  * XLSB: the same relationships as XLSX (a chart sheet's drawing is the one its binary part relates to); the

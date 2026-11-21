@@ -972,9 +972,16 @@ internal sealed class SheetPageRenderer
         }
     }
 
+    /// <summary>A laid line of a shape's text: where it starts (points from the frame's left), its pitch, and the bullet before it.</summary>
+    private readonly record struct ShapeLine(StyledText Text, int Start, int End, float Width, float Ascent, float Height, float Pitch,
+        CellAlign Align, float Left, StyledText? Bullet, float BulletBack);
+
     /// <summary>
-    /// A shape's text inside its box (or its outline's text area) less the insets, turned with the shape: each
-    /// paragraph aligned on its own, lines broken at the width when the text wraps, the block placed by its anchor.
+    /// A shape's text inside its text area (the preset's or freeform outline's text rectangle, else the box) less the
+    /// insets, turned with the shape: each paragraph aligned on its own, after its left margin and first-line indent,
+    /// with its bullet or number, lines broken at the width when the text wraps and spaced by the paragraph's line
+    /// spacing, the block placed by its anchor. Vertical text is laid out across a frame as long as the area is high,
+    /// then turned into the area (VerticalText), CJK characters (or, stacked, all) standing upright.
     /// </summary>
     private void DrawShapeText(PageContent page, SheetShape shape, ShapeText text, SKRect anchor, SKRect area, float s)
     {
@@ -982,42 +989,58 @@ internal sealed class SheetPageRenderer
         if (shape.Part is null && AnchoredTurned(shape, w, h))
             (w, h) = (h, w);
         var inner = new SKRect(0, 0, w, h);
-        if (shape.Geometry is { } outline && w > 0 && h > 0)
-        {
-            var geometry = outline(w / s, h / s);
-            foreach (var path in geometry.Paths)
-                path.Path.Dispose();
-            if (geometry.TextRect is { Width: > 0, Height: > 0 } textArea)
-                inner = new SKRect(textArea.Left * s, textArea.Top * s, textArea.Right * s, textArea.Bottom * s);
-        }
+        if (w > 0 && h > 0 && TextArea(shape, w / s, h / s) is { Width: > 0, Height: > 0 } textArea)
+            inner = new SKRect(textArea.Left * s, textArea.Top * s, textArea.Right * s, textArea.Bottom * s);
         var (insetLeft, insetTop, insetRight, insetBottom) = text.Insets;
         inner = new SKRect(inner.Left + (float)insetLeft * s, inner.Top + (float)insetTop * s, inner.Right - (float)insetRight * s, inner.Bottom - (float)insetBottom * s);
-        var width = Math.Max(1, inner.Width / s);
-        var laid = new List<(StyledText Text, int Start, int End, float Width, float Ascent, float Height, CellAlign Align)>();
+        var vertical = text.Flow != ShapeTextFlow.Across;
+        // Vertical text: lines as long as the area is high, the block as thick as it is wide.
+        var frame = vertical ? new SKRect(0, 0, Math.Max(0, inner.Height), Math.Max(0, inner.Width)) : inner;
+        var width = Math.Max(1, frame.Width / s);
+        var laid = new List<ShapeLine>();
         foreach (var paragraph in text.Paragraphs.Take(1000))
         {
             var content = string.Concat(paragraph.Runs.Select(r => r.Text));
             var styled = CellText.Build(_fonts, _book, new SheetCell(content, text.Font) { Runs = paragraph.Runs.Count > 0 ? paragraph.Runs : null }, text.Font,
                 SheetColors.Parse(text.Font.Color, SKColors.Black), wrap: true);
+            float Pitch(float lineHeight) => paragraph.LineHeight is { } exact ? (float)exact : lineHeight * (float)paragraph.LineSpacing;
             if (styled.IsEmpty)
             {
                 // An empty paragraph keeps its line.
                 var metrics = _fonts.Pixels(text.Font.FontName ?? _book.DefaultFontName, text.Font.FontSize ?? _book.DefaultFontSize);
-                laid.Add((styled, 0, 0, 0, 0, metrics.LineHeight * 0.75f, paragraph.Align));
+                var empty = metrics.LineHeight * 0.75f;
+                laid.Add(new ShapeLine(styled, 0, 0, 0, 0, empty, Pitch(empty), paragraph.Align, 0, null, 0));
                 continue;
             }
-            foreach (var (start, end) in styled.Lines(text.Wrap ? width : float.MaxValue, wrap: true))
+            // The bullet hangs at the first line's indent; the text starts at the left margin when the bullet fits in
+            // the hanging indent, else just after the bullet.
+            var left = (float)Math.Min(paragraph.Left, width - 1);
+            var first = (float)Math.Clamp(paragraph.Left + paragraph.Indent, 0, width - 1);
+            StyledText? bullet = null;
+            var textFirst = first;
+            if (paragraph.Bullet is { } mark)
             {
+                bullet = CellText.Build(_fonts, _book, new SheetCell(mark.Text, text.Font) { Runs = [mark] }, text.Font,
+                    SheetColors.Parse(text.Font.Color, SKColors.Black), wrap: false);
+                var after = bullet.Width(0, bullet.Text.Length);
+                var gap = (float)(mark.FontSize ?? 11) * 0.25f;
+                textFirst = paragraph.Indent < 0 && first + after + gap <= left ? left : Math.Min(first + after + gap, width - 1);
+            }
+            var lines = styled.Lines(text.Wrap ? width - left : float.MaxValue, wrap: true, text.Wrap ? width - textFirst : float.MaxValue);
+            for (var i = 0; i < lines.Count; i++)
+            {
+                var (start, end) = lines[i];
                 var (ascent, _, lineHeight) = styled.LineMetrics(start, end);
-                laid.Add((styled, start, end, styled.Width(start, end), ascent, lineHeight, paragraph.Align));
+                laid.Add(new ShapeLine(styled, start, end, styled.Width(start, end), ascent, lineHeight, Pitch(lineHeight), paragraph.Align,
+                    i == 0 ? textFirst : left, i == 0 ? bullet : null, textFirst - first));
             }
         }
-        var total = laid.Sum(l => l.Height) * s;
+        var total = laid.Sum(l => l.Pitch) * s;
         var y = text.Anchor switch
         {
-            CellVerticalAlign.Top => inner.Top,
-            CellVerticalAlign.Bottom => inner.Bottom - total,
-            _ => (inner.Top + inner.Bottom - total) / 2,
+            CellVerticalAlign.Top => frame.Top,
+            CellVerticalAlign.Bottom => frame.Bottom - total,
+            _ => (frame.Top + frame.Bottom - total) / 2,
         };
         // The box's own coordinates, turned about its centre as the shape is (mirroring leaves text readable).
         var matrix = SKMatrix.CreateTranslation(anchor.MidX, anchor.MidY).PreConcat(SKMatrix.CreateRotationDegrees((float)shape.Rotation))
@@ -1025,23 +1048,82 @@ internal sealed class SheetPageRenderer
         var clip = shape.Rotation == 0 ? SKRect.Intersect(area, anchor) : area;
         if (clip.IsEmpty)
             return;
-        foreach (var (styled, start, end, lineWidth, ascent, lineHeight, align) in laid)
+        // Across text of an unturned shape is drawn in page coordinates; the rest in the box's, through the matrix.
+        var direct = !vertical && shape.Rotation == 0;
+        var target = vertical ? new PageContent(page.Width, page.Height) : page;
+        foreach (var line in laid)
         {
-            if (end > start)
+            if (line.End > line.Start)
             {
-                var x = align switch
+                var x = line.Align switch
                 {
-                    CellAlign.Right => inner.Right - lineWidth * s,
-                    CellAlign.Center => (inner.Left + inner.Right - lineWidth * s) / 2,
-                    _ => inner.Left,
+                    CellAlign.Right => frame.Right - line.Width * s,
+                    CellAlign.Center => (frame.Left + line.Left * s + frame.Right - line.Width * s) / 2,
+                    _ => frame.Left + line.Left * s,
                 };
-                if (shape.Rotation == 0)
-                    styled.Draw(page, start, end, anchor.Left + x, anchor.Top + y + (0.75f + ascent) * s, s, null, 0, clip);
-                else
-                    styled.Draw(page, start, end, x, y + (0.75f + ascent) * s, s, matrix, 0, clip);
+                // Less room than the line's own height takes it from above the text.
+                var baseline = y + line.Pitch * s - (line.Height - 0.75f - line.Ascent) * s;
+                var (dx, dy) = direct ? (anchor.Left, anchor.Top) : (0f, 0f);
+                SKMatrix? transform = direct || vertical ? null : matrix;
+                SKRect? lineClip = vertical ? null : clip;
+                line.Bullet?.Draw(target, 0, line.Bullet.Text.Length, dx + x - line.BulletBack * s, dy + baseline, s, transform, 0, lineClip);
+                line.Text.Draw(target, line.Start, line.End, dx + x, dy + baseline, s, transform, 0, lineClip);
             }
-            y += lineHeight * s;
+            y += line.Pitch * s;
         }
+        if (!vertical)
+            return;
+        var upward = text.Flow == ShapeTextFlow.Up;
+        var upright = text.Flow switch
+        {
+            ShapeTextFlow.EastAsian => Typesetting.UprightGlyphs.EastAsian,
+            ShapeTextFlow.Stacked => Typesetting.UprightGlyphs.All,
+            _ => Typesetting.UprightGlyphs.None,
+        };
+        var turn = matrix.PreConcat(Typesetting.VerticalText.Place(upward, inner));
+        foreach (var item in Typesetting.VerticalText.Stand(target, upright, _fonts.Shaper).Items)
+        {
+            switch (item)
+            {
+                case GlyphItem glyphs:
+                    page.DrawGlyphs(glyphs.Run with { Transform = glyphs.Run.Transform is { } own ? turn.PreConcat(own) : turn, Clip = clip });
+                    break;
+                case DrawingItem drawing:
+                    page.Draw(canvas =>
+                    {
+                        canvas.ClipRect(clip);
+                        canvas.Concat(in turn);
+                        drawing.Drawing(canvas);
+                    });
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The text rectangle of a shape <paramref name="width"/> by <paramref name="height"/> points: its preset's
+    /// (presetShapeDefinitions' a:rect guides: an ellipse's inscribed box, a callout's body) or its own outline's; null
+    /// when it has none (the whole box).
+    /// </summary>
+    private static SKRect? TextArea(SheetShape shape, double width, double height)
+    {
+        GeometryResult geometry;
+        if (shape.Geometry is { } outline)
+        {
+            geometry = outline(width, height);
+        }
+        else if (PresetShapes.Find(shape.Preset) is { } definition)
+        {
+            const double EmuPerPoint = 12700;
+            geometry = ShapeGeometry.Evaluate(definition, width * EmuPerPoint, height * EmuPerPoint, shape.Adjust, 1 / EmuPerPoint);
+        }
+        else
+        {
+            return null;
+        }
+        foreach (var path in geometry.Paths)
+            path.Path.Dispose();
+        return geometry.TextRect;
     }
 
     /// <summary>One picture or shape in its anchor's box, turned and mirrored about the box's centre.</summary>
