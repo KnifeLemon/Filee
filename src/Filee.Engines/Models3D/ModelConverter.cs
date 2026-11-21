@@ -1,6 +1,7 @@
 // 3D models in managed code only (SharpGLTF for glTF, Filee's own readers and writers for the rest): GLB, glTF, STL,
-// OBJ, 3MF and PLY into each other through one in-memory model (Model3D), FBX (read only) into any of them, and an
-// isometric preview picture.
+// OBJ, 3MF and PLY into each other through one in-memory model (Model3D), FBX and Source engine models (MDL, with their
+// textures; read only) into any of them, studiomdl data (SMD) to and from them (from an MDL with its bones and weights),
+// and an isometric preview picture.
 // See docs/ENGINES.md, "3D models", for units, axes and what each format keeps.
 
 using Filee.Core.Conversion;
@@ -19,8 +20,8 @@ public sealed class ModelConverter(ILogger? logger = null) : IConverter, IImageT
     /// <summary>The 3D formats, each readable and writable.</summary>
     public static readonly string[] Formats = ["glb", "gltf", "stl", "obj", "3mf", "ply"];
 
-    /// <summary>Every 3D format that can be read: <see cref="Formats"/> and FBX.</summary>
-    public static readonly string[] InputFormats = [.. Formats, "fbx"];
+    /// <summary>Every 3D format that can be read: <see cref="Formats"/>, FBX, Source engine models (MDL) and SMD.</summary>
+    public static readonly string[] InputFormats = [.. Formats, "fbx", "mdl", "smd"];
 
     /// <summary>Long edge of the preview picture before the preset's resize.</summary>
     internal const int PreviewSize = 1024;
@@ -39,15 +40,20 @@ public sealed class ModelConverter(ILogger? logger = null) : IConverter, IImageT
     public IReadOnlyList<ConversionEdge> Edges { get; } =
     [
         .. from source in InputFormats from target in Formats where source != target select new ConversionEdge(source, target),
+        // SMD, the source studiomdl compiles: from an MDL with its skeleton, from the others as a static prop.
+        .. from source in InputFormats where source != "smd" select new ConversionEdge(source, "smd"),
         .. from source in InputFormats from target in ImageEncoder.Writable select ImageEncoder.Edge(source, target),
     ];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("GLB, glTF, STL, OBJ, 3MF, PLY ↔ each other; FBX → each of them",
+    public EngineStatus GetStatus() => EngineStatus.Available("GLB, glTF, STL, OBJ, 3MF, PLY, SMD ↔ each other; FBX, MDL → each of them",
         $"{EngineVersions.BuiltIn} · {EngineVersions.Library("SharpGLTF", typeof(SharpGLTF.Schema2.ModelRoot))}");
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run<IReadOnlyList<string>>(() =>
         {
+            // A Source model keeps its skeleton and weights in an SMD, which Filee's static model has no place for.
+            if (step.From == "mdl" && step.To == "smd")
+                return WriteSkeletalSmd(step, cancellationToken);
             var reading = progress is null ? null : new SubProgress(progress, 0, 0.6);
             var model = Read(step.InputPath, step.From, reading, cancellationToken);
             _logger.LogDebug("{File}: {Parts} parts, {Vertices} vertices, {Triangles} triangles, {Materials} materials",
@@ -80,6 +86,8 @@ public sealed class ModelConverter(ILogger? logger = null) : IConverter, IImageT
             "3mf" => ThreeMfFormat.Read(path, progress, cancellationToken),
             "glb" or "gltf" => GltfFormat.Read(path, progress, cancellationToken),
             "fbx" => FbxFormat.Read(path, progress, cancellationToken),
+            "mdl" => SourceModel.Load(path, cancellationToken).ToModel3D(path, cancellationToken),
+            "smd" => SmdFormat.Read(path, progress, cancellationToken),
             _ => throw new NotSupportedException($"Unknown 3D format '{format}'."),
         };
         model.Validate();
@@ -97,7 +105,7 @@ public sealed class ModelConverter(ILogger? logger = null) : IConverter, IImageT
         if (output.Allocate(format) is not { } path)
             return;
         outputs.Add(path);
-        if (!Formats.Contains(format))
+        if (!Formats.Contains(format) && format != "smd")
         {
             WriteImage(model, format, imageOptions, path, cancellationToken);
             return;
@@ -114,11 +122,33 @@ public sealed class ModelConverter(ILogger? logger = null) : IConverter, IImageT
             case "3mf":
                 ThreeMfFormat.Write(model, stream, cancellationToken);
                 break;
+            case "smd":
+                SmdFormat.Write(model, stream, cancellationToken);
+                break;
             case "glb":
             case "gltf":
                 GltfFormat.Write(model, stream, binary: format == "glb", cancellationToken);
                 break;
         }
+    }
+
+    /// <summary>A Source model as a reference SMD with its bones, bind pose and weights.</summary>
+    private static IReadOnlyList<string> WriteSkeletalSmd(ConversionStep step, CancellationToken cancellationToken)
+    {
+        var model = SourceModel.Load(step.InputPath, cancellationToken);
+        if (step.Output.Allocate("smd") is not { } path)
+            return [];
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16);
+            SmdFormat.WriteSkeletal(model, stream, cancellationToken);
+        }
+        catch
+        {
+            TryDelete(path);
+            throw;
+        }
+        return [path];
     }
 
     /// <summary>The .obj, the .mtl next to it (when the model has materials) and the textures next to that.</summary>
