@@ -403,6 +403,10 @@ internal static class ImageEncoder
             image.BackgroundColor = ParseColor(options.Background);
             image.Alpha(AlphaAction.Remove);
         }
+        // Magick.NET-Q8 stores 8 bits per channel; a 16-bit source still keeps Depth = 16, which makes
+        // ImageMagick write 16-bit files (or 12-bit AVIF) padded with duplicated 8-bit samples (#1547).
+        if (image.Depth > 8)
+            image.Depth = 8;
 
         var quality = (uint)Math.Clamp(options.Quality, 1, 100);
         // Turning a JPEG has to re-encode it: at the photo's own quality (Magick's estimate when it read the file), not
@@ -517,7 +521,12 @@ internal static class ImageEncoder
                 return written;
             using var collection = new MagickImageCollection();
             foreach (var frame in frames)
-                collection.Add(frame.Clone());
+            {
+                var copy = frame.Clone();
+                if (copy.Depth > 8)
+                    copy.Depth = 8;
+                collection.Add(copy);
+            }
             if (targetFormat == "avif")
                 MatchAlpha(collection);
             collection.Write(path, format);
@@ -530,6 +539,8 @@ internal static class ImageEncoder
             var path = output.Allocate(extension, frames.Count > 1 ? $"_p{i + 1}" : null);
             if (path is null)
                 continue;
+            if (frames[i].Depth > 8)
+                frames[i].Depth = 8;
             frames[i].Write(path, format);
             // Animations and multi-page files written above aren't fitted: the queue refuses them when they're too large.
             if (options is { MaxSizeMb: > 0 } or { MinSizeMb: > 0 })
@@ -643,7 +654,11 @@ internal static class ImageEncoder
         else if (targetFormat == "vtf")
             VtfWriter.Write([image], path);
         else
+        {
+            if (image.Depth > 8)
+                image.Depth = 8;
             image.Write(path, ToMagickFormat(targetFormat));
+        }
     }
 
     private static void PrepareIcon(IMagickImage<byte> image, ImageOptions options)
