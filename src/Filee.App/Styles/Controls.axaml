@@ -8,6 +8,12 @@
     <Setter Property="FlowDirection" Value="LeftToRight" />
   </Style>
 
+  <!-- Every ScrollViewer eases a mouse-wheel notch instead of jumping (SmoothScroll.cs). It stands aside when "Reduce
+       animations" is on and for touchpads, which already scroll smoothly. -->
+  <Style Selector="ScrollViewer">
+    <Setter Property="c:SmoothScroll.IsEnabled" Value="True" />
+  </Style>
+
   <!-- ───────── Donut control colours ───────── -->
   <Style Selector="c|DonutMenu">
     <Setter Property="SliceBrush" Value="{DynamicResource SurfaceBrush}" />
