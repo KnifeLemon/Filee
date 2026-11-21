@@ -1,5 +1,5 @@
 // Mutation fuzzing of Filee's own archive readers (ar / DEB, cpio, RPM, ISO 9660, Unix compress, lzip, ALZ, EGG, 7z,
-// CAB, LHA, ARJ, disk images with FAT, UDF and DMG, and the LZMA / LZMA2 / .xz decoder) and of TAR
+// CAB, LHA, ARJ, disk images with FAT, UDF and DMG, the LZFSE decoder, and the LZMA / LZMA2 / .xz decoder) and of TAR
 // (System.Formats.Tar behind Filee's header walk): seeds are built in code, bytes are flipped, overwritten, cut and
 // repeated, and every input must unpack or be refused with InvalidDataException, in time. The loop is FuzzHarness's: a
 // short fixed run normally, FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to
@@ -75,8 +75,16 @@ public class ArchiveFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Fuzz("img", [fat, DiskImageBuilders.Mbr([(0x01, fat), (0x01, other)], 1), DiskImageBuilders.Gpt([("a", fat), ("b", other)], 1)]);
         Fuzz("iso", [DiskImageBuilders.Udf(Seed()), DiskImageBuilders.Udf(Seed(), 0x0201, bridge: true)], mutateFrom: 16 * 2048);
         Fuzz("dmg", [DiskImageBuilders.Dmg(fat, [DmgRun.Zlib, DmgRun.Raw], chunkSectors: 16),
-            DiskImageBuilders.Dmg(DiskImageBuilders.Gpt([("a", fat)], 1), [DmgRun.Bzip2, DmgRun.Adc], chunkSectors: 64)]);
+            DiskImageBuilders.Dmg(DiskImageBuilders.Gpt([("a", fat)], 1), [DmgRun.Bzip2, DmgRun.Adc], chunkSectors: 64),
+            DiskImageBuilders.Dmg(fat, [DmgRun.Lzfse, DmgRun.Lzma], chunkSectors: 32)]);
     }
+
+    /// <summary>LZFSE streams (LzfseDecoder, a DMG's LZFSE chunks) with every block kind, decoded into a fixed buffer.</summary>
+    [Fact]
+    public void Lzfse_decoder_decodes_or_refuses_every_mutated_stream() =>
+        Fuzz("lzfse", [LzfseBuilders.Encode([.. Words(9_000), .. Noise(3_000, 6), .. Words(4_000)], [LzfseBlock.FseV2, LzfseBlock.Lzvn, LzfseBlock.Raw, LzfseBlock.FseV1], 4096),
+                LzfseBuilders.Encode(Words(2_000), [LzfseBlock.FseV2])],
+            read: (input, _) => new LzfseDecoder().Decode(File.ReadAllBytes(input), new byte[1 << 16]));
 
     [Fact]
     public void Unix_compress_reader_unpacks_or_refuses_every_mutated_file() =>

@@ -1,12 +1,15 @@
 // Writes disk images in code for the disk image tests: FAT12/16/32 volumes with long names (Microsoft's FAT
 // specification), UDF discs (ECMA-167 and OSTA UDF 1.02 / 2.01, optionally behind an ISO 9660 bridge), MBR, GPT and
-// Apple partition maps around volumes, and DMG (UDIF) files around a disk with raw, zero, zlib, bzip2 and ADC runs.
+// Apple partition maps around volumes, and DMG (UDIF) files around a disk with raw, zero, zlib, bzip2, ADC, LZFSE and
+// LZMA (.xz) runs.
 // Each follows the format's own description, independently of the readers in Filee.Engines/Archives; the bundled
 // 7-Zip, where present, reads the same images (DiskImageTests).
 
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
+using Filee.Core.Presets;
+using Filee.Engines.Archives;
 using static Filee.Engines.Tests.ArchiveBuilders;
 
 namespace Filee.Engines.Tests;
@@ -19,8 +22,14 @@ public enum DmgRun
     Bzip2,
     Adc,
 
-    /// <summary>Declared LZFSE (the data is stored, never decoded).</summary>
+    /// <summary>
+    /// LZFSE, its chunks in FSE (bvx2) and LZVN blocks in turn, as Apple's encoder writes them (LzfseBuilders; the
+    /// other block kinds are LzfseTests', 7-Zip doesn't read them).
+    /// </summary>
     Lzfse,
+
+    /// <summary>LZMA as Apple's tools write it: an .xz stream (Filee's XzWriter).</summary>
+    Lzma,
 }
 
 internal static class DiskImageBuilders
@@ -853,6 +862,63 @@ internal static class DiskImageBuilders
     // ───────────────────────── DMG ─────────────────────────
 
     /// <summary>
+    /// Apple Data Compression, greedy: 1LLLLLLL + L + 1 literals; 0LLLLDDD dddddddd for L + 3 bytes (3–18) from D + 1
+    /// back (up to 1,024); 01LLLLLL and D as 16 bits big endian for L + 4 bytes (4–67) from up to 65,536 back.
+    /// </summary>
+    public static byte[] Adc(ReadOnlySpan<byte> chunk)
+    {
+        var output = new MemoryStream();
+        var last = new Dictionary<int, int>();
+        var literals = new List<byte>();
+        void Flush()
+        {
+            for (var i = 0; i < literals.Count; i += 128)
+            {
+                var n = Math.Min(128, literals.Count - i);
+                output.WriteByte((byte)(0x80 | (n - 1)));
+                output.Write(literals.GetRange(i, n).ToArray());
+            }
+            literals.Clear();
+        }
+        for (var at = 0; at < chunk.Length;)
+        {
+            var (length, distance) = (0, 0);
+            if (chunk.Length - at >= 3)
+            {
+                var key = chunk[at] | chunk[at + 1] << 8 | chunk[at + 2] << 16;
+                if (last.TryGetValue(key, out var earlier) && at - earlier <= 65536)
+                {
+                    distance = at - earlier;
+                    while (at + length < chunk.Length && length < 67 && chunk[earlier + length] == chunk[at + length])
+                        length++;
+                }
+                last[key] = at;
+            }
+            if (length >= 3 && distance <= 1024 && length <= 18)
+            {
+                Flush();
+                output.WriteByte((byte)((length - 3) << 2 | (distance - 1) >> 8));
+                output.WriteByte((byte)(distance - 1));
+            }
+            else if (length >= 4)
+            {
+                Flush();
+                output.WriteByte((byte)(0x40 | (length - 4)));
+                output.WriteByte((byte)((distance - 1) >> 8));
+                output.WriteByte((byte)(distance - 1));
+            }
+            else
+            {
+                literals.Add(chunk[at]);
+                length = 1;
+            }
+            at += length;
+        }
+        Flush();
+        return output.ToArray();
+    }
+
+    /// <summary>
     /// A DMG (UDIF) of <paramref name="disk"/>: one block table, chunks of <paramref name="chunkSectors"/> sectors
     /// stored as <paramref name="runs"/> says (in turn), all-zero chunks as zero runs (zero fill, type 0, and
     /// ignore, type 2, in turn, as hdiutil writes both), then the XML property list (base64 in lines of 52 like
@@ -881,8 +947,17 @@ internal static class DiskImageBuilders
             switch (kind)
             {
                 case DmgRun.Raw:
-                case DmgRun.Lzfse:
                     data.Write(chunk);
+                    break;
+                case DmgRun.Lzfse:
+                    data.Write(LzfseBuilders.Encode(chunk, [LzfseBlock.FseV2, LzfseBlock.Lzvn], 4096));
+                    break;
+                case DmgRun.Lzma:
+                    using (var xz = new XzWriter(data, ArchiveLevel.Fast, chunk.Length, CancellationToken.None, leaveOpen: true))
+                    {
+                        xz.Write(chunk);
+                        xz.Finish();
+                    }
                     break;
                 case DmgRun.Zlib:
                     using (var zlib = new ZLibStream(data, CompressionLevel.Optimal, leaveOpen: true))
@@ -892,15 +967,18 @@ internal static class DiskImageBuilders
                     data.Write(Bzip2(chunk.ToArray()));
                     break;
                 case DmgRun.Adc:
-                    for (var i = 0; i < chunk.Length; i += 128)
-                    {
-                        var length = Math.Min(128, chunk.Length - i);
-                        data.WriteByte((byte)(0x80 | (length - 1)));
-                        data.Write(chunk.Slice(i, length));
-                    }
+                    data.Write(Adc(chunk));
                     break;
             }
-            uint type = kind switch { DmgRun.Raw => 1, DmgRun.Zlib => 0x80000005, DmgRun.Bzip2 => 0x80000006, DmgRun.Adc => 0x80000004, _ => 0x80000007 };
+            uint type = kind switch
+            {
+                DmgRun.Raw => 1,
+                DmgRun.Zlib => 0x80000005,
+                DmgRun.Bzip2 => 0x80000006,
+                DmgRun.Adc => 0x80000004,
+                DmgRun.Lzfse => 0x80000007,
+                _ => 0x80000008,
+            };
             runList.Add((type, s, count, offset, data.Position - offset));
         }
         runList.Add((0xFFFFFFFF, sectors, 0, data.Position, 0));
