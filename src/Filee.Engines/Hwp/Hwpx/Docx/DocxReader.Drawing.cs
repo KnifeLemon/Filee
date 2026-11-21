@@ -99,7 +99,7 @@ internal sealed partial class DocxReader
             }
             // Charts ChartReader doesn't draw and SmartArt without the drawing Word saves with it have no picture in the
             // document part to fall back on: the renderer says so.
-            else if (obj.Name == Chart + "chart")
+            else if (obj.Name == Chart + "chart" || obj.Name == ChartReader.Cx + "chart")
             {
                 if (ChartPicture(obj, width, height, anchor) is { } chart)
                     yield return chart;

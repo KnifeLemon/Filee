@@ -137,15 +137,34 @@ public sealed class OdfChartTests(EngineFixture fx) : IClassFixture<EngineFixtur
     }
 
     [Theory]
-    [InlineData("chart:radar")]
     [InlineData("chart:stock")]
     [InlineData("chart:bubble")]
     [InlineData("chart:gantt")]
-    public void Other_chart_classes_and_3D_charts_are_named_instead(string kind)
+    public void Other_chart_classes_and_3D_charts_of_them_are_named_instead(string kind)
     {
         Assert.Equal(new ChartRead(null, "charts"), Read(OdfChartBuilder.Columns(kind)));
-        Assert.Equal(new ChartRead(null, "charts"), Read(OdfChartBuilder.Columns(plotProps: "chart:three-dimensional=\"true\"")));
+        Assert.Equal(new ChartRead(null, "charts"), Read(OdfChartBuilder.Columns("chart:scatter", plotProps: "chart:three-dimensional=\"true\"")));
         Assert.False(OdfChartReader.IsChart(XDocument.Parse($"<office:document-content {OdfChartBuilder.Namespaces}><office:body><office:text/></office:body></office:document-content>").Root));
+    }
+
+    [Fact]
+    public void Radar_and_3D_charts_are_drawn()
+    {
+        foreach (var kind in new[] { "chart:radar", "chart:filled-radar" })
+        {
+            var plot = Assert.Single(Read(OdfChartBuilder.Columns(kind)).Chart!.Plots);
+            Assert.Equal(ChartKind.Radar, plot.Kind);
+            Assert.Equal(kind == "chart:filled-radar", plot.Filled);
+            Assert.Equal(3, plot.Series.Count);
+        }
+        var bars = Read(OdfChartBuilder.Columns(plotProps: "chart:three-dimensional=\"true\" chart:deep=\"true\"")).Chart!;
+        Assert.NotNull(bars.View3D);
+        Assert.True(bars.Plots[0] is { Kind: ChartKind.Bar, ThreeD: true, SeriesInDepth: true });
+        var pie = Read(OdfChartBuilder.Columns("chart:circle", series: 1, plotProps: "chart:three-dimensional=\"true\"")).Chart!;
+        Assert.True(pie.Plots[0] is { Kind: ChartKind.Pie, ThreeD: true });
+        Assert.Equal(30, pie.View3D!.RotX);
+        using var bitmap = Picture(Read(OdfChartBuilder.Columns(plotProps: "chart:three-dimensional=\"true\"")).Chart!);
+        Assert.True(Count(bitmap, Red) > 300);
     }
 
     [Fact]
@@ -299,7 +318,7 @@ public sealed class OdfChartTests(EngineFixture fx) : IClassFixture<EngineFixtur
     [Fact]
     public async Task An_odt_chart_Filee_doesnt_draw_is_counted_as_a_chart()
     {
-        var radar = OdfChartBuilder.Columns("chart:radar");
+        var radar = OdfChartBuilder.Columns("chart:stock");
         Assert.Equal("OLE objects and charts", new FileeRendererConverter().FirstUnsupported(Document(radar, picture: true), "odt"));
         Assert.Contains(OdtReader.Read(Document(radar, picture: true), fx.NewFolder()).LeftOut.Kinds, k => k.Kind == HLeftOutKind.ChartPictured);
         Assert.Contains(OdtReader.Read(Document(radar), fx.NewFolder()).LeftOut.Kinds, k => k.Kind == HLeftOutKind.Chart);
@@ -375,8 +394,8 @@ public sealed class OdfChartTests(EngineFixture fx) : IClassFixture<EngineFixtur
         Assert.True(Count(bitmap, Red) > 300 && Count(bitmap, Blue) > 300);
 
         // A chart Filee doesn't draw, or an object that isn't one, is still named.
-        Assert.Equal("charts", Office.Sheets.SheetCapabilities.FirstUnsupported(Spreadsheet(OdfChartBuilder.Columns("chart:radar")), "ods"));
-        Assert.Empty(Office.Sheets.OdsReader.Read(Spreadsheet(OdfChartBuilder.Columns("chart:radar"))).Sheets[0].Drawings);
+        Assert.Equal("charts", Office.Sheets.SheetCapabilities.FirstUnsupported(Spreadsheet(OdfChartBuilder.Columns("chart:stock")), "ods"));
+        Assert.Empty(Office.Sheets.OdsReader.Read(Spreadsheet(OdfChartBuilder.Columns("chart:stock"))).Sheets[0].Drawings);
         Assert.Equal("embedded objects", Office.Sheets.SheetCapabilities.FirstUnsupported(Spreadsheet(null), "ods"));
         Assert.Empty(Office.Sheets.OdsReader.Read(Spreadsheet("<broken")).Sheets[0].Drawings);
     }

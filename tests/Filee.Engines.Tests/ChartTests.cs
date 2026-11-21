@@ -92,15 +92,10 @@ public sealed class ChartTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.InRange(dark / light, 0.55, 0.65);
     }
 
-    [Theory]
-    [InlineData("bar3DChart")]
-    [InlineData("radarChart")]
-    [InlineData("stockChart")]
-    [InlineData("surfaceChart")]
-    public void Other_chart_types_are_named_instead(string kind)
+    [Fact]
+    public void A_3D_plot_with_a_flat_one_is_named_instead()
     {
-        var xml = Chart($"<c:{kind}>{Series(0, "S", ["a"], [1])}<c:axId val=\"1\"/><c:axId val=\"2\"/></c:{kind}>", Axes());
-        Assert.Equal(new ChartRead(null, "charts"), Read(xml));
+        Assert.Equal(new ChartRead(null, "charts"), Read(Undrawn()));
     }
 
     [Fact]
@@ -569,10 +564,12 @@ public sealed class ChartTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
-    public void A_workbook_with_a_3D_chart_is_still_named()
+    public void A_workbook_with_a_3D_chart_prints_it_and_one_Filee_doesnt_draw_is_named()
     {
-        var xml = Chart($"<c:bar3DChart><c:barDir val=\"col\"/>{Series(0, "S", ["a"], [1])}<c:axId val=\"1\"/><c:axId val=\"2\"/></c:bar3DChart>", Axes());
-        Assert.Equal("charts", SheetCapabilities.FirstUnsupported(Save(Workbook(SheetAnchor(), xml)), "xlsx"));
+        var path = Save(Workbook(SheetAnchor(), ChartSamples.Columns3D()));
+        Assert.Null(SheetCapabilities.FirstUnsupported(path, "xlsx"));
+        Assert.True(Assert.IsType<SheetChart>(Assert.Single(XlsxReader.Read(path).Sheets[0].Drawings)).Chart.Plots[0].ThreeD);
+        Assert.Equal("charts", SheetCapabilities.FirstUnsupported(Save(Workbook(SheetAnchor(), Undrawn())), "xlsx"));
     }
 
     /// <summary>
@@ -637,8 +634,7 @@ public sealed class ChartTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void A_chart_sheet_whose_chart_is_not_drawn_is_named()
     {
-        var radar = Chart($"<c:radarChart>{Series(0, "S", ["a"], [1])}<c:axId val=\"1\"/><c:axId val=\"2\"/></c:radarChart>", Axes());
-        var path = Save(ChartSheetBook(radar));
+        var path = Save(ChartSheetBook(Undrawn()));
         Assert.Equal("charts", SheetCapabilities.FirstUnsupported(path, "xlsx"));
         Assert.Empty(XlsxReader.Read(path).ChartSheets);
 
@@ -694,8 +690,7 @@ public sealed class ChartTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void A_Word_chart_Filee_doesnt_draw_is_named_and_left_out()
     {
-        var xml = Chart($"<c:radarChart>{Series(0, "S", ["a"], [1])}<c:axId val=\"1\"/><c:axId val=\"2\"/></c:radarChart>", Axes());
-        var path = WordWithChart(xml);
+        var path = WordWithChart(Undrawn());
         Assert.Equal("OLE objects and charts", new FileeRendererConverter().FirstUnsupported(path, "docx"));
 
         var document = DocxReader.Read(path, Path.Combine(fx.NewFolder(), "media"));
@@ -752,8 +747,7 @@ public sealed class ChartTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void An_hwpx_chart_Filee_doesnt_draw_falls_back_to_its_ole_object()
     {
-        var radar = Chart($"<c:radarChart>{Series(0, "S", ["a"], [1])}<c:axId val=\"1\"/><c:axId val=\"2\"/></c:radarChart>", Axes());
-        foreach (var path in new[] { HwpxWithChart(radar), HwpxWithChart(null), HwpxWithChart("<broken") })
+        foreach (var path in new[] { HwpxWithChart(Undrawn()), HwpxWithChart(null), HwpxWithChart("<broken") })
         {
             Assert.Equal("OLE objects and charts", new FileeRendererConverter().FirstUnsupported(path, "hwpx"));
             var document = HwpxReader.ReadForLayout(path, Path.Combine(fx.NewFolder(), "media"));
@@ -794,8 +788,7 @@ public sealed class ChartTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void A_slide_chart_Filee_doesnt_draw_is_named()
     {
-        var xml = Chart($"<c:pie3DChart>{Series(0, "S", ["a"], [1])}</c:pie3DChart>");
-        Assert.Equal("charts", new FileeRendererConverter().FirstUnsupported(DeckWithChart(xml), "pptx"));
+        Assert.Equal("charts", new FileeRendererConverter().FirstUnsupported(DeckWithChart(Undrawn()), "pptx"));
     }
 
     // ───────────────────────── Text ─────────────────────────

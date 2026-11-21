@@ -169,6 +169,88 @@ internal static class ChartBuilder
         $"<c:spPr><a:gradFill rotWithShape=\"1\"><a:gsLst><a:gs pos=\"0\"><a:srgbClr val=\"{from}\"/></a:gs><a:gs pos=\"100000\"><a:srgbClr val=\"{to}\"/></a:gs></a:gsLst>" +
         $"<a:lin ang=\"{angle * 60000}\" scaled=\"0\"/></a:gradFill></c:spPr>";
 
+    // ───────────────────────── 3D and other plot kinds ─────────────────────────
+
+    /// <summary>A chart Filee doesn't draw: a 3D plot and a flat one in one plot area (Office doesn't make them either).</summary>
+    public static string Undrawn() =>
+        Chart($"<c:bar3DChart><c:barDir val=\"col\"/>{Series(0, "S", ["a"], [1])}<c:axId val=\"1\"/><c:axId val=\"2\"/></c:bar3DChart>{Lines(Series(1, "T", ["a"], [2]))}", Axes());
+
+    /// <summary>c:view3D of a rotation up and round, with right-angled axes or in perspective.</summary>
+    public static string View3D(int rotX = 15, int rotY = 20, bool rightAngles = true) =>
+        $"<c:view3D><c:rotX val=\"{rotX}\"/><c:rotY val=\"{rotY}\"/><c:depthPercent val=\"100\"/><c:rAngAx val=\"{(rightAngles ? 1 : 0)}\"/><c:perspective val=\"30\"/></c:view3D>";
+
+    /// <summary>A 3D chart part: the view, floor and walls before the plot area, as Excel writes them.</summary>
+    public static string Chart3D(string plots, string axes = "", string title = "", string view = "", string walls = "", string legend = "r") =>
+        $"<c:chartSpace {Namespaces}><c:roundedCorners val=\"0\"/><c:chart>" +
+        (title.Length > 0 ? Title(title) + "<c:autoTitleDeleted val=\"0\"/>" : "<c:autoTitleDeleted val=\"1\"/>") +
+        (view.Length > 0 ? view : View3D()) + walls +
+        $"<c:plotArea><c:layout/>{plots}{axes}</c:plotArea>" +
+        (legend.Length > 0 ? $"<c:legend><c:legendPos val=\"{legend}\"/><c:overlay val=\"0\"/></c:legend>" : "") +
+        "<c:plotVisOnly val=\"1\"/><c:dispBlanksAs val=\"gap\"/></c:chart></c:chartSpace>";
+
+    /// <summary>A series axis (c:serAx, id 3) of a 3D chart whose series stand one behind the other.</summary>
+    public static string SeriesAxis(bool deleted = false) =>
+        $"<c:serAx><c:axId val=\"3\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling><c:delete val=\"{(deleted ? 1 : 0)}\"/><c:axPos val=\"b\"/><c:majorTickMark val=\"out\"/><c:minorTickMark val=\"none\"/><c:tickLblPos val=\"nextTo\"/><c:crossAx val=\"2\"/><c:crosses val=\"autoZero\"/></c:serAx>";
+
+    /// <summary>A bubble series: X, Y and sizes.</summary>
+    public static string BubbleSeries(int index, string name, double[] x, double[] y, double[] sizes, string extra = "")
+    {
+        static string Cache(double[] values) =>
+            $"<c:numRef><c:f>x</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val=\"{values.Length}\"/>" +
+            string.Concat(values.Select((v, i) => $"<c:pt idx=\"{i}\"><c:v>{N(v)}</c:v></c:pt>")) + "</c:numCache></c:numRef>";
+        return $"<c:ser><c:idx val=\"{index}\"/><c:order val=\"{index}\"/><c:tx><c:v>{name}</c:v></c:tx>{extra}<c:xVal>{Cache(x)}</c:xVal><c:yVal>{Cache(y)}</c:yVal><c:bubbleSize>{Cache(sizes)}</c:bubbleSize></c:ser>";
+    }
+
+    // ───────────────────────── Office 2016 charts (chartex) ─────────────────────────
+
+    public const string ChartExNamespace = "http://schemas.microsoft.com/office/drawing/2014/chartex";
+
+    /// <summary>A cx:data set: category levels (innermost first) and values (null = blank) of a type (val or size).</summary>
+    public static string ExData(int id, string[][] levels, double?[] values, string type = "val")
+    {
+        var sb = new StringBuilder($"<cx:data id=\"{id}\">");
+        if (levels.Length > 0)
+        {
+            sb.Append("<cx:strDim type=\"cat\"><cx:f>Sheet1!$A$2:$A$9</cx:f>");
+            foreach (var level in levels)
+            {
+                sb.Append($"<cx:lvl ptCount=\"{level.Length}\">");
+                for (var i = 0; i < level.Length; i++)
+                    sb.Append($"<cx:pt idx=\"{i}\">{System.Security.SecurityElement.Escape(level[i])}</cx:pt>");
+                sb.Append("</cx:lvl>");
+            }
+            sb.Append("</cx:strDim>");
+        }
+        sb.Append($"<cx:numDim type=\"{type}\"><cx:f>Sheet1!$B$2:$B$9</cx:f><cx:lvl ptCount=\"{values.Length}\" formatCode=\"General\">");
+        for (var i = 0; i < values.Length; i++)
+        {
+            if (values[i] is { } v)
+                sb.Append($"<cx:pt idx=\"{i}\">{N(v)}</cx:pt>");
+        }
+        sb.Append("</cx:lvl></cx:numDim></cx:data>");
+        return sb.ToString();
+    }
+
+    /// <summary>A cx:series of a layout (waterfall, funnel, treemap, ...) on data set <paramref name="dataId"/>.</summary>
+    public static string ExSeries(string layout, int dataId, string name, string extra = "", string attributes = "") =>
+        $"<cx:series layoutId=\"{layout}\" uniqueId=\"{{0000000{dataId}-0000-0000-0000-000000000000}}\"{attributes}><cx:tx><cx:txData><cx:f>Sheet1!$B$1</cx:f><cx:v>{name}</cx:v></cx:txData></cx:tx>" +
+        $"{extra}<cx:dataId val=\"{dataId}\"/></cx:series>";
+
+    /// <summary>A category axis (id 0) and a value axis (id 1) with gridlines, as Excel writes them; <paramref name="percent"/> adds a Pareto line's axis (id 2).</summary>
+    public static string ExAxes(double gapWidth = 0.5, bool percent = false) =>
+        $"<cx:axis id=\"0\"><cx:catScaling gapWidth=\"{N(gapWidth)}\"/><cx:tickLabels/></cx:axis>" +
+        "<cx:axis id=\"1\"><cx:valScaling/><cx:majorGridlines/><cx:tickLabels/></cx:axis>" +
+        (percent ? "<cx:axis id=\"2\"><cx:valScaling max=\"1\" min=\"0\"/><cx:units unit=\"percentage\"/><cx:tickLabels/></cx:axis>" : "");
+
+    /// <summary>A whole chartex part.</summary>
+    public static string ChartEx(string data, string series, string axes = "", string title = "", string legend = "") =>
+        $"<cx:chartSpace xmlns:cx=\"{ChartExNamespace}\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">" +
+        $"<cx:chartData>{data}</cx:chartData><cx:chart>" +
+        (title.Length > 0 ? $"<cx:title pos=\"t\" align=\"ctr\" overlay=\"0\"><cx:tx><cx:txData><cx:v>{System.Security.SecurityElement.Escape(title)}</cx:v></cx:txData></cx:tx></cx:title>" : "") +
+        $"<cx:plotArea><cx:plotAreaRegion>{series}</cx:plotAreaRegion>{axes}</cx:plotArea>" +
+        (legend.Length > 0 ? $"<cx:legend pos=\"{legend}\" align=\"ctr\" overlay=\"0\"/>" : "") +
+        "</cx:chart></cx:chartSpace>";
+
     /// <summary>A pattern fill (a:pattFill) of a preset in <paramref name="fore"/> over <paramref name="back"/>.</summary>
     public static string Pattern(string preset, string fore, string back = "FFFFFF") =>
         $"<c:spPr><a:pattFill prst=\"{preset}\"><a:fgClr><a:srgbClr val=\"{fore}\"/></a:fgClr><a:bgClr><a:srgbClr val=\"{back}\"/></a:bgClr></a:pattFill></c:spPr>";

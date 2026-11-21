@@ -5,9 +5,9 @@
 // group's anchor. What the printer doesn't draw is named instead: charts, SmartArt, embedded objects, ink, text in
 // shapes, freeform shapes, gradient, pattern and picture fills, arrowheads, turned groups, EMF / WMF / TIFF and linked
 // pictures. SheetCapabilities asks for that name, so such a workbook can go to LibreOffice where it is installed.
-// Charts are read from their chart part (ChartReader, with the workbook's theme) and drawn; those ChartReader doesn't
-// draw (3D, radar, stock, ...) and new chart types (chartex) are named "charts". A chart sheet's drawing gives its one
-// chart (ChartSheet), which the printer draws alone on the sheet's page.
+// Charts are read from their chart part (ChartReader, with the workbook's theme) and drawn, Office 2016 charts
+// (chartex) too; those ChartReader doesn't draw (region maps) are named "charts" and Excel's fallback is drawn instead.
+// A chart sheet's drawing gives its one chart (ChartSheet), which the printer draws alone on the sheet's page.
 //
 // Excel anchors a turned picture or shape by the box it covers on the sheet: one turned by 90° has an anchor as wide as
 // the picture is tall. The unturned size (a:xfrm ext) tells which way round the anchor is (SheetDrawing.Size).
@@ -134,7 +134,7 @@ internal sealed class XlsxDrawing
         // Content a consumer may not know (slicers, new chart types) comes with a fallback to draw instead.
         if (anchor.Name.LocalName == "AlternateContent")
         {
-            var chosen = anchor.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback") ?? anchor.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice");
+            var chosen = Alternative(anchor);
             foreach (var inner in chosen?.Elements() ?? [])
                 Anchor(inner);
             return;
@@ -164,6 +164,22 @@ internal sealed class XlsxDrawing
             Object(shape, placed, null, 0);
     }
 
+    /// <summary>
+    /// What of an mc:AlternateContent is drawn: an Office 2016 chart (chartex) ChartReader reads, else the fallback
+    /// (Excel's shape saying the chart can't be shown: the chart is named), else the choice.
+    /// </summary>
+    private XElement? Alternative(XElement alternate)
+    {
+        if (ChartReader.ChartExChoice(alternate) is { } chartEx)
+        {
+            var target = _package.Target(_part, chartEx.RelationshipId);
+            if (ChartReader.Read(target is null ? null : _package.Part(target)?.Root, _colors, _themeFont).Chart is not null)
+                return chartEx.Choice;
+            LeftOut("charts");
+        }
+        return alternate.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback") ?? alternate.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice");
+    }
+
     private static bool IsObject(XElement e) =>
         e.Name.LocalName is "sp" or "grpSp" or "graphicFrame" or "cxnSp" or "pic" or "contentPart" or "AlternateContent";
 
@@ -172,7 +188,7 @@ internal sealed class XlsxDrawing
     {
         if (element.Name.LocalName == "AlternateContent")
         {
-            var chosen = element.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback") ?? element.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice");
+            var chosen = Alternative(element);
             if (chosen?.Elements().FirstOrDefault(IsObject) is { } inner)
                 Object(inner, box, space, depth);
             return;
@@ -205,12 +221,12 @@ internal sealed class XlsxDrawing
     {
         var data = frame.Element(A + "graphic")?.Element(A + "graphicData");
         var uri = (string?)data?.Attribute("uri") ?? "";
-        if (!uri.EndsWith("/chart", StringComparison.Ordinal))
+        if (!uri.EndsWith("/chart", StringComparison.Ordinal) && !uri.EndsWith("/chartex", StringComparison.Ordinal))
         {
             LeftOut(Graphic(uri));
             return;
         }
-        var target = _package.Target(_part, (string?)data?.Element(ChartReader.C + "chart")?.Attribute(R + "id"));
+        var target = _package.Target(_part, (string?)(data?.Element(ChartReader.C + "chart") ?? data?.Element(ChartReader.Cx + "chart"))?.Attribute(R + "id"));
         var read = ChartReader.Read(target is null ? null : _package.Part(target)?.Root, _colors, _themeFont);
         if (read.Chart is not { } chart)
         {
