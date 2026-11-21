@@ -6,6 +6,8 @@
 // vertical-align, text-align), simple class and tag rules from <style> and linked style sheets, line breaks, nested
 // lists with their start numbers and marker types, tables with spans / header rows / borders, images (local files
 // and data: URIs; remote images are skipped), links and anchors, block quotes, pre, hr, figures and CSS page breaks.
+// MathML (<math>, as Filee's EPUB and HTML writers and LaTeX converters write it) becomes equations through
+// MathMLReader: a display one (display="block") a centred paragraph of its own, others in the text.
 // Scripts, styles, forms, media and <nav> are skipped. The encoding comes from the BOM, the XML declaration or
 // <meta charset>, else UTF-8 when valid, else the system's ANSI code page (what browsers fall back to).
 
@@ -350,6 +352,9 @@ internal sealed partial class HtmlReader
                 foreach (var image in element.Descendants<IElement>().Where(e => e.LocalName.Equals("image", StringComparison.OrdinalIgnoreCase)))
                     Element(image, sink, c);
                 break;
+            case "math":
+                Formula(element, sink, c);
+                break;
             case "a":
                 Anchor(element, sink, c);
                 break;
@@ -409,6 +414,101 @@ internal sealed partial class HtmlReader
             Flush(sink);
             sink.BreakPending = true;
         }
+    }
+
+    // ───────────────────────── Math ─────────────────────────
+
+    /// <summary>Elements of one formula read into MathMLReader's tree, at most; the rest of a larger one is left out.</summary>
+    private const int MaxMathElements = 100_000;
+
+    /// <summary>
+    /// A MathML formula as an equation (its TeX annotation kept), a display one in a centred paragraph of its own; its
+    /// text when it shows nothing MathMLReader reads.
+    /// </summary>
+    private void Formula(IElement element, Sink sink, Context context)
+    {
+        if (MathMLReader.Read(MathXml(element)) is not { } formula)
+        {
+            Inline(element, sink, context);
+            return;
+        }
+        var equation = new HEquation(formula.Math, context.Format with { Italic = true }, formula.Tex) { Tex = formula.Tex, Display = formula.Display };
+        if (!formula.Display)
+        {
+            AddInline(equation, sink, context);
+            sink.LineStart = false;
+            sink.EndsWithSpace = false;
+            return;
+        }
+        Flush(sink);
+        var paragraph = NewParagraph(sink, context);
+        paragraph.Format = paragraph.Format with { Align = HAlign.Center };
+        paragraph.Inlines.Add(equation);
+        Flush(sink);
+    }
+
+    /// <summary>
+    /// The &lt;math&gt; element as XML for MathMLReader: elements in the MathML namespace with their attributes and
+    /// text, built without recursion (MathMLReader bounds the nesting it reads).
+    /// </summary>
+    private static System.Xml.Linq.XElement MathXml(IElement math)
+    {
+        System.Xml.Linq.XElement Copy(IElement element)
+        {
+            var copy = new System.Xml.Linq.XElement(MathMLReader.MathMl + element.LocalName);
+            foreach (var attribute in element.Attributes)
+            {
+                if (attribute.Name.Contains(':', StringComparison.Ordinal) || attribute.Name.StartsWith("xmlns", StringComparison.Ordinal))
+                    continue;
+                try
+                {
+                    copy.SetAttributeValue(attribute.LocalName, attribute.Value);
+                }
+                catch (System.Xml.XmlException)
+                {
+                    // A name XML doesn't allow: left out.
+                }
+            }
+            return copy;
+        }
+        System.Xml.Linq.XElement root;
+        try
+        {
+            root = Copy(math);
+        }
+        catch (System.Xml.XmlException)
+        {
+            root = new System.Xml.Linq.XElement(MathMLReader.MathMl + "math");
+        }
+        var pending = new Stack<(INode Node, System.Xml.Linq.XElement Parent)>();
+        foreach (var child in math.ChildNodes.Reverse())
+            pending.Push((child, root));
+        var count = 0;
+        while (pending.TryPop(out var item) && count < MaxMathElements)
+        {
+            switch (item.Node)
+            {
+                case IText text:
+                    item.Parent.Add(new System.Xml.Linq.XText(text.Data));
+                    break;
+                case IElement child:
+                    System.Xml.Linq.XElement copy;
+                    try
+                    {
+                        copy = Copy(child);
+                    }
+                    catch (System.Xml.XmlException)
+                    {
+                        continue; // an element name XML doesn't allow: left out
+                    }
+                    count++;
+                    item.Parent.Add(copy);
+                    foreach (var grandchild in child.ChildNodes.Reverse())
+                        pending.Push((grandchild, copy));
+                    break;
+            }
+        }
+        return root;
     }
 
     private static bool IsBlock(string name, CssDeclarations style) => style.Get("display")?.ToLowerInvariant() switch
@@ -607,7 +707,7 @@ internal sealed partial class HtmlReader
             {
                 case HBookmark:
                     continue;
-                case HText text:
+                case HText text when text is not HEquation:
                     var trimmed = text.Text.TrimStart(' ');
                     if (trimmed.Length == 0)
                     {
@@ -621,7 +721,7 @@ internal sealed partial class HtmlReader
         }
         // Spaces before a line break are not shown either.
         for (var i = 0; i + 1 < inlines.Count; i++)
-            if (inlines[i] is HText text && inlines[i + 1] is HLineBreak && text.Text.EndsWith(' '))
+            if (inlines[i] is HText text and not HEquation && inlines[i + 1] is HLineBreak && text.Text.EndsWith(' '))
                 inlines[i] = new HText(text.Text.TrimEnd(' '), text.Format);
         return onlyBreak;
     }
@@ -640,7 +740,7 @@ internal sealed partial class HtmlReader
                 case HLink link:
                     TrimEnd(link.Content);
                     return;
-                case HText text:
+                case HText text when text is not HEquation:
                     var trimmed = text.Text.TrimEnd(' ');
                     if (trimmed.Length == 0)
                     {
@@ -663,11 +763,11 @@ internal sealed partial class HtmlReader
         _ => true,
     });
 
-    /// <summary>Joins neighbouring runs with the same format, so the output has one run per format change.</summary>
+    /// <summary>Joins neighbouring runs with the same format, so the output has one run per format change (equations stay apart).</summary>
     internal static void MergeRuns(List<HInline> inlines)
     {
         for (var i = inlines.Count - 1; i > 0; i--)
-            if (inlines[i] is HText b && inlines[i - 1] is HText a && a.Format == b.Format)
+            if (inlines[i] is HText b and not HEquation && inlines[i - 1] is HText a and not HEquation && a.Format == b.Format)
             {
                 inlines[i - 1] = new HText(a.Text + b.Text, a.Format);
                 inlines.RemoveAt(i);

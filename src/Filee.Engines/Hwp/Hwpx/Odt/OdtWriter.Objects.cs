@@ -1,8 +1,10 @@
 // Objects in the text of an ODT: pictures and text boxes as draw:frame, shapes as draw:rect / draw:ellipse /
 // draw:line, each with an automatic graphic style that holds its position, wrap, fill and outline. Equations are
 // formula objects as LibreOffice Writer keeps them: a frame on the baseline with draw:object (a folder "Object N" whose
-// content.xml is the MathML, set at the equation's size) and draw:image (a PNG of it in ObjectReplacements/, drawn by
-// MathLayout, for readers without a formula editor), the linear text as its description.
+// content.xml is the MathML, set at the equation's size, with its StarMath source as an annotation for LibreOffice's
+// formula editor) and draw:image (a PNG of it in ObjectReplacements/, drawn by MathLayout, for readers without a formula
+// editor), the linear text as its description. The MathML and the picture are made when the package is written, each
+// straight into its part, so only the equations are kept until then.
 //
 // Objects in the text stay characters (text:anchor-type="as-char"); floating ones are anchored to their paragraph, or
 // to a character when the model places them relative to the paragraph's text, with the horizontal and vertical
@@ -64,8 +66,11 @@ internal sealed partial class OdtWriter
 
     // ───────────────────────── Formulas ─────────────────────────
 
-    /// <summary>A formula object of the package: its folder ("Object 1"), its MathML and its replacement picture.</summary>
-    private sealed record FormulaPart(string Name, string MathMl, byte[]? Picture);
+    /// <summary>
+    /// A formula object of the package: its folder ("Object 1"), the equation (its MathML and picture are made when the
+    /// package is written) and whether it has a replacement picture.
+    /// </summary>
+    private sealed record FormulaPart(string Name, HEquation Equation, bool Display, bool Picture);
 
     private readonly List<FormulaPart> _formulas = [];
     private EquationPicture? _equationPictures;
@@ -76,13 +81,12 @@ internal sealed partial class OdtWriter
     /// </summary>
     private string Formula(HEquation equation, bool display)
     {
-        var size = Math.Clamp((equation.Size ?? equation.Format.Size ?? 1000) / 100f, 1, 1000);
         var pictures = _equationPictures ??= new EquationPicture();
-        var image = pictures.Draw(equation, display, dpi: 200);
+        var frame = pictures.Frame(equation, display);
         float width, ascent, descent;
-        if (image is not null)
+        if (frame is { } picture)
         {
-            (width, ascent, descent) = (image.Width, image.Ascent, image.Descent);
+            (width, ascent, descent) = picture;
         }
         else
         {
@@ -90,19 +94,31 @@ internal sealed partial class OdtWriter
             (width, ascent, descent) = (Math.Max(1, box.Width), Math.Max(1, box.Ascent), box.Descent);
         }
         var name = "Object " + Number(_formulas.Count + 1);
-        var content = Declaration + MathMLWriter.Write(equation.Math, display, equation.Tex, EquationScript.Linear(equation.Math), size);
-        _formulas.Add(new FormulaPart(name, content, image?.Png));
+        _formulas.Add(new FormulaPart(name, equation, display, frame is not null));
 
         static int Hwp(float points) => Math.Max(1, (int)Math.Round(points * 100));
         var style = _styles.Add("graphic", "fr", "",
             "<style:graphic-properties style:vertical-pos=\"from-top\" style:vertical-rel=\"baseline\" draw:fill=\"none\" fo:border=\"none\"" +
             " fo:padding=\"0pt\" fo:margin-left=\"0pt\" fo:margin-right=\"0pt\" fo:margin-top=\"0pt\" fo:margin-bottom=\"0pt\" draw:ole-draw-aspect=\"1\"/>");
         var link = "xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"";
-        var replacement = image is null ? "" : $"<draw:image xlink:href=\"./ObjectReplacements/{name}\" {link}/>";
+        var replacement = frame is null ? "" : $"<draw:image xlink:href=\"./ObjectReplacements/{name}\" {link}/>";
         return $"<draw:frame draw:style-name=\"{style}\" draw:name=\"{name.Replace(" ", "", StringComparison.Ordinal)}\" text:anchor-type=\"as-char\" " +
                $"svg:y=\"-{Odf.Points(Hwp(ascent))}\" svg:width=\"{Odf.Points(Hwp(width))}\" svg:height=\"{Odf.Points(Hwp(ascent + descent))}\">" +
                $"<draw:object xlink:href=\"./{name}\" {link}/>{replacement}<svg:desc>{Escape(EquationScript.Linear(equation.Math))}</svg:desc></draw:frame>";
     }
+
+    /// <summary>A formula object's content.xml: its MathML at the equation's size, with its TeX and StarMath sources.</summary>
+    private static string FormulaContent(FormulaPart formula)
+    {
+        var equation = formula.Equation;
+        var size = Math.Clamp((equation.Size ?? equation.Format.Size ?? 1000) / 100f, 1, 1000);
+        return Declaration + MathMLWriter.Write(equation.Math, formula.Display, equation.Tex, EquationScript.Linear(equation.Math), size,
+            equation.StarMath ?? StarMath.Write(equation.Math));
+    }
+
+    /// <summary>Draws a formula object's replacement picture into its part.</summary>
+    private void FormulaPicture(FormulaPart formula, Stream target) =>
+        (_equationPictures ??= new EquationPicture()).Write(formula.Equation, formula.Display, target, dpi: 200);
 
     // ───────────────────────── Text boxes and shapes ─────────────────────────
 

@@ -44,6 +44,9 @@ internal sealed record SheetPageSetup
     /// <summary>Print the row numbers and column letters.</summary>
     public bool PrintHeadings { get; init; }
 
+    /// <summary>Whether and where the notes on cells print (Page Setup → Sheet → Comments).</summary>
+    public SheetCommentsPrint Comments { get; init; }
+
     /// <summary>The first page's number when the sheet sets one; null = numbering goes on from the sheet before.</summary>
     public int? FirstPageNumber { get; init; }
 
@@ -60,6 +63,19 @@ internal sealed record SheetPageSetup
         var letter = !RegionInfo.CurrentRegion.IsMetric;
         return letter ? new SheetPageSetup { PaperWidth = Paper.Letter.Width, PaperHeight = Paper.Letter.Height } : new SheetPageSetup();
     }
+}
+
+/// <summary>How the notes on cells print (ECMA-376 ST_CellComments).</summary>
+internal enum SheetCommentsPrint
+{
+    /// <summary>Not at all.</summary>
+    None,
+
+    /// <summary>As they show on the sheet: the shown ones in their boxes.</summary>
+    AsDisplayed,
+
+    /// <summary>All of them as a list after the sheet's pages.</summary>
+    AtEnd,
 }
 
 /// <summary>Header and footer texts in Excel's codes ("&amp;C&amp;P"), and the pictures their &amp;G codes draw.</summary>

@@ -522,6 +522,168 @@ public sealed class XpsTests(EngineFixture fx) : IClassFixture<EngineFixture>, I
         AssertColor(bitmap, 50, 30, "#0000FF", 6);
     }
 
+    /// <summary>
+    /// An ICC profile of <paramref name="tags"/> (signature, data), each tag aligned to four bytes; the header names the
+    /// class, colour space and PCS and the version (2 or 4).
+    /// </summary>
+    private static byte[] Icc(string deviceClass, string space, string pcs, byte version, params (string Signature, byte[] Data)[] tags)
+    {
+        var offsets = new int[tags.Length];
+        var at = 128 + 4 + 12 * tags.Length;
+        for (var i = 0; i < tags.Length; i++)
+        {
+            offsets[i] = at;
+            at = (at + tags[i].Data.Length + 3) & ~3;
+        }
+        var icc = new byte[at];
+        void U32(int offset, long value) => System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(icc.AsSpan(offset), (uint)value);
+        void Ascii(int offset, string text) => System.Text.Encoding.ASCII.GetBytes(text, icc.AsSpan(offset));
+        U32(0, icc.Length);
+        icc[8] = version;
+        Ascii(12, deviceClass);
+        Ascii(16, space);
+        Ascii(20, pcs);
+        Ascii(36, "acsp");
+        U32(68, 63190); // D50 illuminant (s15Fixed16)
+        U32(72, 65536);
+        U32(76, 54061);
+        U32(128, tags.Length);
+        for (var i = 0; i < tags.Length; i++)
+        {
+            Ascii(132 + 12 * i, tags[i].Signature);
+            U32(132 + 12 * i + 4, offsets[i]);
+            U32(132 + 12 * i + 8, tags[i].Data.Length);
+            tags[i].Data.CopyTo(icc, offsets[i]);
+        }
+        return icc;
+    }
+
+    /// <summary>Lab as version 2's 16-bit PCS encoding (100 and +127 at 0xFF00).</summary>
+    private static ushort[] LabV2(double l, double a, double b) =>
+        [(ushort)Math.Round(l / 100 * 65280), (ushort)Math.Round((a + 128) * 256), (ushort)Math.Round((b + 128) * 256)];
+
+    private static byte[] BigEndian(params ushort[] values)
+    {
+        var bytes = new byte[values.Length * 2];
+        for (var i = 0; i < values.Length; i++)
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(2 * i), values[i]);
+        return bytes;
+    }
+
+    /// <summary>
+    /// A two-ink lut16 ('mft2', grid 2): no ink paper white, the first ink cyan, the second magenta, both a dark blue.
+    /// </summary>
+    internal static byte[] TwoInkProfile()
+    {
+        var lut = new List<byte>();
+        lut.AddRange("mft2"u8.ToArray());
+        lut.AddRange(new byte[4]);
+        lut.AddRange([2, 3, 2, 0]);
+        for (var i = 0; i < 9; i++)
+            lut.AddRange(BigEndian(0, (ushort)(i % 4 == 0 ? 1 : 0), 0, 0).AsSpan(2, 4).ToArray()); // identity matrix, s15Fixed16
+        lut.AddRange(BigEndian(2, 2));
+        lut.AddRange(BigEndian(0, 65535, 0, 65535)); // input tables
+        // CLUT, the first ink varying slowest: (0,0) (0,1) (1,0) (1,1).
+        lut.AddRange(BigEndian([.. LabV2(100, 0, 0), .. LabV2(48, 74, -3), .. LabV2(55, -37, -50), .. LabV2(25, 20, -45)]));
+        lut.AddRange(BigEndian(0, 65535, 0, 65535, 0, 65535)); // output tables
+        return Icc("prtr", "2CLR", "Lab ", 2, ("A2B0", [.. lut]));
+    }
+
+    /// <summary>A Named Color profile ('nmcl', namedColor2Tag) of an orange and a blue ink.</summary>
+    internal static byte[] NamedInkProfile()
+    {
+        var tag = new List<byte>();
+        tag.AddRange("ncl2"u8.ToArray());
+        tag.AddRange(new byte[8]);
+        tag.AddRange(new byte[] { 0, 0, 0, 2, 0, 0, 0, 0 }); // two colours, no device values
+        tag.AddRange(new byte[64]); // prefix and suffix
+        foreach (var (name, lab) in new[] { ("Orange 021", LabV2(65, 50, 70)), ("Reflex Blue", LabV2(25, 20, -60)) })
+        {
+            var root = new byte[32];
+            System.Text.Encoding.ASCII.GetBytes(name, root);
+            tag.AddRange(root);
+            tag.AddRange(BigEndian(lab));
+        }
+        return Icc("nmcl", "RGB ", "Lab ", 2, ("ncl2", [.. tag]));
+    }
+
+    [Fact]
+    public void N_channel_and_named_color_profiles_give_their_inks()
+    {
+        var builder = new XpsBuilder();
+        var inks = builder.Part("Resources/inks.icc", TwoInkProfile());
+        var named = builder.Part("Resources/named.icc", NamedInkProfile());
+        var broken = TwoInkProfile();
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(broken.AsSpan(132 + 4), 0x7FFF_0000); // the lut lies outside
+        var damaged = builder.Part("Resources/damaged.icc", broken);
+        builder.Page(
+            $"<Path Data='{Box(0, 0, 20, 20)}' Fill='ContextColor {inks} 1,0,0'/>" +
+            $"<Path Data='{Box(20, 0, 20, 20)}' Fill='ContextColor {inks} 1,1,0'/>" +
+            $"<Path Data='{Box(40, 0, 20, 20)}' Fill='ContextColor {inks} 1,0,1'/>" +
+            $"<Path Data='{Box(60, 0, 20, 20)}' Fill='ContextColor {inks} 1,1,1'/>" +
+            $"<Path Data='{Box(0, 20, 20, 20)}' Fill='ContextColor {named} 1,1,0'/>" +
+            $"<Path Data='{Box(20, 20, 20, 20)}' Fill='ContextColor {named} 1,0.4,0'/>" +
+            $"<Path Data='{Box(40, 20, 20, 20)}' Fill='ContextColor {named} 1,0,0'/>" +
+            $"<Path Data='{Box(60, 20, 20, 20)}' Fill='ContextColor {named} 1,1,1'/>" +
+            // Not usable: two channels follow the rule for N ≤ 3, the first channel as grey.
+            $"<Path Data='{Box(80, 0, 20, 40)}' Fill='ContextColor {damaged} 1,0.25,0.9'/>",
+            100, 40);
+        using var bitmap = Render(builder);
+        AssertColor(bitmap, 10, 10, "#FFFFFF", 3);
+        var cyan = bitmap.GetPixel(30, 10);
+        Assert.True(cyan is { Red: < 60, Green: > 110 and < 190, Blue: > 180 }, $"cyan {cyan}");
+        var magenta = bitmap.GetPixel(50, 10);
+        Assert.True(magenta is { Red: > 180, Green: < 60, Blue: > 80 and < 170 }, $"magenta {magenta}");
+        var both = bitmap.GetPixel(70, 10);
+        Assert.True(both is { Red: < 90, Green: < 70, Blue: > 100 } && both.Blue > both.Red, $"both {both}");
+
+        var orange = bitmap.GetPixel(10, 30);
+        Assert.True(orange is { Red: > 220, Green: > 80 and < 160, Blue: < 60 }, $"orange {orange}");
+        var tint = bitmap.GetPixel(30, 30);
+        Assert.True(tint.Red > 230 && tint.Green > orange.Green + 30 && tint.Blue > orange.Blue + 40, $"tint {tint}");
+        AssertColor(bitmap, 50, 30, "#FFFFFF", 3);
+        var duotone = bitmap.GetPixel(70, 30);
+        Assert.True(duotone.Red < orange.Red - 100 && duotone.Green < orange.Green && duotone.Blue < 80, $"duotone {duotone}");
+        AssertColor(bitmap, 90, 20, "#404040", 3);
+    }
+
+    [Fact]
+    public void Sideways_glyphs_are_emboldened_and_italicised_about_their_sideways_origin()
+    {
+        using var font = PageFont.FromData(TestFont());
+        var plain = XpsGlyphLayout.Lay(font.Typeface, 80, new SKPoint(20, 100), "ll", null, rightToLeft: false, sideways: true);
+        var bold = XpsGlyphLayout.Lay(font.Typeface, 80, new SKPoint(20, 100), "ll", null, rightToLeft: false, sideways: true, bold: true);
+        // An emboldened glyph's own vertical advance grows by 2 % of the em (1.6 at 80); the run goes down the turned frame.
+        Assert.Equal(1.6f, (bold.Positions[1].Y - bold.Positions[0].Y) - (plain.Positions[1].Y - plain.Positions[0].Y), 2);
+        var upright = XpsGlyphLayout.Lay(font.Typeface, 80, new SKPoint(20, 100), "ll", null, rightToLeft: false, bold: true);
+        var regular = XpsGlyphLayout.Lay(font.Typeface, 80, new SKPoint(20, 100), "ll", null, rightToLeft: false);
+        Assert.Equal(1.6f, upright.Positions[1].X - regular.Positions[1].X, 2);
+
+        // Drawn: the italic "l" leans from its sideways origin (OriginX, its top): each column of ink lies lower by tan 20°
+        // of its distance from there, the end near the origin by little, the far end by a quarter of the glyph more.
+        var builder = new XpsBuilder();
+        var part = builder.Font(TestFont());
+        builder.Page($"<Glyphs FontUri='{part}' FontRenderingEmSize='80' OriginX='40' OriginY='60' UnicodeString='l' IsSideways='true' Fill='#000000'/>" +
+                     $"<Glyphs FontUri='{part}' FontRenderingEmSize='80' OriginX='40' OriginY='160' UnicodeString='l' IsSideways='true' StyleSimulations='ItalicSimulation' Fill='#000000'/>",
+            200, 220);
+        using var bitmap = Render(builder);
+        var straight = Ink(bitmap, 0, 0, 200, 110);
+        var leaning = Ink(bitmap, 0, 110, 200, 220);
+        // Rows of ink at the glyph's two ends: the far end lower than the near one by the skew.
+        double Middle(int x, int top, int bottom)
+        {
+            var rows = Enumerable.Range(top, bottom - top).Where(y => bitmap.GetPixel(x, y).Red < 128).ToList();
+            return rows.Count == 0 ? double.NaN : rows.Average();
+        }
+        var (near, far) = (leaning.Left + 3, leaning.Right - 3);
+        var drop = Middle(far, 110, 220) - Middle(near, 110, 220);
+        var expected = Math.Tan(20 * Math.PI / 180) * (far - near);
+        Assert.InRange(drop, expected * 0.7, expected * 1.3);
+        var lean = Math.Tan(20 * Math.PI / 180) * (near - 40);
+        Assert.InRange(Middle(near, 110, 220) - 100 - Middle(near, 0, 110), lean - 3, lean + 3);
+        Assert.InRange(Middle(straight.Right - 3, 0, 110) - Middle(straight.Left + 3, 0, 110), -1.5, 1.5);
+    }
+
     [Fact]
     public void Color_converted_pictures_are_read_through_their_profile()
     {

@@ -801,7 +801,8 @@ internal static partial class MobiWriter
             {
                 var path = Path.Combine(folder, $"equation-{_files.Count + 1}.png");
                 System.IO.File.WriteAllBytes(path, image.Png);
-                result = (path, image);
+                // The file holds the picture; only its size is kept.
+                result = (path, image with { Png = [] });
             }
             return _files[(equation, display)] = result;
         }

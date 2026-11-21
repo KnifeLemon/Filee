@@ -439,7 +439,7 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
             }
             IsBusy = true;
             Status = _loc["sheet_studio.rendering"];
-            var engine = _service.Engine;
+            var engine = _service.EngineFor(_workbook!);
             var rendered = await _service.RenderAsync(_workbook!, sheet.ToRegion(), cancellationToken);
             if (_closed || cancellationToken.IsCancellationRequested)
             {

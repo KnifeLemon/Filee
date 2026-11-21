@@ -17,7 +17,10 @@
 //   hidden ones are left out; every other one prints and keeps only its normal appearance, as the rules want. One
 //   without an appearance gets one drawn from its own entries (PdfAAppearances); links and annotations whose
 //   rectangle has no width and no height need none.
-// - 6.2.11.4: fonts drawn with that aren't embedded are embedded from installed fonts of the same widths (PdfAFonts).
+// - 6.2.11.4: fonts drawn with that aren't embedded are embedded from installed fonts of the same widths (PdfAFonts),
+//   those with a predefined Unicode CMap (UniJIS-UCS2-H …) from installed CJK fonts. 6.2.11.5 / 6.2.11.6: TrueType
+//   fonts the PDF embedded itself get their program's advances, cmap and encoding made to agree with their dictionary,
+//   and a ToUnicode map when they have none (PdfAFontRepair).
 // - 6.4: forms lose XFA, NeedAppearances and the actions of fields and widgets; 6.5: JavaScript, launch and the other forbidden actions, and every
 //   additional-actions entry, are removed (links, go-to and URI actions stay); 6.8: embedded files go (level B).
 // - 6.9: optional content configurations get unique names, no AS entry and an order listing every group.
@@ -29,8 +32,8 @@
 // XFA-only forms, PostScript, external stream data, LZW mixed with filters PDFsharp can't unpack, inline pictures
 // with LZW or interpolation, and content it can't read. A document past the walk's limits is refused as too complex.
 //
-// Not checked (docs/ENGINES.md lists them): that fonts embedded by the PDF hold every glyph drawn and their widths
-// match, the symbolic/non-symbolic TrueType encodings of those fonts, ICC profiles of the document's own ICCBased
+// Not checked (docs/ENGINES.md lists them): that fonts embedded by the PDF hold every glyph drawn, the widths of their
+// CFF and Type 1 programs, ICC profiles of the document's own ICCBased
 // colour spaces, JPEG 2000 details and the implementation limits of 6.1.13 (string, name and number sizes, q nesting).
 
 using Filee.Core.Conversion;
@@ -135,7 +138,12 @@ internal static class PdfAConformance
             CleanObject(dictionary);
         foreach (var state in walk.GraphicsStates)
             CleanGraphicsState(state);
-        PdfAFonts.Embed(document, [.. walk.Fonts.Where(f => !PdfAFonts.IsEmbedded(f))], fonts ?? SystemFonts.Instance, cancellationToken);
+        if (walk.Fonts.Count > 0)
+        {
+            var uses = PdfFontUses.Find(document, cancellationToken);
+            PdfAFonts.Embed(document, [.. walk.Fonts.Where(f => !PdfAFonts.IsEmbedded(f))], fonts ?? SystemFonts.Instance, uses, cancellationToken);
+            PdfAFonts.Repair(document, [.. walk.Fonts.Where(PdfAFonts.IsEmbedded)], uses, cancellationToken);
+        }
         foreach (var font in walk.Fonts)
             CheckFont(font);
 

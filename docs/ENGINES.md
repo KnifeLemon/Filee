@@ -890,7 +890,7 @@ the text the spreadsheet shows, the value behind it and its Excel number format.
 | Format | Read | Written |
 |---|---|---|
 | XLSX | own reader: values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print titles; for printing the page setup, print areas, page breaks, headers and footers, conditional formats and pictures | every sheet, numbers and dates as numbers with their formats, booleans, styles, merges, widths, heights, hidden rows / columns, frozen rows |
-| XLSB (Excel binary workbook) | own reader from [MS-XLSB] (`XlsbReader.cs`): the BIFF12 records of the workbook, shared strings, styles and sheets give what the XLSX reader gives (values, formulas' cached values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print areas and titles, page setup, breaks, headers and footers, pictures, conditional formats, chart sheets); comments, tables and data validation are not read (nor by the XLSX reader) | no |
+| XLSB (Excel binary workbook) | own reader from [MS-XLSB] (`XlsbReader.cs`): the BIFF12 records of the workbook, shared strings, styles and sheets give what the XLSX reader gives (values, formulas' cached values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print areas and titles, page setup, breaks, headers and footers, pictures, conditional formats, chart sheets, tables with their table style, notes on cells for printing); data validation is not read (nor by the XLSX reader) | no |
 | XLS (Excel 97–2003, also Excel 5/95) | ExcelDataReader (MIT): values, number formats, merges; fonts, fills, borders and alignment (BIFF8), widths, heights, hidden rows / columns and the page setup from the BIFF records (`XlsLayout.cs`) | no (LibreOffice) |
 | ODS | own reader (`content.xml`, `styles.xml`, `settings.xml`): repeated rows / columns (the empty repeats up to the end of the sheet are skipped), spans, every value type, the text Calc shows (`text:p`), data styles as Excel codes, cell styles, widths, heights, hidden rows / columns / sheets, frozen and header rows | every sheet, typed cells (float, percentage, currency, date, time, boolean) with data styles and the shown text, styles, merges, widths, heights, hidden rows / columns, frozen rows |
 | CSV / TSV | delimiter (CSV: comma, semicolon or tab; TSV: tab) and encoding (UTF-8 / UTF-16 with BOM, CP949 when it looks Korean or on Korean Windows, else the PC's code page) | UTF-8 with BOM, CRLF, one file per sheet |
@@ -990,8 +990,10 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   margins, scale-to percent, pages and X × Y, printed grid and headers, page order, table centring, first page
   number), header and footer regions, table:print-ranges, header rows and columns, page breaks before rows and
   columns, rotation, stacked text, indent, shrink to fit, font names, and pictures and shapes (`OdsDrawing`: frames
-  with PNG / JPEG / GIF / BMP / WebP pictures, rectangles, ellipses, lines and custom shapes of a known type, groups,
-  turned by draw:transform, filled and outlined from their graphic style). A date without a data style takes the
+  with PNG / JPEG / GIF / BMP / WebP pictures (cropped by fo:clip) or text boxes, rectangles, ellipses, lines, custom
+  shapes of a known type or with their own path, polygons, polylines and paths, groups, turned by draw:transform,
+  filled in one colour or a draw:gradient and outlined from their graphic style, with their text), charts in their
+  place among them. A date without a data style takes the
   standard short date (or date and time) of the document's language, as Calc does (`m/d/yy` for en-US, `dd.mm.yy`
   for de-DE, ...; ISO 8601 for languages Filee has no table for).
 - **Hostile input.** Packages are read within `DocumentLimits` (a malformed part is `InvalidDataException`, a bomb
@@ -1008,7 +1010,13 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   anchored to a cell or the sheet) are read by `OdfChartReader` and printed the same way. 3D, radar, stock, surface
   and bubble charts and new chart types (`chartex`) are named, so such a workbook takes LibreOffice where it is
   installed.
-- **Not printed yet.** Shapes with text, text boxes, freeform shapes, comments, table styles, sparklines; data bars, icon sets and conditional formats
+- **Notes and tables.** Notes on cells print when the page setup asks for them (XLSX pageSetup cellComments, XLSB
+  BrtPageSetup fNotes / fEndNotes, ODS style:print "annotations"): at the end, as a list after the sheet ("Cell: B2",
+  "Comment: …", Excel's words), or as displayed, the shown notes in their boxes (the legacy VML drawing's anchor and
+  colours, or Calc's annotation box) with a line to their cell (`SheetComments`, `SheetCommentList`). Tables (XLSX
+  table parts, XLSB BrtBeginList / BrtTableStyleClient) take the look of their table style: the 60 built-in styles
+  of ECMA-376's presetTableStyles.xml or the workbook's own (`SheetTables`), under the cells' own formatting.
+- **Not printed yet.** XLSX shapes with text, sparklines; data bars, icon sets and conditional formats
   with formulas of their own; conditional formats of XLS and ODS files; rich text in XLS cells; text running past the
   edge of a page onto the next one; black-and-white and draft printing; the margins a real printer can't print in
   (a PDF has none).
@@ -2565,9 +2573,15 @@ each paragraph keeps its place on the page instead of joining a document's flow.
   (`DocumentBudget`), and at most 500,000 path segments drawn per page (the rest of a pathological drawing is left
   out); more is refused (`error.document_too_large` for pages, `error.document_too_complex` for the rest). The preset's page range picks the pages; cancelling stops
   between pages and between paths.
-- **Not rebuilt yet**: text that runs sideways or turned on a page that also has upright text, pattern and shading
-  fills (gradients), transparency, clipping of drawings (a clipped drawing is drawn whole, within the page), pictures
-  drawn turned or as stencil masks, form fields and annotations. PDF → DOCX stays the route for a document that
+- **Fills** (`PdfSlideDrawing`, `PdfShadingPictures`): axial and radial shadings become gradient fills;
+  function-based and mesh shadings are drawn into pictures and become gradient fills where they look like a linear or
+  radial gradient over the whole shape; tiling patterns repeating upright become tiled picture fills (`a:tile`, the
+  cell's PNG at 96 dpi). Soft masks of one colour or one shading are alphas and alpha gradients; other mask groups are
+  drawn into a picture of their alpha or luminosity, which pictures take into their own alpha. Multiply / Darken over
+  text put the shape under that text; other blend modes are drawn (over the page's colour where nothing else is under
+  them).
+- **Not rebuilt yet**: form fields and annotations, blend modes against pictures and text (other than Multiply /
+  Darken over text), text inside pattern cells, vertical CJK writing. PDF → DOCX stays the route for a document that
   should flow.
 
 **Pictures of the pages** (preset option *Pictures of the pages*, `PdfOptions.SlidePictures`) makes the earlier
@@ -2867,7 +2881,12 @@ next.
     standard font's own metrics) match the installed font's for the codes drawn. The program is a subset whose
     advances are the PDF's widths; simple fonts become symbolic TrueType fonts with a (3,0) cmap of their codes and a
     ToUnicode map, Identity-encoded Type 0 fonts CIDFontType2 with a CIDToGIDMap (CIDs through their ToUnicode map, or
-    as glyph IDs for a TrueType CIDFont found by its own name). A font listed but never drawn is left as it is;
+    as glyph IDs for a TrueType CIDFont found by its own name). A CID font with a predefined Unicode CMap
+    (`Uni*-UCS2-*`, `Uni*-UTF16-*`) becomes Identity-H / -V with its codes as CIDs, from an installed CJK font of its
+    script (its widths then the installed font's). A font listed but never drawn is left as it is;
+  - **TrueType fonts the PDF embedded itself are repaired** (`PdfAFontRepair`): widths that differ from the program
+    go into the program's advances (the text keeps its places), encodings PDF/A forbids become a symbolic font with a
+    (3,0) cmap of the glyphs the codes drew, and fonts without ToUnicode get one (encoding names or the font's cmap);
   - JavaScript, launch and the other forbidden actions (also in `/Next` chains, open actions, outlines), every `AA`,
     the actions of fields and widgets, XFA, `NeedAppearances`, embedded files, alternate presentations, `PresSteps`,
     `Requirements`, `Collection`, other `Perms` than UR3/DocMDP, XMP of pages and pictures; optional-content
@@ -2882,15 +2901,15 @@ next.
   the trailer's `/ID` kept, `/Prev` to PDFsharp's table. Custom information entries and `Trapped` are dropped.
 
   It **refuses** (`pdfa.reason.*`, the PDF left as it is) a font drawn with that isn't embedded and has no installed
-  match (a predefined CMap such as UniJIS-UCS2-H included; the font's name goes into the notice), an annotation it
+  match (a predefined CMap other than the Unicode ones included; the font's name goes into the notice), an annotation it
   can't draw an appearance for (text its font can't encode), XFA-only forms, PostScript
   XObjects, external stream data, LZW mixed with filters PDFsharp can't unpack, inline pictures with LZW or
   interpolation, content streams it can't read, a password-protected PDF, more than `MaxObjects` objects or more
   content tokens than `PdfFontUses` reads (`error.document_too_complex`), and more content bytes than it reads
   (`error.document_too_large`).
 
-  **Not checked**: that fonts the PDF embedded itself hold every glyph drawn and their widths match the dictionary,
-  their TrueType symbolic/non-symbolic encodings and cmaps, the document's own ICC-based colour spaces, JPEG 2000
+  **Not checked**: that fonts the PDF embedded itself hold every glyph drawn, the widths of their CFF and Type 1
+  programs, the document's own ICC-based colour spaces, JPEG 2000
   specifics, halftone details beyond dropping `HT`, the implementation limits (string, name and number sizes, `q`
   nesting), and content stream operators outside ISO 32000-1. Conformance is tested by an in-test checker of the
   PDF/A-2b clauses (`tests/Filee.Engines.Tests/PdfA2bChecks.cs`, numbered as veraPDF's published rule list): the file
@@ -3318,7 +3337,9 @@ output's SVG writer.
   Strokes: thickness, joins, miter limit, dash arrays and offsets, and flat, round, square and triangle caps, each end
   its own (Skia's cap when both ends share a flat, round or square one, else caps joined to a flat-ended outline).
 - **Brushes:** SolidColorBrush (`#RRGGBB`, `#AARRGGBB`, scRGB, ContextColor through its grey, RGB or CMYK ICC profile,
-  sampled once into a lattice by ImageMagick's Little CMS, else by ECMA-388's rules for a colour without one),
+  sampled once into a lattice by ImageMagick's Little CMS, through an N-channel (2CLR–8CLR, lut8 / lut16 / lutAtoB) or
+  Named Color profile read by Filee (`XpsIccTransform`: named colours' PCS values, tints diluted towards white, inks
+  multiplied), else by ECMA-388's rules for a colour without one),
   LinearGradientBrush and RadialGradientBrush (spread methods, stops outside 0–1 cut there), ImageBrush (PNG, JPEG,
   GIF, BMP by Skia, TIFF by ImageMagick, JPEG XR / HD Photo by Filee's own decoder, `JpegXr/`, written from ITU-T
   T.832; sized by the picture's resolution, 96 dpi when it has none; its own ICC profile, or a ColorConvertedBitmap's,
@@ -3329,7 +3350,8 @@ output's SVG writer.
   name) and read by Filee's SFNT parser before Skia sees them; `Indices` (glyph, advance, offsets, cluster maps),
   `UnicodeString` (with the `{}` escape), BidiLevel (odd: right to left), IsSideways (each glyph turned about its top
   centre, vertical advances from vmtx or the OS/2 ascender and descender; still text in the PDF), StyleSimulations
-  (bold and italic drawn synthetically), FontRenderingEmSize, OriginX / OriginY. A run with a solid colour whose clips are rectangles is a
+  (bold and italic drawn synthetically; emboldened glyphs' own advances 2 % of the em wider, sideways italics skewed by
+  20° about their top centre, M5.13 / M5.14), FontRenderingEmSize, OriginX / OriginY. A run with a solid colour whose clips are rectangles is a
   glyph item of the page model (the PDF writer subsets its font and maps its text); others are drawn by
   `XpsPainter` as text blobs of the whole font. A run whose font is missing or damaged (also: its glyphs can't be
   subset for the PDF) draws its text with an installed font.

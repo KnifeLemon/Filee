@@ -242,6 +242,20 @@ public class FontResolverTests
         Assert.Null(resolver.Find("Filee No Such Family", FontStyle.Regular));
     }
 
+    [Fact]
+    public void On_macos_only_installed_families_are_asked_for()
+    {
+        // A family CoreText doesn't list may be one macOS offers for download: asking for it can hold up every font
+        // request of the process (SystemFonts). A name read from a damaged file ("Ari\0\0") isn't asked for either.
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "CoreText only");
+        Assert.True(SystemFonts.Asks("Helvetica"));
+        Assert.True(SystemFonts.Asks("helvetica"));
+        Assert.False(SystemFonts.Asks("Filee No Such Family"));
+        Assert.False(SystemFonts.Asks("Ari\0\0"));
+        Assert.Empty(SystemFonts.Instance.Family("Filee No Such Family"));
+        Assert.NotEmpty(SystemFonts.Instance.Family("Helvetica"));
+    }
+
     private static List<(string Text, string Family)> Describe(string text, List<FontRun> runs) =>
         runs.Select(r => (text.Substring(r.Start, r.Length), r.Font.Family)).ToList();
 

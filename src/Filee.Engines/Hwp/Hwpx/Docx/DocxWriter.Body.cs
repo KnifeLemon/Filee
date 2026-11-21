@@ -360,13 +360,22 @@ internal sealed partial class DocxWriter
                         break;
                     }
                 case HText text:
-                    TextRuns(sb, text.Text, text.Format, context);
+                    MaybeInserted(sb, text.Format, runs => TextRuns(runs, text.Text, text.Format, context, CharacterStyle(text.Format)));
                     break;
                 case HLineBreak lineBreak:
-                    sb.Append("<w:r>").Append(RunPr(lineBreak.Format, context)).Append("<w:br/></w:r>");
+                    MaybeInserted(sb, lineBreak.Format, runs => runs.Append("<w:r>").Append(RunPr(lineBreak.Format, context, CharacterStyle(lineBreak.Format))).Append("<w:br/></w:r>"));
                     break;
                 case HTab tab:
-                    sb.Append("<w:r>").Append(RunPr(tab.Format, context)).Append("<w:tab/></w:r>");
+                    MaybeInserted(sb, tab.Format, runs => runs.Append("<w:r>").Append(RunPr(tab.Format, context, CharacterStyle(tab.Format))).Append("<w:tab/></w:r>"));
+                    break;
+                case HCommentStart start:
+                    CommentStart(start, sb);
+                    break;
+                case HComment comment:
+                    CommentMark(comment, sb);
+                    break;
+                case HDeletion deletion:
+                    Deletion(deletion, sb, context);
                     break;
                 case HLink link:
                     Hyperlink(link, sb, context);
@@ -397,12 +406,12 @@ internal sealed partial class DocxWriter
     }
 
     /// <summary>Text runs; line feeds and tabs inside the text become w:br and w:tab.</summary>
-    private static void TextRuns(StringBuilder sb, string text, HCharFormat format, RunContext context)
+    private static void TextRuns(StringBuilder sb, string text, HCharFormat format, RunContext context, string? characterStyle = null)
     {
         if (text.Length == 0)
             return;
         // Arabic or Hebrew text is marked right to left, as Word does: it then takes the complex script font and size.
-        sb.Append("<w:r>").Append(RunPr(format, context, rightToLeft: ComplexScripts.Direction(text) < 0));
+        sb.Append("<w:r>").Append(RunPr(format, context, characterStyle, rightToLeft: ComplexScripts.Direction(text) < 0));
         var start = 0;
         for (var i = 0; i <= text.Length; i++)
         {

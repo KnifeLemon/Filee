@@ -20,7 +20,9 @@
 // bubbles' sizes, the first chart:domain the Y values, the second the X values, carried over to series that leave
 // them out), stock charts (three series low, high, close or four open, low, high, close: chart:stock-range-line
 // joins low and high, open and close are ticks, or candlesticks with chart:japanese-candle-stick and the
-// chart:stock-gain-marker and chart:stock-loss-marker styles; a volume series of class chart:bar beside them),
+// chart:stock-gain-marker and chart:stock-loss-marker styles; a volume series of class chart:bar beside them; one
+// legend entry for the prices (Calc keeps them as one series): the close series' name keyed by the candlestick or the
+// range line),
 // surface charts (one series of a block of rows and columns, or a series a row; the z axis' range and interval make
 // the bands, the first series' data points fill them, no fill draws the mesh) and Gantt charts (series in pairs of
 // start and end: a stacked bar whose first part is left clear, coloured as the second series when it ends before it
@@ -203,12 +205,22 @@ internal sealed class OdfChartReader
                 Gantt(plot);
         }
         var entryIndex = 0;
-        foreach (var (_, _, _, plot) in plots)
+        foreach (var (_, special, _, plot) in plots)
         {
-            foreach (var series in plot.Series)
+            for (var i = 0; i < plot.Series.Count; i++)
             {
+                var series = plot.Series[i];
                 if (series.Style.Fill == SKColors.Transparent && series.Style.Line?.None == true && series.Name is null)
                     hidden.Add(entryIndex);
+                else if (special == "chart:stock" && plot.Series.Count > 1)
+                {
+                    // One legend entry for the prices (Calc keeps them as one series), named after the last (close) one and keyed by the
+                    // candlestick or the range line; its series draw neither line nor box of their own.
+                    if (i < plot.Series.Count - 1)
+                        hidden.Add(entryIndex);
+                    else
+                        series.LegendKey = plot.UpDownBars?.Up ?? new ChartShapeStyle { Fill = SKColors.Transparent, Line = plot.HighLowLines ?? new ChartLine(SKColors.Black) };
+                }
                 entryIndex++;
             }
         }

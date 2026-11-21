@@ -114,6 +114,12 @@ internal sealed class Worksheet(string name)
     /// <summary>Pictures and shapes placed on the sheet, in drawing order (the last one on top).</summary>
     public List<SheetDrawing> Drawings { get; } = [];
 
+    /// <summary>
+    /// The notes on cells (Excel's comments, Calc's annotations), in the file's order; printed when
+    /// <see cref="SheetPageSetup.Comments"/> asks for them.
+    /// </summary>
+    public List<SheetComment> Comments { get; } = [];
+
     /// <summary>The chart of a chart sheet (<see cref="Workbook.ChartSheets"/>), printed alone on one page; null for a worksheet.</summary>
     public Charts.Chart? Chart { get; set; }
 
@@ -390,6 +396,58 @@ internal sealed record SheetShape(string Preset, int Row, int Column, double Off
 
     /// <summary>A dashed outline's dashes and gaps as multiples of its width, or null for a solid one.</summary>
     public float[]? Dash { get; init; }
+
+    /// <summary>
+    /// An outline of the shape's own (a freeform shape) instead of the preset: the paths for a box of the given width
+    /// and height in points, in the box's coordinates, and the text area; null for the preset's.
+    /// </summary>
+    public Func<double, double, Slides.GeometryResult>? Geometry { get; init; }
+
+    /// <summary>A gradient fill instead of <see cref="Fill"/> (which then holds a colour standing for it), or null.</summary>
+    public Slides.GradientFill? Gradient { get; init; }
+
+    /// <summary>The shape's text, or null.</summary>
+    public ShapeText? Text { get; init; }
+}
+
+/// <summary>
+/// The text of a shape: paragraphs of runs (null members of a run: the shape's font), where it sits in the shape and
+/// how far it keeps from the shape's edges (points).
+/// </summary>
+internal sealed record ShapeText(IReadOnlyList<ShapeParagraph> Paragraphs)
+{
+    /// <summary>The font of runs that set none of their own: family (null = the workbook's), size, colour, bold, italic.</summary>
+    public CellStyle Font { get; init; } = CellStyle.Default;
+
+    public CellVerticalAlign Anchor { get; init; } = CellVerticalAlign.Center;
+
+    public (double Left, double Top, double Right, double Bottom) Insets { get; init; } = (7.2, 3.6, 7.2, 3.6);
+
+    /// <summary>Lines break at the shape's width (else the text runs on past it).</summary>
+    public bool Wrap { get; init; } = true;
+}
+
+/// <summary>A paragraph of a shape's text and its alignment.</summary>
+internal sealed record ShapeParagraph(IReadOnlyList<CellRun> Runs, CellAlign Align);
+
+/// <summary>A note on a cell, as the printer prints it.</summary>
+/// <param name="Text">The note's text; Excel's starts with its author's name and a colon, as Excel wrote it.</param>
+internal sealed record SheetComment(int Row, int Column, string Text)
+{
+    /// <summary>Rich text: the pieces of <see cref="Text"/> in their own fonts, or null.</summary>
+    public IReadOnlyList<CellRun>? Runs { get; init; }
+
+    /// <summary>The note's author when the file keeps it apart from the text, or null.</summary>
+    public string? Author { get; init; }
+
+    /// <summary>The note is shown on the sheet (not only when the pointer is over its cell).</summary>
+    public bool Shown { get; init; }
+
+    /// <summary>
+    /// The box of a shown note as a rectangle placed on the sheet (its fill, outline and text font taken from the file);
+    /// null for Excel's default box beside the cell.
+    /// </summary>
+    public SheetShape? Box { get; init; }
 }
 
 /// <summary>A cell as displayed: formatted text plus style.</summary>

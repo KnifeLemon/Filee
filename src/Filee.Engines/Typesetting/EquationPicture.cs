@@ -4,6 +4,7 @@
 //
 // The equation is laid out by MathLayout as the renderer lays it out: a Word or TeX equation as a display or inline
 // formula (math font, math italic letters), a 한글 equation (one with the box 한글 laid it out in) at one size.
+// Pictures aren't kept: each is drawn when its part is written.
 
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Rendering;
@@ -17,7 +18,11 @@ internal sealed record EquationImage(byte[] Png, float Width, float Ascent, floa
     public float Height => Ascent + Descent;
 }
 
-/// <summary>Draws equations as PNG pictures; one per equation and look, kept while it lives.</summary>
+/// <summary>
+/// Draws equations as PNG pictures. Nothing is kept: a writer measures an equation first (<see cref="Frame"/>) and
+/// draws it straight into its package when it writes the part (<see cref="Write"/>), so a document with many equations
+/// doesn't hold all their pictures at once.
+/// </summary>
 internal sealed class EquationPicture : IDisposable
 {
     /// <summary>A picture is at most this many pixels across or down; a larger one is drawn at a lower resolution.</summary>
@@ -25,7 +30,6 @@ internal sealed class EquationPicture : IDisposable
 
     private readonly Shaper _shaper = new();
     private readonly MathLayout _math;
-    private readonly Dictionary<(HEquation, bool, bool), EquationImage?> _drawn = new();
 
     public EquationPicture(FontResolver? fonts = null) => _math = new MathLayout(fonts ?? new FontResolver(), _shaper);
 
@@ -40,39 +44,57 @@ internal sealed class EquationPicture : IDisposable
         _math.Layout(equation.Math, Size(equation), SKColors.Black, Mode(equation, display));
 
     /// <summary>
+    /// The size of <paramref name="equation"/>'s picture in points, the baseline <c>Ascent</c> below its top (the
+    /// equation with a little room around its ink); null for an empty equation. Nothing is drawn.
+    /// </summary>
+    public (float Width, float Ascent, float Descent)? Frame(HEquation equation, bool display) =>
+        Laid(equation, display) is var (box, pad) ? (box.Width + 2 * pad, box.Ascent + pad, box.Descent + pad) : null;
+
+    /// <summary>
     /// <paramref name="equation"/> as a PNG at <paramref name="dpi"/>: on white when <paramref name="opaque"/>, else on
     /// a transparent ground; null for an empty equation.
     /// </summary>
     public EquationImage? Draw(HEquation equation, bool display, bool opaque = false, float dpi = 300)
     {
-        if (_drawn.TryGetValue((equation, display, opaque), out var known))
-            return known;
-        if (_drawn.Count > 10_000)
-            _drawn.Clear();
+        if (Frame(equation, display) is not var (width, ascent, descent))
+            return null;
+        using var png = new MemoryStream();
+        return Write(equation, display, png, opaque, dpi) ? new EquationImage(png.ToArray(), width, ascent, descent) : null;
+    }
+
+    /// <summary>
+    /// Draws <paramref name="equation"/> as <see cref="Draw"/> does, the PNG written to <paramref name="target"/>; false
+    /// (nothing written) for an empty equation.
+    /// </summary>
+    public bool Write(HEquation equation, bool display, Stream target, bool opaque = false, float dpi = 300)
+    {
+        if (Laid(equation, display) is not var (box, pad))
+            return false;
+        // A little room around the ink: italic letters and brackets reach past the box.
+        var width = box.Width + 2 * pad;
+        var height = box.Height + 2 * pad;
+        var page = new PageContent(width, height);
+        box.Paint(page, pad, pad + box.Ascent, 1);
+        var scale = Math.Min(dpi / 72f, MaxPixels / Math.Max(width, height));
+        using var bitmap = new SKBitmap(Math.Max(1, (int)Math.Ceiling(width * scale)), Math.Max(1, (int)Math.Ceiling(height * scale)),
+            SKColorType.Rgba8888, opaque ? SKAlphaType.Opaque : SKAlphaType.Premul);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(opaque ? SKColors.White : SKColors.Transparent);
+            canvas.Scale(scale);
+            page.Draw(canvas);
+        }
+        return bitmap.Encode(target, SKEncodedImageFormat.Png, 100);
+    }
+
+    /// <summary>The equation laid out in its colour, and the room around it; null for an empty one.</summary>
+    private (EquationBox Box, float Pad)? Laid(HEquation equation, bool display)
+    {
         var color = ParagraphText.Color(equation.Color ?? equation.Format.Color) ?? SKColors.Black;
         var box = _math.Layout(equation.Math, Size(equation), color, Mode(equation, display));
-        EquationImage? image = null;
-        if (box.Width > 0 && box.Height > 0 && float.IsFinite(box.Width) && float.IsFinite(box.Height))
-        {
-            // A little room around the ink: italic letters and brackets reach past the box.
-            var pad = Size(equation) * 0.08f;
-            var width = box.Width + 2 * pad;
-            var height = box.Height + 2 * pad;
-            var page = new PageContent(width, height);
-            box.Paint(page, pad, pad + box.Ascent, 1);
-            var scale = Math.Min(dpi / 72f, MaxPixels / Math.Max(width, height));
-            using var bitmap = new SKBitmap(Math.Max(1, (int)Math.Ceiling(width * scale)), Math.Max(1, (int)Math.Ceiling(height * scale)),
-                SKColorType.Rgba8888, opaque ? SKAlphaType.Opaque : SKAlphaType.Premul);
-            using (var canvas = new SKCanvas(bitmap))
-            {
-                canvas.Clear(opaque ? SKColors.White : SKColors.Transparent);
-                canvas.Scale(scale);
-                page.Draw(canvas);
-            }
-            using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
-            image = new EquationImage(data.ToArray(), width, box.Ascent + pad, box.Descent + pad);
-        }
-        return _drawn[(equation, display, opaque)] = image;
+        if (!(box.Width > 0 && box.Height > 0 && float.IsFinite(box.Width) && float.IsFinite(box.Height)))
+            return null;
+        return (box, Size(equation) * 0.08f);
     }
 
     private static float Size(HEquation equation) => Math.Clamp((equation.Size ?? equation.Format.Size ?? 1000) / 100f, 1, 1000);

@@ -1,6 +1,7 @@
 // The equation tree (MathNode) → MathML (MathML Core, which browsers and EPUB 3 readers draw), for the HTML and EPUB
 // writers and Markdown → HTML. An equation read from TeX keeps its source as the TeX annotation (and alttext), so a page
-// can be copied back to TeX and readers without MathML have the source to show.
+// can be copied back to TeX and readers without MathML have the source to show. An OpenDocument formula object also
+// keeps its StarMath source (StarMath.Write) as an annotation, the text LibreOffice's formula editor shows.
 //
 // Letters are <mi> (italic), several letters each their own unless upright; numbers <mn>; operators, relations and
 // brackets <mo> (unbracketed "(" and ")" don't stretch, as in TeX); quoted text <mtext>; Greek capitals upright.
@@ -30,7 +31,8 @@ internal static class MathMLWriter
     /// <summary>One equation as a &lt;math&gt; element; <paramref name="tex"/> (its TeX source) becomes its annotation.</summary>
     /// <param name="alt">The alternative text (alttext) when there is no TeX source: the linear text, for screen readers.</param>
     /// <param name="size">The size in points the formula is set at (an mstyle mathsize), for documents that set it apart from the text.</param>
-    public static string Write(MathNode node, bool display, string? tex = null, string? alt = null, float? size = null)
+    /// <param name="starMath">Its StarMath source, as LibreOffice keeps it in a formula object (an annotation "StarMath 5.0").</param>
+    public static string Write(MathNode node, bool display, string? tex = null, string? alt = null, float? size = null, string? starMath = null)
     {
         var sb = new StringBuilder();
         sb.Append("<math xmlns=\"").Append(Namespace).Append('"');
@@ -39,7 +41,8 @@ internal static class MathMLWriter
         if ((tex ?? alt) is { Length: > 0 } text)
             sb.Append(" alttext=\"").Append(OmmlWriter.Escape(text)).Append('"');
         sb.Append('>');
-        if (tex is not null)
+        var annotated = tex is not null || starMath is { Length: > 0 };
+        if (annotated)
             sb.Append("<semantics>");
         if (size is > 0 and var points)
         {
@@ -51,8 +54,12 @@ internal static class MathMLWriter
         {
             Group(node, sb, default);
         }
+        if (starMath is { Length: > 0 })
+            sb.Append("<annotation encoding=\"").Append(StarMath.Encoding).Append("\">").Append(OmmlWriter.Escape(starMath)).Append("</annotation>");
         if (tex is not null)
-            sb.Append("<annotation encoding=\"application/x-tex\">").Append(OmmlWriter.Escape(tex)).Append("</annotation></semantics>");
+            sb.Append("<annotation encoding=\"application/x-tex\">").Append(OmmlWriter.Escape(tex)).Append("</annotation>");
+        if (annotated)
+            sb.Append("</semantics>");
         sb.Append("</math>");
         return sb.ToString();
     }

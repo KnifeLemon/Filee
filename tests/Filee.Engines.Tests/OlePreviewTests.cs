@@ -227,6 +227,22 @@ public sealed class OlePreviewTests(EngineFixture fx) : IClassFixture<EngineFixt
     }
 
     [Fact]
+    public void The_renderer_keeps_hwp_ole_objects_it_draws_and_names_the_others()
+    {
+        var renderer = new Typesetting.FileeRendererConverter();
+        // A chart with its DrawingML part, a chart or another object with a picture: drawn, so the renderer keeps the file.
+        var chart = Ole(("\u0001CompObj", CompObj("Hwp Chart", "HwpChart.1")), ("OOXMLChartContents", Encoding.UTF8.GetBytes(ChartBuilder.Columns())));
+        Assert.Null(renderer.FirstUnsupported(HwpWithOle(chart), "hwp"));
+        var neo = Ole(("\u0001CompObj", CompObj("Hwp Chart", "HwpChart.1")), ("Contents", [0, 0, 1, 0]), ("\u0002OlePres000", Presentation(3, Wmf())));
+        Assert.Null(renderer.FirstUnsupported(HwpWithOle(neo), "hwp"));
+        // Nothing to draw it from (no picture, no chart part ChartReader draws): named, as before.
+        var bare = Ole(("\u0001CompObj", CompObj("Hwp Chart", "HwpChart.1")), ("Contents", [0, 0, 1, 0]));
+        Assert.Equal("OLE objects and charts", renderer.FirstUnsupported(HwpWithOle(bare), "hwp"));
+        var broken = Ole(("OOXMLChartContents", Encoding.UTF8.GetBytes("<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"/>")));
+        Assert.Equal("OLE objects and charts", renderer.FirstUnsupported(HwpWithOle(broken), "hwp"));
+    }
+
+    [Fact]
     public void A_hostile_chart_part_in_an_ole_object_is_refused_or_left_to_its_picture_quickly()
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();

@@ -190,8 +190,10 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
         // A run can't be both (ECMA-388 M5.15): right to left wins, as it changes where the glyphs go.
         var sideways = !rightToLeft && XpsValues.Bool((string?)element.Attribute("IsSideways"), false);
         var origin = new SKPoint(XpsValues.Number((string?)element.Attribute("OriginX")) ?? 0, XpsValues.Number((string?)element.Attribute("OriginY")) ?? 0);
+        var bold = simulations.Contains("Bold", StringComparison.OrdinalIgnoreCase);
+        var italic = simulations.Contains("Italic", StringComparison.OrdinalIgnoreCase);
         // Glyph numbers of another font mean nothing in the fallback: it draws the text's characters.
-        var layout = XpsGlyphLayout.Lay(font.Typeface, size.Value, origin, text, embedded is null ? StripIndices(indices) : indices, rightToLeft, sideways);
+        var layout = XpsGlyphLayout.Lay(font.Typeface, size.Value, origin, text, embedded is null ? StripIndices(indices) : indices, rightToLeft, sideways, bold, italic);
         if (embedded is not null && !document.CanSubset(embedded, layout.Glyphs))
         {
             // Glyphs the embedded font can't give the PDF (damaged outlines or metrics): the run takes the fallback.
@@ -199,7 +201,7 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
             font = document.FallbackFont;
             if (font is null)
                 return null;
-            layout = XpsGlyphLayout.Lay(font.Typeface, size.Value, origin, text, StripIndices(indices), rightToLeft, sideways);
+            layout = XpsGlyphLayout.Lay(font.Typeface, size.Value, origin, text, StripIndices(indices), rightToLeft, sideways, bold, italic);
         }
         if (embedded is null && fontPart is not null)
             document.FontReplaced(fontPart);
@@ -214,8 +216,8 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
             Text = text,
             Clusters = layout.Clusters,
             Fill = Brush(element, "Fill", scope, where),
-            Bold = simulations.Contains("Bold", StringComparison.OrdinalIgnoreCase),
-            Italic = simulations.Contains("Italic", StringComparison.OrdinalIgnoreCase),
+            Bold = bold,
+            Italic = italic,
             Sideways = sideways,
         };
     }

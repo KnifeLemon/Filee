@@ -63,6 +63,9 @@ internal sealed partial class HwpxReader
                 case "style" when id is not null:
                     _styles.TryAdd(id, element);
                     break;
+                case "trackChange" or "trackChangeAuthor":
+                    TrackChangeHeader(element, id);
+                    break;
             }
         }
     }

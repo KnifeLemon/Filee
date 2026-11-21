@@ -67,6 +67,9 @@ internal sealed partial class RtfReader
         public int Left { get; set; }
         public int Height { get; set; }
         public bool Header { get; set; }
+
+        /// <summary>\trkeep: the row isn't split across pages.</summary>
+        public bool KeepTogether { get; set; }
         /// <summary>\trql, \trqc, \trqr: the left side, centre, right side; null when the row doesn't say.</summary>
         public HAlign? Align { get; set; }
 
@@ -116,6 +119,7 @@ internal sealed partial class RtfReader
         {
             Left = Left,
             Height = Height,
+            KeepTogether = KeepTogether,
             Align = Align,
             RightToLeft = RightToLeft,
             AutoFit = AutoFit,
@@ -215,7 +219,7 @@ internal sealed partial class RtfReader
                 return true;
         }
 
-        if (word is not ("trowd" or "trleft" or "trrh" or "trhdr" or "trql" or "trqc" or "trqr" or "rtlrow" or "ltrrow" or "trgaph"
+        if (word is not ("trowd" or "trleft" or "trrh" or "trhdr" or "trkeep" or "trql" or "trqc" or "trqr" or "rtlrow" or "ltrrow" or "trgaph"
             or "trpaddl" or "trpaddr" or "trpaddt" or "trpaddb" or "trpaddfl" or "trpaddfr" or "trpaddft" or "trpaddfb" or "clwWidth"
             or "clftsWidth" or "trautofit" or "trwWidth" or "trftsWidth" or "clmgf" or "clmrg" or "clvmgf" or "clvmrg" or "clcbpat"
             or "clcfpat" or "clshdng" or "clvertalc" or "clvertalb" or "clvertalt" or "clpadl" or "clpadr" or "clpadt" or "clpadb"
@@ -238,6 +242,7 @@ internal sealed partial class RtfReader
             case "trleft": def.Left = value; break;
             case "trrh": def.Height = value; break;
             case "trhdr": def.Header = true; break;
+            case "trkeep": def.KeepTogether = parameter != 0; break;
             case "trql": def.Align = HAlign.Left; break;
             case "trqc": def.Align = HAlign.Center; break;
             case "trqr": def.Align = HAlign.Right; break;
@@ -489,6 +494,7 @@ internal sealed partial class RtfReader
             {
                 Height = def.Height == 0 ? null : HwpxUnits.FromTwips(Math.Abs(def.Height)),
                 Header = def.Header,
+                CantSplit = def.KeepTogether,
             };
             var left = def.Left;
             HCell? previous = null;
@@ -743,8 +749,12 @@ internal sealed partial class RtfReader
         public int Start { get; set; } = 1;
         public string Text { get; set; } = "";
 
-        /// <summary>\leveljc: 0 left, 1 centre, 2 right.</summary>
+        /// <summary>\leveljc: 0 left, 1 centre, 2 right; \leveljcn (the same at the start and end side) wins.</summary>
         public int Align { get; set; }
+        public bool NaturalAlign { get; set; }
+
+        /// <summary>A bullet of a symbol font: the font and its codes, which the number's format keeps (SymbolFonts.Drawn).</summary>
+        public (string Font, string Codes)? Symbol { get; set; }
 
         /// <summary>\levelfollow: 0 a tab, 1 a space, 2 nothing.</summary>
         public int Follow { get; set; }
@@ -812,8 +822,12 @@ internal sealed partial class RtfReader
                 case "levelstartat" when _level is { } level:
                     level.Start = value;
                     return true;
-                case "leveljc" when _level is { } level:
+                case "leveljc" when _level is { NaturalAlign: false } level:
                     level.Align = value;
+                    return true;
+                case "leveljcn" when _level is { } level:
+                    level.Align = value;
+                    level.NaturalAlign = true;
                     return true;
                 case "levelfollow" when _level is { } level:
                     level.Follow = value;
@@ -896,7 +910,23 @@ internal sealed partial class RtfReader
         if (list.Numbering.Levels.Count == 0)
             return null;
         var level = Math.Min(p.ListLevel, list.Numbering.Levels.Count - 1);
-        return new HListRef(list.Numbering, level, Numbered: true) { MarkerFormat = Format(list.Levels[level].Over(mark)) };
+        var format = Format(list.Levels[level].Over(mark));
+        // A symbol font's bullet: its Unicode character in the text font, and the code for the layout to draw in the font.
+        if (list.Levels[level].Symbol is var (font, codes))
+            format = SymbolFonts.Drawn(format, font, codes);
+        return new HListRef(list.Numbering, level, Numbered: true) { MarkerFormat = format };
+    }
+
+    /// <summary>
+    /// The symbol font code a character of a bullet's \leveltext stands for: F0xx and bytes as they are, a character
+    /// the document's code page decoded (Windows-1252 makes 0x95 "•") as its byte again.
+    /// </summary>
+    private char? SymbolCode(char c)
+    {
+        if (c is >= '\uf000' and <= '\uf0ff' || c <= '\u00ff')
+            return c;
+        var bytes = CodePageEncoding(_ansiCodePage).GetBytes([c]);
+        return bytes.Length == 1 ? (char)bytes[0] : null;
     }
 
     private static HNumberSuffix Suffix(LevelDef level) => level.Follow switch
@@ -913,7 +943,7 @@ internal sealed partial class RtfReader
         _ => null,
     };
 
-    private static HNumbering Numbering(ListDef list)
+    private HNumbering Numbering(ListDef list)
     {
         var numbering = new HNumbering();
         foreach (var level in list.Levels.Take(9))
@@ -921,8 +951,14 @@ internal sealed partial class RtfReader
             if (level.Format == 23)
             {
                 var bullet = level.Text.Trim();
-                // Symbol-font bullets come as private-use characters.
-                numbering.Levels.Add(new HNumberingLevel("DIGIT", bullet.Length == 0 || bullet[0] >= '' && bullet[0] <= '' ? "•" : bullet[..1], 1, Bullet: true)
+                // A bullet in Symbol, Wingdings & co.: the character its code shows; other symbol-font bullets come as
+                // private-use characters.
+                var font = level.Font is { } index && _fonts.TryGetValue(index, out var entry) ? entry.Name : null;
+                var code = bullet.Length > 0 ? SymbolCode(bullet[0]) : (char?)null;
+                var symbol = code is { } c && SymbolFonts.Map(font, c) is { Length: 1 } mapped ? mapped : null;
+                if (symbol is not null)
+                    level.Symbol = (font!, code!.Value.ToString());
+                numbering.Levels.Add(new HNumberingLevel("DIGIT", symbol ?? (bullet.Length == 0 || bullet[0] >= '' && bullet[0] <= '' ? "•" : bullet[..1]), 1, Bullet: true)
                 {
                     Suffix = Suffix(level),
                     Align = Align(level),

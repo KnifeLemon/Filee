@@ -1,6 +1,7 @@
 // A workbook printed the way Excel prints the entire workbook to PDF: every visible sheet with something on it, each
 // with its own page setup (SheetPagination), a chart sheet as one page with its chart filling the margins, its pages drawn by SheetPageRenderer, numbered on from the sheet before
-// unless a sheet sets its first page number, &N counting every page. The pages are written by PdfPageWriter (fonts
+// unless a sheet sets its first page number, &N counting every page; a sheet whose notes print at the end is followed
+// by their list (SheetCommentList). The pages are written by PdfPageWriter (fonts
 // subset by Filee); a workbook with several sheets gets a bookmark per sheet.
 
 using Filee.Engines.Documents;
@@ -62,7 +63,7 @@ internal static class SheetPrinter
         {
             var fonts = printed.Fonts = new SheetFonts(resolver);
             var guard = new LayoutGuard(limits, cancellationToken);
-            var sheets = new List<(Worksheet Sheet, SheetIndex Index, SheetPrintPlan Plan)>();
+            var sheets = new List<(Worksheet Sheet, SheetIndex Index, SheetPrintPlan Plan, List<List<SheetCommentList.Line>> Notes)>();
             var count = 0;
             foreach (var sheet in book.Printed())
             {
@@ -71,12 +72,13 @@ internal static class SheetPrinter
                 var plan = SheetPagination.Plan(book, sheet, index, fonts, limits, count, cancellationToken);
                 if (plan.Pages.Count == 0)
                     continue;
-                count += plan.Pages.Count;
-                sheets.Add((sheet, index, plan));
+                var notes = sheet.Chart is null ? SheetCommentList.Layout(book, sheet, fonts, Bounds(plan.Pages), guard) : [];
+                count += plan.Pages.Count + notes.Count;
+                sheets.Add((sheet, index, plan, notes));
             }
 
             var number = 1;
-            foreach (var (sheet, index, plan) in sheets)
+            foreach (var (sheet, index, plan, notes) in sheets)
             {
                 var conditional = plan.Pages.Count > 0 && sheet.Chart is null ? ConditionalFormatting.Apply(sheet, Bounds(plan.Pages), index) : [];
                 var drawings = Drawings(sheet, printed.Images);
@@ -91,6 +93,14 @@ internal static class SheetPrinter
                 {
                     guard.Paragraph();
                     printed.Pages.Add(renderer.Draw(page, new PageFields(number, count, sheet.Name, source.FileName, source.Folder, now, headerPictures)));
+                    guard.PageFinished(empty: false);
+                    number++;
+                    progress?.Report((double)printed.Pages.Count / count);
+                }
+                foreach (var lines in notes)
+                {
+                    guard.Paragraph();
+                    printed.Pages.Add(renderer.DrawCommentPage(lines, new PageFields(number, count, sheet.Name, source.FileName, source.Folder, now, headerPictures)));
                     guard.PageFinished(empty: false);
                     number++;
                     progress?.Report((double)printed.Pages.Count / count);

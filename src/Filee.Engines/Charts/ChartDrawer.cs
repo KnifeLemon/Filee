@@ -453,7 +453,13 @@ internal sealed partial class ChartDrawer
                     return entries;
                 var auto = _chart.Palette.Color(series.Index);
                 var name = series.Name ?? $"Series{series.Index + 1}";
-                if (plot.Kind is ChartKind.Line or ChartKind.Scatter && !plot.ThreeD || plot is { Kind: ChartKind.Radar, Filled: false })
+                if (series.LegendKey is { } key)
+                {
+                    entries.Add(key.Fill is { } fill && fill.Alpha > 0
+                        ? new LegendEntry(name, KeyKind.Box, FillOf(key, auto), PenOf(key.Line, null, 0.75f), null, auto)
+                        : new LegendEntry(name, KeyKind.Line, null, PenOf(key.Line, auto, 0.75f), MarkerOf(plot, series), auto));
+                }
+                else if (plot.Kind is ChartKind.Line or ChartKind.Scatter && !plot.ThreeD || plot is { Kind: ChartKind.Radar, Filled: false })
                 {
                     var line = plot.Lines ? PenOf(series.Style.Line, auto, plot.Kind == ChartKind.Line ? 2.25f : 1.5f) : null;
                     entries.Add(new LegendEntry(name, KeyKind.Line, null, line, MarkerOf(plot, series), auto));

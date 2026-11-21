@@ -34,6 +34,9 @@ public class PdfAFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
             File.ReadAllBytes(PdfAEmbeddingTests.Page(Path.Combine(dir, "font.pdf"), "BT /F1 24 Tf 72 700 Td (Hamburgefonstiv) Tj ET 0 0 0 1 k 0 0 9 9 re f",
                 "/Font << /F1 5 0 R >>", extra: [PdfAEmbeddingTests.SansFont()])),
             File.ReadAllBytes(PdfAEmbeddingTests.Composite(Path.Combine(dir, "cid.pdf"))),
+            // An embedded TrueType font with widths other than its program's, flagged symbolic with an encoding (repaired).
+            File.ReadAllBytes(PdfAEmbeddingTests.Page(Path.Combine(dir, "repair.pdf"), "BT /F1 24 Tf 72 700 Td (Hamburgefonstiv) Tj ET", "/Font << /F1 5 0 R >>",
+                extra: [PdfATestFonts.TrueTypeFont(6, extraWidth: 50), PdfATestFonts.Descriptor("FileeTest-TrueType", 7, 4), PdfATestFonts.Program()])),
         ];
     }
 

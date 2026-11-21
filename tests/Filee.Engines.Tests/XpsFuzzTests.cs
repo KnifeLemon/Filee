@@ -48,6 +48,8 @@ public class XpsFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
         var jpegXr = builder.Image(JpegXrTestFile.DcOnlyGrey(), "wdp");
         var profile = builder.Part("Resources/srgb.icc", Pdf.SrgbProfile.Bytes);
+        var inks = builder.Part("Resources/inks.icc", XpsTests.TwoInkProfile());
+        var named = builder.Part("Resources/named.icc", XpsTests.NamedInkProfile());
         var remote = builder.Dictionary("<SolidColorBrush x:Key='Remote' Color='sc#1,0.2,0.4,0.6'/><PathGeometry x:Key='Shape' Figures='M 0,0 L 10,0 10,10 Z'/>");
         var stops = "<GradientStop Color='#FF0000' Offset='-0.5'/><GradientStop Color='#8000FF00' Offset='0.4'/><GradientStop Color='#0000FF' Offset='1.5'/>";
         builder.Page(
@@ -77,6 +79,8 @@ public class XpsFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
             "<Glyphs FontUri='/Resources/missing.odttf' FontRenderingEmSize='12' OriginX='10' OriginY='280' UnicodeString='{}{fallback}' Fill='#FF0000'/>" +
             $"<Glyphs FontUri='{font}' FontRenderingEmSize='14' OriginX='380' OriginY='20' UnicodeString='Filee' IsSideways='true' RenderTransform='0,1,-1,0,380,20' Fill='ContextColor {profile} 1,0.2,0.4,0.6'/>" +
             $"<Path Data='M 230,100 L 270,100 270,140 230,140 Z' Fill='ContextColor /missing.icc 0.8,0,1,0,0,0.5'><Path.Stroke><ImageBrush ImageSource='{{ColorConvertedBitmap {png} {profile}}}' Viewbox='0,0,4,3' Viewport='0,0,8,6' TileMode='Tile'/></Path.Stroke></Path>" +
+            $"<Path Data='M 0,290 L 20,290 20,300 0,300 Z' Fill='ContextColor {inks} 1,0.3,0.8'/><Path Data='M 20,290 L 40,290 40,300 20,300 Z' Fill='ContextColor {named} 0.9,0.5,1'/>" +
+            $"<Glyphs FontUri='{font}' FontRenderingEmSize='14' OriginX='60' OriginY='300' UnicodeString='Filee' IsSideways='true' StyleSimulations='BoldItalicSimulation' Fill='#000000'/>" +
             $"<Path Data='M 280,100 L 330,100 330,150 280,150 Z'><Path.Fill><ImageBrush ImageSource='{jpegXr}' Viewbox='0,0,16,16' Viewport='280,100,50,50'/></Path.Fill></Path>" +
             "<Path Data='M 300,200 L 380,220' Stroke='#80000000' StrokeThickness='9' StrokeStartLineCap='Triangle' StrokeEndLineCap='Round' StrokeDashArray='2 1' StrokeDashCap='Triangle'/>" +
             "<mc:AlternateContent xmlns:mc='http://schemas.openxmlformats.org/markup-compatibility/2006'><mc:Choice Requires='x'/>" +

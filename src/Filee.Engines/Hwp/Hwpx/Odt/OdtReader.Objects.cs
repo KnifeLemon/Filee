@@ -403,7 +403,7 @@ internal sealed partial class OdtReader
             var format = CharFormat(text);
             if (math.Size is { } size)
                 format = format with { Size = size };
-            return new HEquation(math.Formula.Math, format, math.Formula.Tex) { Tex = math.Formula.Tex, Display = math.Formula.Display };
+            return new HEquation(math.Formula.Math, format, math.Formula.Tex) { Tex = math.Formula.Tex, StarMath = math.Formula.StarMath, Display = math.Formula.Display };
         }
         foreach (var image in frame.Elements(Draw + "image"))
         {

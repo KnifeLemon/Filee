@@ -4,7 +4,8 @@
 // footnotes and endnotes, bookmarks and hyperlinks (including the links of a Word table of contents).
 //
 // Split over partial files: this one walks the package and the text, DocxReader.Styles resolves formatting,
-// DocxReader.Tables and DocxReader.Drawing handle tables and graphic objects. The package is read within
+// DocxReader.Tables and DocxReader.Drawing handle tables and graphic objects, DocxReader.Revisions comments and
+// tracked changes. The package is read within
 // DocumentLimits (Documents/DocumentPackage); embedded fonts (word/fonts) are not read.
 
 using System.Globalization;
@@ -265,6 +266,7 @@ internal sealed partial class DocxReader
             _footnotes[Attr(note, "id") ?? ""] = note;
         foreach (var note in _endnotesPart?.Xml.Root?.Elements(W + "endnote") ?? [])
             _endnotes[Attr(note, "id") ?? ""] = note;
+        LoadComments(main);
 
         var document = new HDocument { Title = Title(), LeftOut = _leftOut, WordLineHeights = true, CollapseParagraphSpacing = _collapseSpacing };
         Kinsoku(settings, document);
@@ -1021,6 +1023,19 @@ internal sealed partial class DocxReader
                 _sinks.Pop();
         }
 
+        /// <summary>Inlines go into <paramref name="sink"/> (a deletion's content) until <see cref="CloseSink"/>.</summary>
+        public void OpenSink(List<HInline> sink) => _sinks.Push(sink);
+
+        /// <summary>Ends <paramref name="sink"/> and the links opened in it and left open.</summary>
+        public void CloseSink(List<HInline> sink)
+        {
+            if (!_sinks.Contains(sink))
+                return;
+            while (_sinks.Count > 0 && !ReferenceEquals(_sinks.Pop(), sink))
+            {
+            }
+        }
+
         /// <summary>Continues in a new paragraph that starts on a new page or column.</summary>
         public void Break(bool page)
         {
@@ -1100,7 +1115,7 @@ internal sealed partial class DocxReader
             var name = element.Name.LocalName;
             if (element.Name.Namespace == M)
             {
-                if (name is "oMath" or "oMathPara")
+                if (name is "oMath" or "oMathPara" && _deletion is null)
                     Equations(element, builder, styleRun);
                 continue;
             }
@@ -1142,7 +1157,17 @@ internal sealed partial class DocxReader
                     if (Attr(element, "name") is { Length: > 0 } bookmark && bookmark != "_GoBack")
                         builder.Add(new HBookmark(bookmark));
                     break;
-                case "ins" or "moveTo" or "smartTag" or "customXml":
+                case "ins" or "moveTo":
+                    Inserted(element, builder, styleRun);
+                    break;
+                case "del" or "moveFrom":
+                    Deleted(element, builder, styleRun);
+                    break;
+                case "commentRangeStart":
+                    if (_deletion is null && Comment(element) is { } comment)
+                        builder.Add(new HCommentStart(comment));
+                    break;
+                case "smartTag" or "customXml":
                     ParagraphContent(element.Elements(), builder, styleRun);
                     break;
                 case "dir" or "bdo":
@@ -1167,7 +1192,7 @@ internal sealed partial class DocxReader
                     ParagraphContent(element.Element(W + "sdtContent")?.Elements() ?? [], builder, styleRun);
                     break;
                 default:
-                    break; // pPr, del, moveFrom, proofErr, permStart, commentRangeStart ...: no visible content
+                    break; // pPr, proofErr, permStart, commentRangeEnd ...: no visible content
             }
         }
     }
@@ -1177,7 +1202,7 @@ internal sealed partial class DocxReader
         var props = RunProperties(r.Element(W + "rPr"), styleRun);
         if (props.Hidden == true)
             return;
-        var format = CharFormat(props);
+        var format = WithRunStyle(CharFormat(props), r.Element(W + "rPr"));
 
         foreach (var child in r.Elements())
         {
@@ -1195,9 +1220,18 @@ internal sealed partial class DocxReader
     {
         if (child.Name.Namespace != W)
             return;
+        // Deleted text keeps its text, tabs and line breaks; a page break or a note in it went with it.
+        if (_deletion is not null && (!KeptInDeletion(child.Name.LocalName) || child.Name.LocalName == "br" && Attr(child, "type") is "page" or "column"))
+            return;
         switch (child.Name.LocalName)
         {
-            case "t":
+            case "commentReference":
+                if (_deletion is null && Comment(child) is { } comment)
+                    builder.Add(comment);
+                break;
+            case "t" or "delText":
+                if (child.Name.LocalName == "delText" && _deletion is null)
+                    break; // deleted text outside a deletion
                 if (ShowsText())
                 {
                     // Text typed in Wingdings & co. ("þ" for ☑) becomes the Unicode characters it shows.
@@ -1253,7 +1287,7 @@ internal sealed partial class DocxReader
             case "fldChar":
                 FieldChar(child, builder, format);
                 break;
-            case "instrText":
+            case "instrText" or "delInstrText":
                 if (_fields.LastOrDefault() is { Result: false } field)
                     field.Instruction.Append(child.Value);
                 break;

@@ -152,7 +152,7 @@ internal sealed partial class OdtWriter
             // An embedded formula document (a folder of its own, as LibreOffice stores Math objects) and its picture.
             manifest.Append($"<manifest:file-entry manifest:full-path=\"{formula.Name}/\" manifest:version=\"{Odf.Version}\" manifest:media-type=\"{Odf.FormulaMimeType}\"/>")
                     .Append($"<manifest:file-entry manifest:full-path=\"{formula.Name}/content.xml\" manifest:media-type=\"text/xml\"/>");
-            if (formula.Picture is not null)
+            if (formula.Picture)
                 manifest.Append($"<manifest:file-entry manifest:full-path=\"ObjectReplacements/{formula.Name}\" manifest:media-type=\"image/png\"/>");
         }
         manifest.Append("</manifest:manifest>");
@@ -186,11 +186,11 @@ internal sealed partial class OdtWriter
             foreach (var formula in _formulas)
             {
                 _token.ThrowIfCancellationRequested();
-                WriteText(zip, formula.Name + "/content.xml", formula.MathMl);
-                if (formula.Picture is { } picture)
+                WriteText(zip, formula.Name + "/content.xml", FormulaContent(formula));
+                if (formula.Picture)
                 {
                     using var target = zip.CreateEntry("ObjectReplacements/" + formula.Name, CompressionLevel.Optimal).Open();
-                    target.Write(picture);
+                    FormulaPicture(formula, target);
                 }
             }
             WriteText(zip, "META-INF/manifest.xml", manifest.ToString());

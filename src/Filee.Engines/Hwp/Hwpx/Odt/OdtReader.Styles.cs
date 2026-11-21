@@ -193,7 +193,12 @@ internal sealed partial class OdtReader
             return outer;
         var text = outer;
         foreach (var style in Chain("text", styleName, withDefault: false))
+        {
             text = text.Apply(style.Element(Style + "text-properties"), _fontFaces);
+            // The named (not automatic) style the span is in, for the writers that keep character styles.
+            if (_named.TryGetValue(("text", Attr(style, Style + "name") ?? ""), out var named) && ReferenceEquals(named, style))
+                text = text with { StyleName = Attr(style, Style + "display-name") ?? Attr(style, Style + "name") };
+        }
         return text;
     }
 
@@ -377,6 +382,9 @@ internal sealed partial class OdtReader
         public int? Scale { get; init; }
         public bool Hidden { get; init; }
 
+        /// <summary>The named text style the text is in (its display name), or null.</summary>
+        public string? StyleName { get; init; }
+
         public TextProps Apply(XElement? props, Dictionary<string, string> fontFaces)
         {
             if (props is null)
@@ -458,8 +466,8 @@ internal sealed partial class OdtReader
             // 한글's letter spacing is a percentage of the font size, ODF's a length.
             Spacing: letterSpacing == 0 ? 0 : Math.Clamp((int)Math.Round(letterSpacing / size), -50, 50),
             Layout: t.Scale is not null || letterSpacing != 0 || position != 0
-                ? new HCharLayout(Scale: t.Scale, LetterSpacing: letterSpacing, Position: (int)Math.Round(position * size))
-                : null);
+                ? new HCharLayout(Scale: t.Scale, LetterSpacing: letterSpacing, Position: (int)Math.Round(position * size), Style: t.StyleName)
+                : t.StyleName is not null ? new HCharLayout(Style: t.StyleName) : null);
     }
 
     // ───────────────────────── Helpers ─────────────────────────

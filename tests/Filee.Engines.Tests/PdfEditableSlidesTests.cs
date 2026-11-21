@@ -339,7 +339,9 @@ public class PdfEditableSlidesTests(EngineFixture fx) : IClassFixture<EngineFixt
     {
         var folder = fx.NewFolder();
         var seed = File.ReadAllBytes(MakeDeckPdf(folder));
-        new FuzzHarness(fx, 40, 20261120).Files("pdf-slides", "pdf", [seed], (bytes, random) => new PdfStreamFuzzer(bytes, random).Next, (path, media) =>
+        // Function-based and mesh shadings, drawn soft masks, a picture under a gradient mask and blend modes.
+        var painting = File.ReadAllBytes(MakePaintingPdf(folder));
+        new FuzzHarness(fx, 40, 20261120).Files("pdf-slides", "pdf", [seed, painting], (bytes, random) => new PdfStreamFuzzer(bytes, random).Next, (path, media) =>
         {
             try
             {
@@ -790,7 +792,276 @@ public class PdfEditableSlidesTests(EngineFixture fx) : IClassFixture<EngineFixt
         Assert.Null(plainZip.GetEntry("ppt/notesSlides/notesSlide1.xml"));
     }
 
+    // ───────────────────────── Function and mesh shadings, drawn masks, tiles, blend modes ─────────────────────────
+
+    /// <summary>A free-form, Coons or lattice mesh (types 4, 6, 5) of RGB vertices, 16-bit coordinates over the page, 8-bit colours.</summary>
+    private static Sharp.PdfDictionary Mesh(Sharp.PdfDocument document, int type, byte[] data, int perRow = 0)
+    {
+        var mesh = new Sharp.PdfDictionary(document);
+        mesh.Elements.SetInteger("/ShadingType", type);
+        mesh.Elements.SetName("/ColorSpace", "/DeviceRGB");
+        mesh.Elements.SetInteger("/BitsPerCoordinate", 16);
+        mesh.Elements.SetInteger("/BitsPerComponent", 8);
+        if (type == 5)
+            mesh.Elements.SetInteger("/VerticesPerRow", perRow);
+        else
+            mesh.Elements.SetInteger("/BitsPerFlag", 8);
+        mesh.Elements["/Decode"] = Numbers(document, 0, Width, 0, Height, 0, 1, 0, 1, 0, 1);
+        mesh.CreateStream(data);
+        document.Internals.AddObject(mesh);
+        return mesh;
+    }
+
+    /// <summary>A point of a mesh (16 bits each over the page) and, when given, an RGB colour.</summary>
+    private static byte[] MeshPoint(double x, double y, (byte R, byte G, byte B)? color = null)
+    {
+        var (u, v) = ((ushort)Math.Round(x / Width * 65535), (ushort)Math.Round(y / Height * 65535));
+        byte[] point = [(byte)(u >> 8), (byte)u, (byte)(v >> 8), (byte)v];
+        return color is { } c ? [.. point, c.R, c.G, c.B] : point;
+    }
+
+    /// <summary>A function-based shading (type 1) of a 2 × 2 sampled function over the unit square, mapped by <paramref name="matrix"/>.</summary>
+    private static Sharp.PdfDictionary FunctionShading(Sharp.PdfDocument document, double[] matrix, params (byte R, byte G, byte B)[] corners)
+    {
+        var function = new Sharp.PdfDictionary(document);
+        function.Elements.SetInteger("/FunctionType", 0);
+        function.Elements["/Domain"] = Numbers(document, 0, 1, 0, 1);
+        function.Elements["/Range"] = Numbers(document, 0, 1, 0, 1, 0, 1);
+        function.Elements["/Size"] = new Sharp.PdfArray(document, new Sharp.PdfInteger(2), new Sharp.PdfInteger(2));
+        function.Elements.SetInteger("/BitsPerSample", 8);
+        function.CreateStream([.. corners.SelectMany(c => new[] { c.R, c.G, c.B })]);
+        document.Internals.AddObject(function);
+        var shading = new Sharp.PdfDictionary(document);
+        shading.Elements.SetInteger("/ShadingType", 1);
+        shading.Elements.SetName("/ColorSpace", "/DeviceRGB");
+        shading.Elements["/Matrix"] = Numbers(document, matrix);
+        shading.Elements.SetReference("/Function", function);
+        document.Internals.AddObject(shading);
+        return shading;
+    }
+
+    /// <summary>A form group for a soft mask painting <paramref name="content"/> over the page, with <paramref name="shadings"/>.</summary>
+    private static Sharp.PdfDictionary MaskState(Sharp.PdfDocument document, string content, params (string Name, Sharp.PdfDictionary Shading)[] shadings)
+    {
+        var group = new Sharp.PdfDictionary(document);
+        group.Elements.SetName("/Type", "/XObject");
+        group.Elements.SetName("/Subtype", "/Form");
+        group.Elements["/BBox"] = Numbers(document, 0, 0, Width, Height);
+        var transparency = new Sharp.PdfDictionary(document);
+        transparency.Elements.SetName("/S", "/Transparency");
+        transparency.Elements.SetName("/CS", "/DeviceRGB");
+        group.Elements["/Group"] = transparency;
+        var resources = new Sharp.PdfDictionary(document);
+        var named = new Sharp.PdfDictionary(document);
+        foreach (var (name, shading) in shadings)
+            named.Elements.SetReference(name, shading);
+        resources.Elements["/Shading"] = named;
+        group.Elements["/Resources"] = resources;
+        group.CreateStream(Encoding.ASCII.GetBytes(content));
+        document.Internals.AddObject(group);
+        var mask = new Sharp.PdfDictionary(document);
+        mask.Elements.SetName("/Type", "/Mask");
+        mask.Elements.SetName("/S", "/Luminosity");
+        mask.Elements.SetReference("/G", group);
+        var state = new Sharp.PdfDictionary(document);
+        state.Elements.SetName("/Type", "/ExtGState");
+        state.Elements["/SMask"] = mask;
+        return state;
+    }
+
+    /// <summary>
+    /// A page of what the slides now rebuild: a function-based shading that is a linear gradient (red → blue) and one
+    /// that isn't (a saddle of red and blue), a free-form mesh that is a gradient (green → yellow), a Coons patch of
+    /// four colours, a lattice mesh as a pattern fill (orange → purple), a red bar under a luminosity mask drawn from
+    /// two rectangles (white, grey), a green picture under a gradient mask, and a yellow Multiply highlight over text
+    /// beside a blue Screen bar.
+    /// </summary>
+    internal static string MakePaintingPdf(string folder)
+    {
+        var content =
+            "q 100 340 200 100 re W n /Sh1 sh Q\n" +
+            "q 400 340 200 100 re W n /Sh2 sh Q\n" +
+            "q 655 345 190 90 re W n /Sh3 sh Q\n" +
+            "q /Sh4 sh Q\n" +
+            "q /Pattern cs /P5 scn 410 110 180 80 re f Q\n" +
+            "q /GS1 gs 1 0 0 rg 650 240 260 40 re f Q\n" +
+            "q /GS2 gs 200 0 0 50 650 120 cm /Im0 Do Q\n" +
+            "BT /F1 24 Tf 100 490 Td (Highlighted words) Tj ET\n" +
+            "q /GS3 gs 1 1 0 rg 95 482 230 30 re f Q\n" +
+            "q /GS4 gs 0 0 1 rg 600 482 100 30 re f Q\n";
+        return RawPdf(Path.Combine(folder, "painting.pdf"), content, (document, page) =>
+        {
+            Resource(document, page, "/Shading", "/Sh1", FunctionShading(document, [200, 0, 0, 100, 100, 340], (255, 0, 0), (0, 0, 255), (255, 0, 0), (0, 0, 255)));
+            Resource(document, page, "/Shading", "/Sh2", FunctionShading(document, [200, 0, 0, 100, 400, 340], (255, 0, 0), (0, 0, 255), (0, 0, 255), (255, 0, 0)));
+            // Two triangles over 650–850 × 340–440: green on the left, yellow on the right.
+            byte[] freeForm =
+            [
+                0, .. MeshPoint(650, 340, (0, 160, 0)), 0, .. MeshPoint(850, 340, (255, 220, 0)), 0, .. MeshPoint(650, 440, (0, 160, 0)),
+                1, .. MeshPoint(850, 440, (255, 220, 0)),
+            ];
+            Resource(document, page, "/Shading", "/Sh3", Mesh(document, 4, freeForm));
+            // A Coons patch over 100–300 × 100–200: red, green, blue and white corners.
+            byte[] coons =
+            [
+                0, .. MeshPoint(100, 100), .. MeshPoint(100, 133), .. MeshPoint(100, 167), .. MeshPoint(100, 200), .. MeshPoint(167, 200),
+                .. MeshPoint(233, 200), .. MeshPoint(300, 200), .. MeshPoint(300, 167), .. MeshPoint(300, 133), .. MeshPoint(300, 100),
+                .. MeshPoint(233, 100), .. MeshPoint(167, 100), 255, 0, 0, 0, 160, 0, 0, 0, 255, 255, 255, 255,
+            ];
+            Resource(document, page, "/Shading", "/Sh4", Mesh(document, 6, coons));
+            byte[] lattice =
+            [
+                .. MeshPoint(400, 100, (255, 140, 0)), .. MeshPoint(600, 100, (255, 140, 0)),
+                .. MeshPoint(400, 200, (120, 0, 160)), .. MeshPoint(600, 200, (120, 0, 160)),
+            ];
+            var pattern = new Sharp.PdfDictionary(document);
+            pattern.Elements.SetName("/Type", "/Pattern");
+            pattern.Elements.SetInteger("/PatternType", 2);
+            pattern.Elements.SetReference("/Shading", Mesh(document, 5, lattice, perRow: 2));
+            Resource(document, page, "/Pattern", "/P5", pattern);
+
+            Resource(document, page, "/ExtGState", "/GS1", MaskState(document, "1 g 0 0 780 540 re f 0.5 g 780 0 180 540 re f"));
+            Resource(document, page, "/ExtGState", "/GS2", MaskState(document, "/S0 sh", ("/S0", Shading(document, 2, [650, 0, 850, 0], [0, 0, 0], [1, 1, 1]))));
+            var picture = new Sharp.PdfDictionary(document);
+            picture.Elements.SetName("/Type", "/XObject");
+            picture.Elements.SetName("/Subtype", "/Image");
+            picture.Elements.SetInteger("/Width", 40);
+            picture.Elements.SetInteger("/Height", 2);
+            picture.Elements.SetInteger("/BitsPerComponent", 8);
+            picture.Elements.SetName("/ColorSpace", "/DeviceRGB");
+            picture.CreateStream([.. Enumerable.Range(0, 80).SelectMany(_ => new byte[] { 0, 150, 60 })]);
+            Resource(document, page, "/XObject", "/Im0", picture);
+            foreach (var (name, mode) in new[] { ("/GS3", "/Multiply"), ("/GS4", "/Screen") })
+            {
+                var blend = new Sharp.PdfDictionary(document);
+                blend.Elements.SetName("/Type", "/ExtGState");
+                blend.Elements.SetName("/BM", mode);
+                Resource(document, page, "/ExtGState", name, blend);
+            }
+        });
+    }
+
+    [Fact]
+    public async Task Function_and_mesh_shadings_become_gradients_where_they_are_one_and_pictures_elsewhere()
+    {
+        var pptx = await ConvertAsync(MakePaintingPdf(fx.NewFolder()));
+        PdfSlidesTests.ValidPackage(pptx);
+        var (tree, _) = Assert.Single(Slides(pptx));
+        SKColor Stop(XElement shape, int index) => SKColor.Parse((string)shape.Descendants(A + "gs").ElementAt(index).Element(A + "srgbClr")!.Attribute("val")!);
+
+        // The function-based shading that changes along x only: a linear gradient, red to blue, left to right.
+        var linear = Shape(tree, b => Near(b.X, 100) && Near(b.Y, Height - 440) && Near(b.Width, 200));
+        Assert.Equal("0", Attribute(linear, "lin", "ang"));
+        var (first, last) = (Stop(linear, 0), Stop(linear, linear.Descendants(A + "gs").Count() - 1));
+        Assert.True(first is { Red: > 230, Blue: < 20 } && last is { Red: < 20, Blue: > 230 }, $"{first} {last}");
+        // The free-form mesh: green to yellow, left to right.
+        var mesh = Shape(tree, b => Near(b.X, 655) && Near(b.Y, Height - 435));
+        Assert.NotNull(mesh.Descendants(A + "gradFill").SingleOrDefault());
+        // The lattice as a pattern fill: a gradient across the rectangle, orange at the bottom, purple at the top.
+        var lattice = Shape(tree, b => Near(b.X, 410) && Near(b.Y, Height - 190));
+        Assert.NotNull(lattice.Descendants(A + "gradFill").SingleOrDefault());
+        // The saddle and the Coons patch aren't gradients: no shapes of their own.
+        Assert.DoesNotContain(Stack(tree), e => e.Name.LocalName == "sp" && e.Element(P + "txBody") is null && Near(Box(e).X, 400) && Near(Box(e).Y, Height - 440));
+        Assert.DoesNotContain(Stack(tree), e => e.Name.LocalName == "sp" && e.Element(P + "txBody") is null && Near(Box(e).X, 100) && Near(Box(e).Y, Height - 200));
+
+        var deck = PptxSlideReader.Read(pptx, cancellationToken: Token);
+        using var bitmap = SlideOutput.ToBitmaps(deck, 72, cancellationToken: Token).Single();
+        SKColor At(double x, double y) => bitmap.GetPixel((int)x, (int)(Height - y));
+        bool Red(SKColor c) => c is { Red: > 190, Green: < 80, Blue: < 80 };
+        bool Blue(SKColor c) => c is { Red: < 80, Green: < 80, Blue: > 190 };
+        Assert.True(Red(At(105, 390)) && Blue(At(295, 390)), $"{At(105, 390)} {At(295, 390)}");
+        // The saddle: red at two opposite corners, blue at the others, purple in the middle.
+        Assert.True(Red(At(404, 344)) && Red(At(596, 436)) && Blue(At(596, 344)) && Blue(At(404, 436)), $"{At(404, 344)} {At(596, 344)}");
+        Assert.True(At(500, 390) is { Red: > 90 and < 170, Blue: > 90 and < 170 }, At(500, 390).ToString());
+        Assert.True(At(660, 390) is { Green: > 120, Red: < 60 } && At(840, 390) is { Red: > 230, Green: > 190, Blue: < 60 }, $"{At(660, 390)} {At(840, 390)}");
+        // The Coons patch: each corner's colour near it.
+        Assert.True(Red(At(104, 104)) && Blue(At(296, 196)), $"{At(104, 104)} {At(296, 196)}");
+        Assert.True(At(104, 196) is { Green: > 120, Red: < 60, Blue: < 60 } && At(296, 104) is { Red: > 220, Green: > 220, Blue: > 220 }, $"{At(104, 196)} {At(296, 104)}");
+        Assert.True(At(500, 115) is { Red: > 220, Green: > 110 and < 170 } && At(500, 185) is { Red: > 100 and < 150, Blue: > 130 }, $"{At(500, 115)} {At(500, 185)}");
+    }
+
+    [Fact]
+    public async Task Soft_masks_of_drawn_groups_and_gradient_masks_on_pictures_keep_their_alpha()
+    {
+        var pptx = await ConvertAsync(MakePaintingPdf(fx.NewFolder()));
+        var (tree, rels) = Assert.Single(Slides(pptx));
+
+        // The picture under the grey gradient mask: its own PNG, transparent on the left, opaque on the right.
+        var picture = tree.Descendants(P + "pic").Single(p => Near(Box(p).X, 650) && Near(Box(p).Width, 200));
+        using (var zip = ZipFile.OpenRead(pptx))
+        {
+            var target = rels[(string)picture.Descendants(A + "blip").Single().Attribute(R + "embed")!].Replace("../", "ppt/", StringComparison.Ordinal);
+            using var stream = zip.GetEntry(target)!.Open();
+            using var memory = new MemoryStream();
+            stream.CopyTo(memory);
+            using var png = SKBitmap.Decode(memory.ToArray());
+            Assert.True(png.GetPixel(1, 0).Alpha < 30 && png.GetPixel(png.Width - 2, 0).Alpha > 225, $"{png.GetPixel(1, 0)} {png.GetPixel(png.Width - 2, 0)}");
+        }
+
+        var deck = PptxSlideReader.Read(pptx, cancellationToken: Token);
+        using var bitmap = SlideOutput.ToBitmaps(deck, 72, cancellationToken: Token).Single();
+        SKColor At(double x, double y) => bitmap.GetPixel((int)x, (int)(Height - y));
+        // The red bar: full red where the mask's group is white, half red where it is grey.
+        Assert.True(At(700, 260) is { Red: > 230, Green: < 40, Blue: < 40 }, At(700, 260).ToString());
+        Assert.True(At(880, 260) is { Red: > 230, Green: > 100 and < 160, Blue: > 100 and < 160 }, At(880, 260).ToString());
+        // The masked picture fades in from the left.
+        Assert.True(At(655, 145).Green > 240 && At(845, 145) is { Green: > 130 and < 170, Red: < 30 }, $"{At(655, 145)} {At(845, 145)}");
+    }
+
+    [Fact]
+    public async Task Tiling_patterns_are_tiled_picture_fills_and_multiply_highlights_go_under_their_text()
+    {
+        var folder = fx.NewFolder();
+        var (tree, rels) = Assert.Single(Slides(await ConvertAsync(MakeFillsPdf(folder))));
+        // The rectangle tiled with red squares: a picture fill of its cell (10 points, a 30-pixel PNG at 96 dpi: 44 %).
+        var tiled = Shape(tree, b => Near(b.X, 600) && Near(b.Y, Height - 200));
+        var tile = tiled.Descendants(A + "tile").Single();
+        Assert.InRange((int)tile.Attribute("sx")!, 44000, 45000);
+        Assert.InRange((int)tile.Attribute("sy")!, 44000, 45000);
+        Assert.Equal("tl", (string?)tile.Attribute("algn"));
+        Assert.EndsWith(".png", rels[(string)tiled.Descendants(A + "blip").Single().Attribute(R + "embed")!], StringComparison.Ordinal);
+
+        var painting = await ConvertAsync(MakePaintingPdf(folder));
+        var (stack, _) = Assert.Single(Slides(painting));
+        var shapes = Stack(stack);
+        // Multiply: the yellow highlight goes under the text it was painted over.
+        var highlight = shapes.IndexOf(Shape(stack, b => Near(b.X, 95) && Near(b.Y, Height - 512)));
+        Assert.True(highlight < shapes.IndexOf(TextBox(stack, "Highlighted")), $"{highlight}");
+        // Screen can't be a shape: it is drawn, screened over the white page (white, as in the PDF).
+        Assert.DoesNotContain(shapes, e => e.Name.LocalName == "sp" && Near(Box(e).X, 600) && Near(Box(e).Y, Height - 512));
+        var deck = PptxSlideReader.Read(painting, cancellationToken: Token);
+        using var bitmap = SlideOutput.ToBitmaps(deck, 72, cancellationToken: Token).Single();
+        Assert.True(bitmap.GetPixel(320, (int)(Height - 500)) is { Red: > 230, Green: > 230, Blue: < 60 });
+        Assert.True(bitmap.GetPixel(650, (int)(Height - 497)) is { Red: > 240, Green: > 240, Blue: > 240 }, bitmap.GetPixel(650, (int)(Height - 497)).ToString());
+    }
+
     // ───────────────────────── Hostile pages ─────────────────────────
+
+    [Fact]
+    public async Task Huge_meshes_functions_and_drawn_masks_finish_quickly()
+    {
+        var content = new StringBuilder("q /Sh1 sh Q q /Sh2 sh Q\n");
+        // 400 soft masks of drawn groups (past the mask budget) over small bars.
+        for (var i = 0; i < 400; i++)
+            content.Append(Inv($"q /M{i} gs 1 0 0 rg {i % 40 * 24} {i / 40 * 54} 20 50 re f Q\n"));
+        var pdf = RawPdf(Path.Combine(fx.NewFolder(), "meshes.pdf"), content.ToString(), (document, page) =>
+        {
+            // 300,000 triangles in one strip, more than MaxTriangles.
+            var strip = new List<byte>();
+            for (var i = 0; i < 300_002; i++)
+                strip.AddRange([(byte)(i < 3 ? 0 : 1), .. MeshPoint(i % 960, i % 2 * 540, ((byte)i, 0, 0))]);
+            Resource(document, page, "/Shading", "/Sh1", Mesh(document, 4, [.. strip]));
+            // A function-based shading over a huge domain.
+            var huge = FunctionShading(document, [1e6, 0, 0, 1e6, -5e5, -5e5], (0, 0, 0), (255, 255, 255), (0, 0, 0), (255, 255, 255));
+            Resource(document, page, "/Shading", "/Sh2", huge);
+            for (var i = 0; i < 400; i++)
+                Resource(document, page, "/ExtGState", $"/M{i}", MaskState(document, Inv($"1 g 0 0 {Width} {Height} re f 0.5 g 0 0 {i + 1} 10 re f")));
+        });
+
+        var stopwatch = Stopwatch.StartNew();
+        var pptx = await ConvertAsync(pdf);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(60), stopwatch.Elapsed.ToString());
+        Assert.Single(Slides(pptx));
+    }
 
     [Fact]
     public async Task Deep_clips_huge_tiles_and_nested_patterns_finish_quickly()
