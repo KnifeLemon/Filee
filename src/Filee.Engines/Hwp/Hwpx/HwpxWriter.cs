@@ -41,6 +41,12 @@ internal sealed partial class HwpxWriter
         InitializeHeader();
     }
 
+    /// <summary>
+    /// The document's neighbouring paragraphs keep the larger of their spaces between them (Word): 한글 adds them, so the
+    /// space after a paragraph is written as what is left of it over the next one's space before.
+    /// </summary>
+    private bool _collapseSpacing;
+
     // ───────────────────────── Entry point ─────────────────────────
 
     /// <summary>Writes <paramref name="document"/> as an HWPX file.</summary>
@@ -60,6 +66,7 @@ internal sealed partial class HwpxWriter
             XDocument.Parse(ReadEntry(reference, "Contents/header.xml")),
             XDocument.Parse(ReadEntry(reference, "Contents/section0.xml")));
 
+        writer._collapseSpacing = document.CollapseParagraphSpacing;
         var sections = document.Sections.Count > 0 ? document.Sections : [new HSection()];
         var sectionXml = sections.Select(writer.Section).ToList();
         writer.WritePackage(reference, outputPath, sectionXml, document.Title, cancellationToken);

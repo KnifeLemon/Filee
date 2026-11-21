@@ -59,6 +59,27 @@ internal sealed class HDocument
     /// page) ascent and descent and 30% more (DOCX, DOC). Only the layout engine uses it.
     /// </summary>
     public bool WordLineHeights { get; set; }
+
+    /// <summary>
+    /// Neighbouring paragraphs keep the larger of the first one's space after and the next one's space before between
+    /// them, not both (Word's rule, as in HTML, measured on Word's own PDF of #1152: 6 pt after and 12 pt before give
+    /// 12 pt; DOCX without w:doNotUseHTMLParagraphAutoSpacing, where they add up). The paragraphs keep
+    /// both values: the layout engine collapses them, and writers for a format that adds them (HWPX) lower the space
+    /// after (<see cref="CollapsedAfter"/>).
+    /// </summary>
+    public bool CollapseParagraphSpacing { get; set; }
+
+    /// <summary>
+    /// The space after <paramref name="paragraph"/> when <paramref name="next"/> follows it and the larger of the two
+    /// spaces goes between them: what is left of it over the next one's space before. A page or column break before the
+    /// next paragraph keeps it.
+    /// </summary>
+    public static int? CollapsedAfter(HParaFormat paragraph, HParagraph? next, HParaFormat? nextFormat = null)
+    {
+        if (next is null || next.PageBreakBefore || next.ColumnBreakBefore || paragraph.After is not { } after || after <= 0)
+            return paragraph.After;
+        return (nextFormat ?? next.Format).Before is { } before && before > 0 ? Math.Max(0, after - before) : after;
+    }
 }
 
 /// <summary>A run of pages sharing page setup, headers and footers (한글 "구역").</summary>

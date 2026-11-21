@@ -651,6 +651,53 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void Columns_of_their_own_widths_are_balanced_before_a_continuous_break()
+    {
+        // Word balances a section's columns at a continuous section break also when they have widths of their own: the
+        // lines going into the 20 pt column are laid out anew for it. Filled, the 50 pt column held all of them.
+        var text = string.Join(" ", Enumerable.Range(0, 12).Select(i => $"w{i}"));
+        var after = Paragraph("after");
+        after.ColumnsChange = HColumns.Single;
+        var section = Section(Small, Paragraph(text), after);
+        section.Columns = WideAndNarrow;
+
+        var page = Assert.Single(Compose(section).Pages);
+
+        var runs = Runs(page).Where(r => r.Text.Trim() != "after").ToList();
+        var wide = runs.Where(r => r.Positions[0].X < 65).Select(r => MathF.Round(r.Positions[0].Y, 1)).Distinct().ToList();
+        var narrow = runs.Where(r => r.Positions[0].X > 65).ToList();
+        var narrowLines = narrow.Select(r => MathF.Round(r.Positions[0].Y, 1)).Distinct().ToList();
+        Assert.NotEmpty(narrow);
+        Assert.InRange(narrowLines.Count - wide.Count, -1, 1);
+        // Each line of the narrow column fits its 20 pt; nothing lost or repeated.
+        Assert.All(narrow, r => Assert.True(r.Positions[^1].X <= 90, $"'{r.Text}' at {r.Positions[^1].X}"));
+        Assert.Equal(Normalise(text + "after"), Normalise(string.Concat(Runs(page).Select(r => r.Text))));
+        // The one-column paragraph right under the longer column.
+        var last = Math.Max(wide.Max(), narrowLines.Max());
+        Assert.Equal(last + 16, Runs(page).Single(r => r.Text.Trim() == "after").Positions[0].Y, 0.01f);
+    }
+
+    [Fact]
+    public void Columns_a_column_break_filled_stay_as_filled_at_a_continuous_break()
+    {
+        // A column break puts what follows it into the next column (#1584's invoice heading: three columns, each started
+        // by a break): balancing would move a2 under b0's column, so the columns stay as the breaks filled them.
+        var blocks = Enumerable.Range(0, 3).Select(i => Paragraph($"a{i}")).ToList();
+        var broken = Paragraph("b0");
+        broken.ColumnBreakBefore = true;
+        var wide = Paragraph("wide");
+        wide.ColumnsChange = HColumns.Single;
+        var section = Section(Small, [.. blocks, broken, wide]);
+        section.Columns = Two;
+
+        var runs = Runs(Assert.Single(Compose(section).Pages)).ToDictionary(r => r.Text);
+
+        Assert.True(runs["a2"].Positions[0].X < 50);
+        Assert.Equal(runs["a0"].Positions[0].Y, runs["b0"].Positions[0].Y, 0.01f);
+        Assert.Equal(runs["a2"].Positions[0].Y + 16, runs["wide"].Positions[0].Y, 0.01f);
+    }
+
+    [Fact]
     public void Columns_changing_on_a_page_start_under_the_balanced_columns_before()
     {
         var blocks = Enumerable.Range(0, 5).Select(i => Paragraph($"a{i}")).ToList();

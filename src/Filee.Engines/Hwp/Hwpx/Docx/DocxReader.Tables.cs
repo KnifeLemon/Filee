@@ -47,7 +47,7 @@ internal sealed partial class DocxReader
         };
 
         if (tblPr?.Element(W + "tblpPr") is { } position)
-            Float(table, position);
+            Float(table, position, Val(tblPr.Element(W + "tblOverlap")) != "never");
 
         // Borders and cell margins: table style chain, then the table's own properties.
         var borders = new Dictionary<string, HBorder>();
@@ -190,9 +190,10 @@ internal sealed partial class DocxReader
     /// <summary>
     /// A floating table's place (w:tblpPr): against the paper (page), the margins (margin) or, down, the paragraph after
     /// the table and, across, the column (text); at tblpX / tblpY from their left and top, or aligned by tblpXSpec /
-    /// tblpYSpec. Text goes around it on both sides, the From-text distances away.
+    /// tblpYSpec (which win over tblpX / tblpY). Text goes around it on both sides, the From-text distances away. A table
+    /// with w:tblOverlap never may not overlap another floating table (HAnchor.AllowOverlap false).
     /// </summary>
-    private static void Float(HTable table, XElement position)
+    private static void Float(HTable table, XElement position, bool overlap)
     {
         static string Area(string? anchor, string text) => anchor switch
         {
@@ -223,7 +224,7 @@ internal sealed partial class DocxReader
                 "outside" => "OUTSIDE",
                 _ => "TOP",
             }, ySpec is null or "inline" ? HwpxUnits.FromTwips(Twips(position, "tblpY") ?? 0) : 0,
-            "SQUARE", true);
+            "SQUARE", overlap);
         int Distance(string name) => HwpxUnits.FromTwips(Math.Max(0, Twips(position, name) ?? 0));
         table.FloatDistance = new HInsets(Distance("leftFromText"), Distance("rightFromText"), Distance("topFromText"), Distance("bottomFromText"));
     }

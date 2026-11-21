@@ -32,6 +32,9 @@
 //   header) are drawn as in the body (BoxBorder), each line with its part of the box. Cells spaced apart (Word's
 //   w:tblCellSpacing) sit that far in from their grid columns and their row on every side (twice that between two
 //   cells), measured with it, and the table's outer border (HTable.Frame) is drawn around them.
+// - Word floating tables in a cell, header or footer (HTable.Float) go across to their place and down from the
+//   paragraph after them, or onto the page where their anchor says (see Floating); a list's paragraphs keep the
+//   larger of two neighbours' spaces between them in a Word document (CollapseSpacing).
 // - Right to left (Word w:bidiVisual, RTF \rtlrow): the first column is the rightmost, and the table's alignment and
 //   indent and each cell's left and right borders and padding name the start and the end side, so they change places.
 // - Drawing: each cell's fill (a colour, a picture; EMF / WMF as vector drawing), then its content, then its borders (the cell's, else the table's, else a thin grid);
@@ -179,6 +182,9 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
     /// </summary>
     public bool WordCells { get; init; }
 
+    /// <summary>Neighbouring paragraphs in a list keep the larger of their spaces between them (HDocument.CollapseParagraphSpacing).</summary>
+    public bool CollapseSpacing { get; init; }
+
     // ───────────────────────── Stacks ─────────────────────────
 
     /// <summary>
@@ -206,6 +212,8 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         // The paragraph laid out ahead (to see whether its border continues the box), and the box the last paragraph drew.
         (int Index, ParagraphBox Box)? ahead = null;
         (BoxBorder Border, int Index, float Bottom)? box = null;
+        // The space after the paragraph just stacked, while it is the last block.
+        float? after = null;
         for (var i = 0; i < blocks.Count; i++)
         {
             switch (blocks[i])
@@ -216,7 +224,8 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                 case HParagraph p:
                     var laid = ahead is (var at, var early) && at == i ? early : paragraph(p, width);
                     ahead = null;
-                    y += skipBefore ? 0 : laid.SpaceBefore;
+                    // Word's paragraph spacing: the larger of the space after the paragraph before and this one's before.
+                    y += skipBefore ? 0 : CollapseSpacing && after is { } above && !p.PageBreakBefore && !p.ColumnBreakBefore ? Math.Max(0, laid.SpaceBefore - above) : laid.SpaceBefore;
                     skipBefore = false;
                     var (opens, closes) = (true, true);
                     if (laid.Border is { } border)
@@ -257,13 +266,21 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                     }
                     box = laid.Border is { } drawn ? (drawn, i, y) : null;
                     y += laid.SpaceAfter;
+                    after = laid.SpaceAfter;
                     inStep &= laid.StoredLines;
                     break;
                 case HTable t when _depth < MaxDepth:
                     box = null;
+                    after = null;
                     _depth++;
                     try
                     {
+                        // A Word floating table in a cell, header or footer: at its place (see Floating).
+                        if (t.Float is { } anchor && holder is null)
+                        {
+                            Floating(t, anchor, width, ref y, pieces);
+                            break;
+                        }
                         // The 한글 line the table is: the holder's, or the table's own when it is all its paragraph holds.
                         var follower = Follower(blocks, i);
                         var line = holder?.Lines?.Segments.FirstOrDefault() ?? (follower is null ? t.Line : null);
@@ -316,6 +333,32 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         pieces.AddRange(front.OrderBy(o => o.Item1).Select(o => o.Item2));
         extent = y;
         return pieces;
+    }
+
+    /// <summary>
+    /// A Word floating table (HTable.Float) in a paragraph list: across at its place in the list (the list as its
+    /// column and margins) or, given the page's frame, against the margins or the paper; down from where the paragraph
+    /// after it starts (its tblpY, never above it), the list growing to hold it as a cell grows to hold a picture at its
+    /// paragraph, or against the page (a header's letterhead table), taking no room in the list. The text after it
+    /// goes on under it: lists don't wrap text around objects.
+    /// </summary>
+    private void Floating(HTable t, HAnchor anchor, float width, ref float y, List<Piece> pieces)
+    {
+        var table = Layout(t, width);
+        var (w, h) = (table.Width, table.Height);
+        var list = new SKRect(0, 0, width, 0);
+        var page = frame?.Invoke();
+        var local = new AnchorFrame(list, list, list, new SKRect(0, 0, width, 0), page?.Odd ?? true);
+        var inList = FloatingObjects.Place(anchor, w, h, local);
+        var onPage = page is { } f ? FloatingObjects.Place(anchor, w, h, f) : inList;
+        var pageX = page is not null && anchor.HorizontalRelativeTo is "PAPER" or "PAGE";
+        var pageY = page is not null && anchor.VerticalRelativeTo is "PAPER" or "PAGE";
+        var rows = table.Rows;
+        var drop = pageY ? 0 : Math.Max(0, inList.Top);
+        pieces.Add(new Piece(y, pageY ? 0 : drop + h, (content, x, top) =>
+            Draw(content, rows, pageX ? onPage.Left : x + inList.Left, pageY ? onPage.Top : top + drop)));
+        if (!pageY)
+            y += drop + h;
     }
 
     /// <summary>
