@@ -830,6 +830,48 @@ internal sealed class HNote(bool endnote) : HInline
 }
 
 /// <summary>
+/// A comment (Word comment, RTF annotation, ODF office:annotation, 한글 메모) where its mark stands: at the end of
+/// the text it is on, which starts at its <see cref="HCommentStart"/> (a comment without one is on a point). Only the
+/// DOCX and RTF writers write comments, and the Markdown and HTML writers as notes; the others and the layout leave
+/// them out.
+/// </summary>
+internal sealed class HComment : HInline
+{
+    public string? Author { get; set; }
+
+    /// <summary>The author's initials (Word w:initials, RTF \atnid); null when the source has none.</summary>
+    public string? Initials { get; set; }
+
+    /// <summary>When the comment was written (UTC); null when the source doesn't say.</summary>
+    public DateTime? Date { get; set; }
+
+    public List<HBlock> Blocks { get; } = [];
+}
+
+/// <summary>Where the text <see cref="Comment"/> is on starts (Word w:commentRangeStart, RTF \atrfstart).</summary>
+internal sealed class HCommentStart(HComment comment) : HInline
+{
+    public HComment Comment { get; } = comment;
+}
+
+/// <summary>Who made a tracked change and when (Word w:author / w:date, RTF \revauth / \revdttm); either may be unknown.</summary>
+/// <param name="Date">The time of the change in UTC.</param>
+internal sealed record HRevision(string? Author, DateTime? Date);
+
+/// <summary>
+/// Text deleted while changes were tracked (Word w:del, RTF \deleted, ODF text:deletion, 한글 hp:deleteBegin): kept for
+/// the DOCX and RTF writers, which write it as a deletion. The other writers and the layout leave it out, so the
+/// document reads with the deletion made, as before. Inserted text is text with <see cref="HCharLayout.Inserted"/>.
+/// </summary>
+internal sealed class HDeletion(HRevision revision) : HInline
+{
+    public HRevision Revision { get; } = revision;
+
+    /// <summary>The deleted text, tabs and line breaks.</summary>
+    public List<HInline> Content { get; } = [];
+}
+
+/// <summary>
 /// The number of the note this text belongs to, where the note's text has it (Word w:footnoteRef / w:endnoteRef): in
 /// "(1) text" between the brackets. Read for layout only; the writers leave it out (한글 numbers its notes itself).
 /// </summary>
@@ -1124,8 +1166,9 @@ internal readonly record struct HTabStop(int Position, HTabKind Kind, string Lea
 /// <param name="Shade">Background (highlight) colour "#RRGGBB".</param>
 /// <param name="Spacing">Letter spacing in percent of the font size, as 한글 has it (Word's absolute spacing converted).</param>
 /// <param name="Layout">
-/// Rendering detail the writers do not write (한글's per-language slots, Word's four fonts and exact spacing). It
-/// takes no part in equality, hashing or <see cref="ToString"/>: formats that differ only here are written alike.
+/// Rendering detail the writers do not write (한글's per-language slots, Word's four fonts and exact spacing), and the
+/// run's character style and tracked insertion, which the DOCX and RTF writers write. It takes no part in equality,
+/// hashing or <see cref="ToString"/>: formats that differ only here are written alike (in HWPX).
 /// <see cref="SameLayout"/> compares it too.
 /// </param>
 internal readonly record struct HCharFormat(

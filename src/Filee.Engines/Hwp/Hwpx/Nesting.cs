@@ -172,11 +172,17 @@ internal static class Nesting
                 case HTextBox box:
                     Limit(box.Blocks, depth + 1);
                     break;
+                case HComment comment:
+                    Limit(comment.Blocks, depth + 1);
+                    break;
+                case HDeletion deletion:
+                    Limit(deletion.Content, depth + 1);
+                    break;
             }
         }
     }
 
-    private static bool IsContainer(HInline inline) => inline is HLink or HNote or HTextBox;
+    private static bool IsContainer(HInline inline) => inline is HLink or HNote or HTextBox or HComment or HDeletion;
 
     private static void Replace<T>(List<T> list, List<T> content)
     {
@@ -234,6 +240,8 @@ internal static class Nesting
                 case Resume resume:
                     Start(resume.Template);
                     break;
+                case HComment or HCommentStart or HDeletion:
+                    break; // comments and deleted text don't show: this deep they go
                 case HInline inline:
                     if (current is null)
                         Start(template);

@@ -8,7 +8,8 @@
 //  * HwpxReader.cs         package: container, manifest and spine, pictures (BinData), section setup, XML helpers;
 //  * HwpxReader.Header.cs  header.xml: fonts, character and paragraph shapes, numberings, bullets, borders, tab stops;
 //  * HwpxReader.Body.cs    paragraphs, runs, text, fields (hyperlinks), notes, bookmarks and tables;
-//  * HwpxReader.Objects.cs pictures, drawing objects, text boxes, groups and equations.
+//  * HwpxReader.Objects.cs pictures, drawing objects, text boxes, groups and equations;
+//  * HwpxReader.Revisions.cs tracked changes and memos.
 //
 // Read() gives the model the writers expect. ReadForLayout() also keeps what only a renderer uses and that would
 // change converted files: runs that differ only in layout detail stay apart, polygons, curves and arcs become shapes,

@@ -225,13 +225,24 @@ internal sealed class ParagraphText
             // The paragraph's own number format (Word's), the level's (한글's), else the text's.
             var format = paragraph.List?.MarkerFormat ?? listLevel?.MarkerFormat ?? paragraph.Inlines.OfType<HText>().FirstOrDefault()?.Format ?? paragraph.MarkFormat;
             // Word's level says what follows the number; 한글 puts a tab after a hanging number, else a space.
-            Add(marker + (listLevel?.Suffix switch
+            var suffix = listLevel?.Suffix switch
             {
                 HNumberSuffix.Tab => "\t",
                 HNumberSuffix.Space => " ",
                 HNumberSuffix.Nothing => "",
                 _ => (paragraph.Format.FirstLine ?? 0) < 0 ? "\t" : " ",
-            }), format, null);
+            };
+            // A bullet of a symbol font (HCharLayout.Symbol, one code per character) is a piece of its own, so its
+            // codes are drawn in that font; what follows it is in the number's format without them.
+            if (format.Layout?.Symbol is { } symbol && symbol.Codes.Length == marker.Length)
+            {
+                Add(marker, format, null);
+                Add(suffix, format with { Layout = format.Layout with { Symbol = null } }, null);
+            }
+            else
+            {
+                Add(marker + suffix, format, null);
+            }
             markerLength = text.Length;
         }
         Inlines(paragraph.Inlines, null);

@@ -6,6 +6,7 @@
 //  * DocxWriter.cs         package: parts, relationships, content types, styles, settings, numbering, notes;
 //  * DocxWriter.Body.cs    sections (page setup, columns, headers/footers), paragraphs, runs and tables;
 //  * DocxWriter.Objects.cs pictures (inline and floating), text boxes and shapes (wps), links, bookmarks, fields;
+//  * DocxWriter.Revisions.cs character styles, comments (comments.xml) and tracked changes (w:ins, w:del);
 //  * OmmlWriter.cs         equations as Word math (m:oMath; m:oMathPara for a display equation).
 //
 // Child elements are written in schema order (Word refuses files where they are not), see the notes in each file.
@@ -143,6 +144,8 @@ internal sealed partial class DocxWriter
             _document.Relate(RelationshipBase + "footnotes", "footnotes.xml");
         if (_endnotes.Count > 0)
             _document.Relate(RelationshipBase + "endnotes", "endnotes.xml");
+        if (_commentsPart is not null)
+            _document.Relate(RelationshipBase + "comments", "comments.xml");
 
         var parts = new List<Part> { _document };
         parts.AddRange(_parts);
@@ -160,6 +163,8 @@ internal sealed partial class DocxWriter
             _endnotesPart.Xml = Notes("endnote", _endnotes);
             parts.Add(_endnotesPart);
         }
+        if (CommentsPart() is { } comments)
+            parts.Add(comments);
         parts.Add(new Part("docProps/core.xml", "application/vnd.openxmlformats-package.core-properties+xml") { Xml = CoreProperties(document.Title) });
         parts.Add(new Part("docProps/app.xml", "application/vnd.openxmlformats-officedocument.extended-properties+xml")
         {
@@ -253,7 +258,7 @@ internal sealed partial class DocxWriter
     /// </summary>
     private static readonly int[] HeadingSizes = [32, 28, 26, 24, 22, 20, 20, 20, 20];
 
-    private static string Styles()
+    private string Styles()
     {
         var sb = new StringBuilder($"<w:styles {Namespaces}>");
         // Normal matches the HWPX writer's body text: 10 pt, 160 % of the font size ≈ 1.23 Word lines, no spacing.
@@ -291,6 +296,7 @@ internal sealed partial class DocxWriter
           .Append("<w:pPr><w:spacing w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:tblPr><w:tblBorders>")
           .Append(string.Concat(new[] { "top", "left", "bottom", "right", "insideH", "insideV" }.Select(e => $"<w:{e} w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/>")))
           .Append("</w:tblBorders></w:tblPr></w:style>");
+        sb.Append(CharacterStyles());
         return sb.Append("</w:styles>").ToString();
     }
 
