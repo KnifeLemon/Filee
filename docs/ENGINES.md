@@ -56,7 +56,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | WeasyPrint | **optional download** (Windows only for now; ~32 MB, 65 MB on disk) | **HTML, Markdown, EML, MSG, MHTML → PDF** laid out as a browser prints them (headings, tables, bold, Arabic and Indic shaping), instead of the built-in route; nothing changes without it (see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 | ExifTool | **optional download** (~11 MB on Windows, ~8 MB elsewhere; 30 MB on disk) | **the Metadata tool**: reads every metadata field of pictures, PDFs, video and sound, and writes changes into a copy in the file's own format without re-encoding it (JPG, PNG, TIFF, WEBP, HEIC, AVIF, JPEG XL, GIF, PSD, camera RAW, PDF, MP4, MOV, M4A, 3GP, …; not MP3, FLAC, WAV, MKV, AVI or BMP, which it shows read-only). Without it the Metadata tool shows nothing and offers it |
-| 7-Zip | **optional download** (~2 MB; ~2.5 MB on disk on Windows, ~6.5 MB elsewhere; not suggested) | **rare archive variants** the archive engine's own readers leave out: 7Z with PPMd and other uncommon methods, Quantum CABs and cabinet sets, LHA methods other than -lh0-/-lz4-/-lh4- to -lh7-, multi-volume ARJ, NTFS, exFAT, APFS, HFSX and ext volumes in disk images, LZFSE / LZMA DMG blocks, damaged archives it can read past (see [Archives](#archives)). Without it these are refused with "Install 7-Zip in Settings → Engines"; every common archive works without it |
+| 7-Zip | **optional download** (~2 MB; ~2.5 MB on disk on Windows, ~6.5 MB elsewhere; not suggested) | **rare archive variants** the archive engine's own readers leave out: 7Z with PPMd and other uncommon methods, Quantum CABs and cabinet sets, LHA methods other than -lh0-/-lz4-/-lh4- to -lh7-, multi-volume ARJ, NTFS, exFAT, APFS, HFSX and ext volumes in disk images, damaged archives it can read past (see [Archives](#archives)). Without it these are refused with "Install 7-Zip in Settings → Engines"; every common archive works without it |
 
 DOCX, DOC, ODT, XLSX, XLS, ODS, PPTX, PPT and ODP → PDF need neither Microsoft Office nor LibreOffice: they are read
 in-process (and VSDX and ODG drawings → PDF, SVG and PNG, see [Drawings](#drawings-visio-odg)).
@@ -1119,7 +1119,7 @@ test turns it on.
 - **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX, Word
   or ODT package (an HWP as the HWPX package it becomes, a DOC as the DOCX package it becomes) for what it doesn't draw yet — OLE objects, charts
   other than the DrawingML ones the [chart drawer](#charts) draws (Word charts, HWPX `hp:chart` parts) and the ODF ones
-  `OdfChartReader` reads (ODT chart objects), vertical text, form controls, videos, SmartArt — and a deck for what the slide
+  `OdfChartReader` reads (ODT chart objects), form controls it doesn't draw (ActiveX, ODF controls, 한글 list boxes and scroll bars), videos, SmartArt without Word's drawing of it — and a deck for what the slide
   renderer doesn't draw (charts the chart drawer doesn't draw without a stored picture, shadows and other effects, 3D, WordArt warps, presets it lacks, ...) — and `JobQueue` plans again
   without it, so such a file takes its usual route (logged). The choice is made once, before the conversion. A checked edge is only ever a route's first step, where the
   file is the one the engine looked at. Text formats hold nothing it can't draw.
@@ -1556,8 +1556,8 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     text read back in order and no overlapping glyphs. 한글 itself lays such a Hebrew line out against UAX #9 (its words
     come out in reverse order), so Filee follows the standard there.
   - With the renderer off, `ComplexScripts` and the `Unshaped` edges still send such documents to LibreOffice; on
-    (the default), the new engine draws them. Not yet: vertical text, and Word's and 한글's character spacing for
-    Arabic (kashida justification).
+    (the default), the new engine draws them. Not yet: Word's and 한글's character spacing for Arabic (kashida
+    justification).
 
 The PDF writer's subsets now keep only the characters the text has in their cmap: CJK fonts map 文 and the Kangxi
 radical ⽂ to one glyph, and the PDF's ToUnicode took the lower code point, so Japanese and Chinese text copied out as
@@ -1646,7 +1646,7 @@ a slide.
 - **The check** (`SlideCapabilities.cs`) looks at the shown slides and the layouts and masters they use, leaving out
   what a fallback replaces, and names: charts the chart drawer doesn't draw without a stored picture, SmartArt without its drawing, OLE objects and
   other embedded content without a picture, ink, shadows and other effects (on shapes, pictures and text, or through
-  the theme's effect styles), 3D, WordArt warps, outlined text, East Asian vertical text, preset names outside
+  the theme's effect styles), 3D, WordArt warps, outlined text, preset names outside
   ST_ShapeType, and TIFF and JPEG XR pictures.
 - **Hostile input:** parts through `DocumentPackage` (part and package sizes, inflate ratio, XML depth and elements),
   `DocumentBudget` for paragraphs, objects and group nesting, pictures whose header claims more than
@@ -1664,10 +1664,9 @@ recomputes "shrink text on overflow" instead of using the stored scale and picks
 Every slide's text reads back, nothing is outside a slide, every font is embedded and subset; the deck takes about
 6 s (most of it loading fonts), LibreOffice about 60 s with a fresh profile.
 
-Not yet: shadows, glow, reflection, soft edges and 3D (named by the check); WordArt warps and text outlines; East Asian
-vertical text (upright characters); gradient-filled text (the first stop's colour); tiled pictures at their own
-resolution (taken as 96 dpi); a gradient that doesn't turn with its shape; "rect" path gradients (drawn as an ellipse
-through the corners); 3D and other charts the chart drawer doesn't draw; notes pages and handouts.
+Not yet: shadows, glow, reflection, soft edges and 3D (named by the check); WordArt warps and text outlines;
+gradient-filled text (the first stop's colour); tiled pictures at their own resolution (taken as 96 dpi); a gradient
+that doesn't turn with its shape; 3D and other charts the chart drawer doesn't draw; notes pages and handouts.
 
 ## Charts
 
@@ -1716,12 +1715,23 @@ chart templates are drawn on their own (`ChartTemplate`).
   doughnut (`ring`) and scatter (`chart:domain`) plots, a series' own class and its secondary Y axis; title and
   subtitle, axis titles, axes (visible, labels, logarithmic, minimum, maximum, interval, reversed, tick marks, label
   angle, gridlines), legend position, data labels, fills and strokes of chart area, wall, series and points (with
-  pie offsets) and text properties; series without a fill take LibreOffice's default palette. 3D, radar, bubble,
-  stock, surface and Gantt charts are named. Used by the ODT reader (a picture that carries the chart; a chart it
+  pie offsets) and text properties; series without a fill take LibreOffice's default palette. Radar, bubble (sizes
+  from the values, Y and X from `chart:domain`), stock (range lines, open / close ticks or candlesticks), surface
+  (bands from the first series' data points) and Gantt charts (start and end pairs as floating bars), and 3D charts
+  seen from the plot area's `dr3d:transform`, are drawn too. Used by the ODT reader (a picture that carries the chart; a chart it
   doesn't draw keeps its replacement picture and is counted as `charts_pictured`, or as `charts` without one), the
   ODP / ODG reader and the ODS reader (sheet printer). Bounded like `ChartReader` (series, points), plus the chart
   table's cells (4 × 1,048,576, repeats counted before they expand) and style chains. Tests: `OdfChartTests`
   (with a fuzz target), seeds in `OdtFuzzTests` and `DocumentFuzzTests` (ODS printing).
+- **Excel 97–2003 charts** (`BiffChartReader`): an XLS chart sheet's substream, or an embedded chart's after its OBJ
+  record (placed by the MSODRAWING client anchor), read from its records ([MS-XLS] 2.1.7.20.1: chart groups, series
+  and their cached values, formats, labels, trendlines, error bars, axes, 3D view, legend, frames) into the DrawingML
+  chart part that says the same, which `ChartReader` reads; automatic colours are the workbook palette's chart fills
+  and lines. At most 256,000 points a chart (Excel 2003's limit), refused beyond. Tests: `XlsChartTests`, fuzz
+  targets in `ChartFuzzTests`.
+- **한글 charts in HWP and HWPX** are OLE objects; the DrawingML part 한글 2018 and later keeps in them
+  (`OOXMLChartContents`) is drawn, an older chart (its own `Contents` only) is drawn from its picture and counted as
+  `charts_pictured`.
 
 ## DOCX writer
 
@@ -4126,7 +4136,7 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
 | BSP (Source engine map), its packed files | Filee copies the pakfile lump (a ZIP) out and unpacks it like any ZIP | — |
 | VPK (Valve pak) | Filee: versions 1 and 2, `_dir.vpk` with its `_000.vpk` … parts, CRCs checked; a PS Vita `.vpk` (a ZIP) like any ZIP | — |
 | IMG (raw disk images) | Filee (`DiskImageReader`): GPT, Apple partition map or MBR with extended partitions (`DiskImagePartitions`), a folder `<number> <label>` per volume when there are several; FAT12/16/32 by Filee's own reader (`DiskImageFat`: long names and the lowercase flags), UDF and HFS+ by DiscUtils; a CD or DVD image named .img goes to the disc readers; NTFS, exFAT, APFS, HFSX, classic HFS and ext2/3/4 volumes send the image to 7-Zip; BitLocker and LUKS volumes are refused as encrypted | — |
-| DMG | Filee: DiscUtils.Dmg reads the UDIF blocks (raw, zero fill and ignore, zlib, bzip2, ADC) once `UdifCheck` has checked the trailer and block tables, then the disk inside as for IMG (HFS+ by DiscUtils.HfsPlus); LZFSE and LZMA blocks and APFS volumes by 7-Zip; encrypted DMGs are refused | — |
+| DMG | Filee: `UdifDisk` reads the UDIF blocks (raw, zero fill and ignore, ADC, zlib, bzip2, LZFSE, LZMA as .xz) once `UdifCheck` has checked the trailer and block tables, then the disk inside as for IMG (HFS+ by DiscUtils.HfsPlus); APFS volumes by 7-Zip; encrypted DMGs are refused | — |
 
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
   when complete. When the archive holds exactly one top folder, its content becomes the result folder (`photos.zip`
@@ -4207,7 +4217,8 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
   folders and folder listings over 16 MB are refused as damage. Disk images: partition tables are checked against the
   disk (EBR chains that come back, more than 1,024 GPT entries), FAT chains are read only as far as a file's size
   needs and folder chains may not loop or pass the format's 65,536 entries, DMG block lists over 16 MB or nested over 32
-  levels and chunk buffers over 64 MB are refused before DiscUtils reads them, and DiscUtils itself only reads through
+  levels, chunk buffers over 64 MB and runs outside the file or their table are refused before a block is read, a
+  chunk never unpacks past its run, and DiscUtils itself only reads through
   a window with a budget per call (256 MB, plus the file being copied) and a stack check, so structures that lead in
   circles end as damage instead of running on.
 - **Single compressed streams** (GZ, BZ2, XZ, LZMA, Z, ZST, and the first stage of TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z, TAR.ZST) state
@@ -4226,7 +4237,7 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
   7-Zip"), pull requests into builtin-engines included; the other legs fetch 7-Zip for the interop tests.
 - **Not supported**: encrypted archives, split (multi-volume) ALZ and EGG, solid EGG, EGG entries compressed with
   ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG. Without
-  7-Zip installed also (refused with the "install 7-Zip" error): NTFS, exFAT, APFS, HFSX, HFS and ext volumes in disk images, LZFSE- and LZMA-compressed DMGs, UDF discs
+  7-Zip installed also (refused with the "install 7-Zip" error): NTFS, exFAT, APFS, HFSX, HFS and ext volumes in disk images, DMGs with only a resource fork (no XML block list), UDF discs
   that use what DiscUtils.Udf lacks (virtual and sparable partitions, extended allocation descriptors), Quantum CABs
   and cabinet sets, LHA methods other than -lh0-, -lz4- and -lh4- to
   -lh7-, multi-volume ARJ, GNU sparse files in TARs, interleaved ISO files, the El Torito boot image of an ISO (7-Zip
@@ -4242,8 +4253,9 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
   inputs: traversal, links, passwords, bombs with lowered limits, entry floods, ISO loops, damaged data),
   `DiskImageTests.cs` (FAT, UDF, partition tables and DMGs built in code by `DiskImageBuilders.cs` and DiscUtils.Fat,
   compared with 7-Zip; UDF discs written by Windows' IMAPI2 and HFS+ DMGs by macOS' hdiutil where those exist; loops,
-  bombs, damaged tables, encrypted volumes), `ArchiveFuzzTests.cs` (`Category=Fuzz`: mutated ar, cpio, RPM, ISO, .Z,
-  lzip, ALZ, EGG, 7z, xz, LZMA, CAB, LHA, ARJ, FAT / MBR / GPT images, UDF discs and DMGs must unpack or be refused
+  bombs, damaged tables, encrypted volumes), `LzfseTests.cs` (LZFSE streams of every block kind written by
+  `LzfseBuilders.cs`, damaged ones, ADC chunks), `ArchiveFuzzTests.cs` (`Category=Fuzz`: mutated ar, cpio, RPM, ISO, .Z,
+  lzip, ALZ, EGG, 7z, xz, LZMA, LZFSE, CAB, LHA, ARJ, FAT / MBR / GPT images, UDF discs and DMGs must unpack or be refused
   with `InvalidDataException`) and `ArchiveSpeedTests.cs` (`Category=Benchmark`, only with
   `FILEE_ARCHIVE_BENCHMARK=1`: the in-process readers next to 7-Zip).
 
@@ -4328,16 +4340,19 @@ still faster, but it is no longer needed for speed. SharpCompress remains only f
 
 ### Disk images
 
-UDF, HFS+ and the UDIF block layer of DMG come from LTRData's DiscUtils (`LTRData.DiscUtils.Udf`, `.HfsPlus`, `.Dmg`
-1.0.90, MIT, the same packages as the `LTRData.DiscUtils.Iso9660` and `.Udf` that write ISOs; the original DiscUtils
-0.16.13 packages ship the same assembly names, so the two can't be mixed). `DiscUtils.Dmg` brings `LzfseSharp`
-(BSD-3-Clause, managed): LZFSE chunks never reach it, they go to 7-Zip. FAT is
+UDF and HFS+ come from LTRData's DiscUtils (`LTRData.DiscUtils.Udf`, `.HfsPlus` 1.0.90, MIT, the same packages as
+the `LTRData.DiscUtils.Iso9660` and `.Udf` that write ISOs; the original DiscUtils 0.16.13 packages ship the same
+assembly names, so the two can't be mixed). The UDIF block layer of DMG is Filee's own (`DiskImageUdif.cs`): raw,
+zero fill (type 0, which hdiutil writes into its HFS+ disks beside type 2, "ignore") and ignore runs, ADC (Filee's
+own), zlib (.NET), bzip2 (Filee's decoder; SharpCompress for randomised blocks), LZMA (Apple's tools write .xz
+streams; Filee's XzReader) and LZFSE (`LzfseDecoder.cs`, Filee's own, written from the format of Apple's open-source
+reference: raw, LZVN and FSE blocks with full or compressed headers), decoded a chunk at a time with 64 MB of decoded
+chunks kept. The tests' LZFSE writer (`LzfseBuilders.cs`) and the decoder were checked against Apple's reference
+library both ways while they were written. FAT is
 Filee's own (`Archives/DiskImageFat.cs`, from Microsoft's FAT specification) because `DiscUtils.Fat` reads only 8.3
 names in capitals; the tests use `DiscUtils.Fat` as an independent FAT writer. The partition tables
 (`DiskImagePartitions.cs`: MBR and EBRs, GPT from the UEFI specification, Apple partition map) and the checks of the DMG
 trailer and block tables (`DiskImageGuards.cs`) are Filee's own too, so nothing reaches DiscUtils unchecked.
-`DiscUtils.Dmg` doesn't read run type 0 ("zero fill"), which hdiutil writes into its HFS+ disks beside type 2, so
-it reads the DMG through `UdifOverlay`: the block list with those runs relabelled type 2, same length.
 `DiscUtils.HfsPlus` 0.16.13 read the BSD file mode two bytes early, so its attributes never mark a symbolic link
 and opening one follows it; `HfsPlusLinks` asks its directory entry instead (the Finder type "slnk"). NTFS
 stays on 7-Zip: `DiscUtils.Ntfs` walks its index blocks recursively from a cache, where an index pointing back at

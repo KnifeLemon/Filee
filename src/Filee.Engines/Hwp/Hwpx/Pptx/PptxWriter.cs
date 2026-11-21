@@ -6,7 +6,8 @@
 //  * PptxWriter.cs          the package: presentation, slide master, layouts, theme, slides, pictures, notes;
 //  * PptxWriter.Slides.cs   which blocks go on which slide (Pandoc's PowerPoint writer's rules);
 //  * PptxWriter.Content.cs  slide content as items (text, code, tables, pictures), their estimated heights, and
-//                           text that runs over continuing on the next slide.
+//                           text that runs over continuing on the next slide;
+//  * PptxWriter.Math.cs     equations as Office Math (a14:m) with a picture fallback.
 //
 // The deck is 16:9 (13.33 × 7.5 in) with PowerPoint's own "Title Slide", "Title and Content" and "Section Header"
 // layouts and Office's theme. Every shape on a slide has its position and its paragraphs their indents, bullets and
@@ -58,7 +59,14 @@ internal sealed partial class PptxWriter
         var pages = writer.Pages();
         using var package = new PresentationPackage(outputPath);
         writer._package = package;
-        writer.WritePackage(pages);
+        try
+        {
+            writer.WritePackage(pages);
+        }
+        finally
+        {
+            writer._drawing?.Shaper.Dispose();
+        }
         package.Save();
     }
 
@@ -334,14 +342,19 @@ internal sealed partial class PptxWriter
         {
             case TextItem text:
                 {
-                    var body = new StringBuilder($"<p:txBody><a:bodyPr wrap=\"square\" lIns=\"{N(InsetX)}\" tIns=\"{N(InsetY)}\" rIns=\"{N(InsetX)}\" bIns=\"{N(InsetY)}\" rtlCol=\"0\">")
-                        .Append(single ? "<a:normAutofit/>" : "").Append("</a:bodyPr><a:lstStyle/>");
+                    var bodyPr = $"<a:bodyPr wrap=\"square\" lIns=\"{N(InsetX)}\" tIns=\"{N(InsetY)}\" rIns=\"{N(InsetX)}\" bIns=\"{N(InsetY)}\" rtlCol=\"0\">" +
+                                 (single ? "<a:normAutofit/>" : "") + "</a:bodyPr>";
+                    var body = new StringBuilder("<p:txBody>").Append(bodyPr).Append("<a:lstStyle/>");
                     for (var i = 0; i < text.Paragraphs.Count; i++)
-                        body.Append(Paragraph(text.Paragraphs[i], first: i == 0));
+                        body.Append(Paragraph(text.Paragraphs[i], first: i == 0, math: true));
                     body.Append("</p:txBody>");
-                    return single
-                        ? TextShape("Content Placeholder", "<p:ph idx=\"1\"/>", BodyX, BodyY, BodyWidth, BodyHeight, body.ToString())
-                        : TextShape("TextBox", null, placed.X, placed.Y, placed.Width, placed.Height, body.ToString());
+                    var (x, y, width, height) = single ? (BodyX, BodyY, BodyWidth, BodyHeight) : (placed.X, placed.Y, placed.Width, placed.Height);
+                    var shape = single
+                        ? TextShape("Content Placeholder", "<p:ph idx=\"1\"/>", x, y, width, height, body.ToString())
+                        : TextShape("TextBox", null, x, y, width, height, body.ToString());
+                    return text.Paragraphs.Any(p => p.Runs.Any(r => r.Equation is not null))
+                        ? MathShape(shape, text.Paragraphs, single, x, y, width, height, bodyPr)
+                        : shape;
                 }
             case CodeItem code:
                 {
@@ -363,7 +376,8 @@ internal sealed partial class PptxWriter
     // ───────────────────────── Text ─────────────────────────
 
     /// <summary>A paragraph with its indent, bullet or number, spacing and runs, all written out.</summary>
-    private string Paragraph(Para paragraph, bool first = false)
+    /// <param name="math">Equations as Office Math (a14:m, in a shape that has a fallback for them); else their linear text.</param>
+    private string Paragraph(Para paragraph, bool first = false, bool math = false)
     {
         var sb = new StringBuilder("<a:p><a:pPr");
         var marked = paragraph.Bullet != BulletKind.None;
@@ -383,7 +397,7 @@ internal sealed partial class PptxWriter
         });
         sb.Append("</a:pPr>");
         foreach (var run in paragraph.Runs)
-            sb.Append(RunXml(run, paragraph.Size, null, paragraph.Bold, paragraph.Code));
+            sb.Append(math && run.Equation is { } equation ? MathXml(run, equation, paragraph) : RunXml(run, paragraph.Size, null, paragraph.Bold, paragraph.Code));
         sb.Append($"<a:endParaRPr sz=\"{N(paragraph.Size)}\" dirty=\"0\"/></a:p>");
         return sb.ToString();
     }

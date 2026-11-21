@@ -26,8 +26,14 @@ internal sealed class XhtmlOptions
     /// <summary>Mark footnotes and references with epub:type (EPUB 3 pop-up notes).</summary>
     public bool Epub { get; init; }
 
-    /// <summary>Equations as MathML (HTML, EPUB 3); false writes their text (MOBI).</summary>
+    /// <summary>Equations as MathML (HTML, EPUB 3); false writes their text, or the pictures of <see cref="MathPictures"/>.</summary>
     public bool MathML { get; init; }
+
+    /// <summary>
+    /// Equations as pictures (KF8, whose readers don't draw MathML): the PNG file of an equation (display or not) and
+    /// its size; null for an equation written as its text.
+    /// </summary>
+    public Func<HEquation, bool, (string Path, Typesetting.EquationImage Image)?>? MathPictures { get; init; }
 }
 
 /// <summary>One output file of <see cref="XhtmlWriter"/>.</summary>
@@ -424,9 +430,14 @@ internal sealed class XhtmlWriter
                 case HEquation equation when _options.MathML:
                     {
                         var display = _paragraph is { } paragraph && ReferenceEquals(paragraph.Inlines, inlines) && HEquation.IsDisplay(equation, paragraph);
-                        sb.Append(MathMLWriter.Write(equation.Math, display, equation.Tex));
+                        sb.Append(MathMLWriter.Write(equation.Math, display, equation.Tex, EquationScript.Linear(equation.Math)));
                         break;
                     }
+                case HEquation equation when _options.MathPictures is { } pictures
+                                             && pictures(equation, _paragraph is { } paragraph && ReferenceEquals(paragraph.Inlines, inlines) && HEquation.IsDisplay(equation, paragraph)) is var (path, image)
+                                             && _options.ImageSource(path) is { } source:
+                    EquationPicture(equation, source, image, sb);
+                    break;
                 case HText text:
                     Run(text.Text, text.Format, heading, sb);
                     break;
@@ -545,6 +556,20 @@ internal sealed class XhtmlWriter
             id = $"{sb}-{n}";
         _ids[name] = id;
         return id;
+    }
+
+    /// <summary>
+    /// An equation as a picture sized in em (so it grows with the reader's text) and lowered by its depth below the
+    /// baseline, its linear text as the alternative text (at most 140 characters, as Amazon asks).
+    /// </summary>
+    private void EquationPicture(HEquation equation, string source, Typesetting.EquationImage image, StringBuilder sb)
+    {
+        var em = Math.Max(1, _bodySize) / 100f;
+        var alt = EquationScript.Linear(equation.Math);
+        if (alt.Length > 140)
+            alt = alt[..139] + "…";
+        string Em(float points) => (points / em).ToString("0.###", CultureInfo.InvariantCulture) + "em";
+        sb.Append($"<img src=\"{Escape(source)}\" alt=\"{Escape(alt)}\" class=\"math\" style=\"width:{Em(image.Width)};vertical-align:-{Em(image.Descent)}\"/>");
     }
 
     private void Image(HImage image, StringBuilder sb)

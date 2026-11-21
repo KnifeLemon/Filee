@@ -51,6 +51,10 @@ internal readonly record struct TextSpan(int Start, int Length, HCharFormat Form
 /// The font the characters were read from as codes (HCharLayout.Symbol: Word's w:sym, text in Wingdings): where it is
 /// installed, the layout draws the codes (<see cref="ParagraphText.Drawn"/>) in it.
 /// </param>
+/// <param name="Named">
+/// <paramref name="Family"/> is a font the run named itself, not one the style template filled in (HCharLayout.NamedFonts).
+/// </param>
+/// <param name="Across">Set across in vertical text (HCharLayout.Across, VerticalText).</param>
 internal sealed record TextStyle(
     string? Family,
     FontStyle Style,
@@ -67,7 +71,9 @@ internal sealed record TextStyle(
     float? SpaceWidth = null,
     bool Kerning = true,
     float SpacingRatio = 0,
-    string? Symbol = null);
+    string? Symbol = null,
+    bool Named = false,
+    bool Across = false);
 
 /// <summary>A paragraph's text with the character format of each piece.</summary>
 internal sealed class ParagraphText
@@ -390,7 +396,9 @@ internal sealed class ParagraphText
             format.Layout?.FontSpace == false ? size / 2 : null,
             format.Layout?.Kerning != false,
             spacingRatio,
-            format.Layout?.Symbol?.Font);
+            format.Layout?.Symbol?.Font,
+            format.Layout?.Named(family) == true,
+            format.Layout?.Across == true);
     }
 
     /// <summary>A "#RRGGBB" colour, or null for none or an unreadable one.</summary>

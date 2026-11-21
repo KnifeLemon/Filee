@@ -68,7 +68,15 @@ internal sealed partial class HwpxWriter
 
         writer._collapseSpacing = document.CollapseParagraphSpacing;
         var sections = document.Sections.Count > 0 ? document.Sections : [new HSection()];
-        var sectionXml = sections.Select(writer.Section).ToList();
+        List<string> sectionXml;
+        try
+        {
+            sectionXml = sections.Select(writer.Section).ToList();
+        }
+        finally
+        {
+            writer._equationLayout?.Shaper.Dispose();
+        }
         writer.WritePackage(reference, outputPath, sectionXml, document.Title, cancellationToken);
     }
 

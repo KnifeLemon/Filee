@@ -18,6 +18,10 @@ internal sealed partial class PptxReader
     private static readonly XNamespace P = "http://schemas.openxmlformats.org/presentationml/2006/main";
     private static readonly XNamespace A = OoxmlColors.A;
     private static readonly XNamespace R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    private static readonly XNamespace A14 = "http://schemas.microsoft.com/office/drawing/2010/main";
+
+    /// <summary>PowerPoint's equations: Office Math in an a14:m among a paragraph's runs.</summary>
+    private static bool IsMath(XElement element) => element.Name == A14 + "m";
 
     /// <summary>Picture formats the HWPX writer and 한글 readers display.</summary>
     private static readonly HashSet<string> PictureTypes = new(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff" };
@@ -232,8 +236,13 @@ internal sealed partial class PptxReader
                     PushChildren(element, GroupTransform(element, current));
                     break;
                 case "AlternateContent":
-                    // Newer object kinds come with a fallback that older readers understand.
-                    PushChildren(element.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback"), current);
+                    {
+                        // Newer object kinds come with a fallback that older readers understand; a shape with Office
+                        // Math (a14:m, PowerPoint's equations) is read from its choice, its equations as equations.
+                        var choice = element.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice");
+                        var math = choice?.Descendants().Any(IsMath) == true;
+                        PushChildren(math ? choice : element.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback"), current);
+                    }
                     break;
             }
         }

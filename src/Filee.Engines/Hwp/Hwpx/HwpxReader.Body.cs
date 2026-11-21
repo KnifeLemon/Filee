@@ -426,8 +426,8 @@ internal sealed partial class HwpxReader
     }
 
     /// <summary>
-    /// How a cell's or text box's paragraph list runs: 세로쓰기 (VERTICAL: Hangul and Hanja upright, Latin on its side),
-    /// or with Latin upright too (VERTICALALL).
+    /// How a section's, cell's or text box's text runs (secPr, subList textDirection): 세로쓰기 (VERTICAL: Hangul and
+    /// Hanja upright, Latin on its side), or with Latin upright too (VERTICALALL).
     /// </summary>
     private static HTextFlow TextFlow(XElement? subList) => Attr(subList, "textDirection") switch
     {
@@ -437,7 +437,7 @@ internal sealed partial class HwpxReader
     };
 
     /// <summary>
-    /// Counts text a section or a paragraph list other than a cell's or text box's (a header, a note) writes top to
+    /// Counts text a paragraph list other than a section's, a cell's or a text box's (a header, a note) writes top to
     /// bottom (textDirection VERTICAL / VERTICALALL), which is set horizontally.
     /// </summary>
     private void CountVerticalText(XElement element)

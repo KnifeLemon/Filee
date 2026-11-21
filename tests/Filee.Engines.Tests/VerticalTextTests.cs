@@ -1,6 +1,7 @@
-// Vertical text (Typesetting/VerticalText.cs) in Word table cells and text boxes, 한글 cells and slide text boxes;
-// SmartArt drawn from the drawing Word saves with it; a 한글 check box that is on; Markdown's backslashes in the
-// template's Korean font. Documents are built in code and laid
+// Vertical text (Typesetting/VerticalText.cs) in Word table cells and text boxes, 한글 cells and slide text boxes, and
+// sections written vertically (Word, 한글, ODT pages), with the font's vertical forms and numbers set across; SmartArt
+// drawn from the drawing Word saves with it; a 한글 check box that is on; backslashes in the template's Korean font and
+// in one the document names; a rectangle path gradient. Documents are built in code and laid
 // out with the repository's Noto fonts; the assertions look at where the glyphs land, which every computer agrees on.
 
 using System.IO.Compression;
@@ -316,5 +317,214 @@ public sealed class VerticalTextTests(EngineFixture fx) : IClassFixture<EngineFi
         Assert.Single(ship);
         Assert.True(ship[0].Origin.X > plan[0].Origin.X + 60, $"{plan[0].Origin} {ship[0].Origin}");
         Assert.InRange(plan[0].Origin.X, 72, 72 + 283.5f);
+    }
+
+    // ───────────────────────── Sections written vertically ─────────────────────────
+
+    [Fact]
+    public async Task A_word_section_written_vertically_runs_its_lines_down_from_the_right_and_its_footer_across()
+    {
+        NeedFonts();
+        var builder = new DocxBuilder { Styles = NotoStyles };
+        var footer = builder.Footer(P(R("Footer")));
+        builder.Paragraph(P(R("세로쓰기")) + P(R("둘째 줄")));
+        builder.SectionProperties = $"<w:footerReference w:type=\"default\" r:id=\"{footer}\"/>" + DocxBuilder.DefaultPage + "<w:textDirection w:val=\"tbRl\"/>";
+        var source = builder.Save(Path.Combine(fx.NewFolder(), "vertical.docx"));
+        Assert.Null(new FileeRendererConverter().FirstUnsupported(source, "docx"));
+        var document = await DocumentReaders.ReadAsync(source, "docx", fx.NewFolder(), Token);
+        Assert.Equal(HTextFlow.Vertical, Assert.Single(document.Sections).TextFlow);
+        Assert.Equal(0, document.LeftOut[HLeftOutKind.VerticalText]);
+
+        var page = Assert.Single(await ComposeAsync(source, "docx"));
+        var glyphs = Glyphs(page);
+        // The first paragraph down the right edge of the body (A4, 1 inch margins), each Hangul upright.
+        var first = glyphs.Where(g => g.Character is '세' or '로' or '쓰' or '기').ToList();
+        Assert.Equal(4, first.Count);
+        Assert.All(first, g => Assert.True(Upright(g), $"{g.Character} up {g.Up}"));
+        Assert.All(first, g => Assert.InRange(g.Origin.X, 595.3f - 72 - 20, 595.3f - 72));
+        Assert.InRange(first[0].Origin.Y, 72, 72 + 20);
+        Assert.True(first.Zip(first.Skip(1)).All(pair => pair.Second.Origin.Y > pair.First.Origin.Y && Math.Abs(pair.Second.Origin.X - pair.First.Origin.X) < 0.5f));
+        // The next paragraph to its left; the footer across at the bottom.
+        var second = glyphs.First(g => g.Character == '둘');
+        Assert.True(second.Origin.X < first[0].Origin.X - 8, $"{second.Origin} {first[0].Origin}");
+        var foot = glyphs.Where(g => g.Character is 'F' or 'o' or 't' or 'e' or 'r').ToList();
+        Assert.NotEmpty(foot);
+        Assert.All(foot, g => Assert.True(Upright(g)));
+        Assert.All(foot, g => Assert.True(g.Origin.Y > 842 - 72));
+    }
+
+    [Fact]
+    public async Task An_hwpx_section_written_vertically_and_an_odt_page_frame_and_cell_are_drawn_vertically()
+    {
+        NeedFonts();
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "vertical.hwpx");
+        var across = HwpxReaderTests.HangulStylePackage(folder);
+        File.Copy(across, path);
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            var entry = zip.GetEntry("Contents/section0.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+                xml = reader.ReadToEnd();
+            entry.Delete();
+            xml = xml.Replace("<hp:secPr id=\"\" textDirection=\"HORIZONTAL\"", "<hp:secPr id=\"\" textDirection=\"VERTICAL\"", StringComparison.Ordinal);
+            using var writer = new StreamWriter(zip.CreateEntry("Contents/section0.xml").Open(), new UTF8Encoding(false));
+            writer.Write(xml);
+        }
+        // The section written vertically doesn't send the file elsewhere (the package's chart still does).
+        var renderer = new FileeRendererConverter();
+        Assert.Equal(renderer.FirstUnsupported(across, "hwpx"), renderer.FirstUnsupported(path, "hwpx"));
+        var document = HwpxReader.ReadForLayout(path, Path.Combine(folder, "media"));
+        Assert.Equal(HTextFlow.Vertical, document.Sections[0].TextFlow);
+        Assert.Equal(0, document.LeftOut[HLeftOutKind.VerticalText]);
+        var page = new PageComposer(new FontResolver(_fonts), _shaper, document.Kinsoku).Compose(document, Token).Pages[0];
+        var hangul = Glyphs(page).Where(g => g.Character == '줄').ToList();
+        Assert.NotEmpty(hangul);
+        Assert.All(hangul, g => Assert.True(Upright(g), $"up {g.Up}"));
+        Assert.True(hangul.Max(g => g.Origin.X) > page.Width / 2, "the first lines are at the right");
+
+        // ODT: the page, a text frame and a cell written top to bottom.
+        var odt = new OdtBuilder
+        {
+            StylesAutomatic = "<style:page-layout style:name=\"pm1\"><style:page-layout-properties fo:page-width=\"21cm\" fo:page-height=\"29.7cm\" " +
+                              "fo:margin-top=\"2cm\" fo:margin-bottom=\"2cm\" fo:margin-left=\"2cm\" fo:margin-right=\"2cm\" style:writing-mode=\"tb-rl\"/></style:page-layout>",
+            MasterStyles = "<style:master-page style:name=\"Standard\" style:page-layout-name=\"pm1\"/>",
+            ContentStyles = "<style:style style:name=\"fr1\" style:family=\"graphic\"><style:graphic-properties style:writing-mode=\"tb-rl\"/></style:style>" +
+                            "<style:style style:name=\"ce1\" style:family=\"table-cell\"><style:table-cell-properties style:writing-mode=\"tb-rl\"/></style:style>",
+            Body = "<text:p>縦書き<draw:frame draw:style-name=\"fr1\" text:anchor-type=\"as-char\" svg:width=\"2cm\" svg:height=\"4cm\"><draw:text-box><text:p>枠</text:p></draw:text-box></draw:frame></text:p>" +
+                   "<table:table><table:table-column/><table:table-row><table:table-cell table:style-name=\"ce1\"><text:p>セル</text:p></table:table-cell></table:table-row></table:table>",
+        };
+        var odtPath = odt.Save(Path.Combine(fx.NewFolder(), "vertical.odt"));
+        Assert.Null(new FileeRendererConverter().FirstUnsupported(odtPath, "odt"));
+        var read = await DocumentReaders.ReadAsync(odtPath, "odt", fx.NewFolder(), Token);
+        var section = Assert.Single(read.Sections);
+        Assert.Equal(HTextFlow.Vertical, section.TextFlow);
+        Assert.Equal(HTextFlow.Vertical, section.Blocks.OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HTextBox>().Single().TextFlow);
+        Assert.Equal(HTextFlow.Vertical, section.Blocks.OfType<HTable>().Single().Rows[0].Cells[0].TextFlow);
+        Assert.True(read.LeftOut.IsEmpty);
+    }
+
+    [Fact]
+    public void An_odp_frame_written_top_to_bottom_stands_its_cjk_upright()
+    {
+        var builder = new OdpBuilder
+        {
+            ContentStyles = OdpBuilder.GraphicStyle("gr1", "draw:fill=\"none\" draw:stroke=\"none\" style:writing-mode=\"tb-rl\""),
+            Pages = OdpBuilder.Page("<draw:frame draw:style-name=\"gr1\" svg:x=\"1cm\" svg:y=\"1cm\" svg:width=\"3cm\" svg:height=\"10cm\"><draw:text-box><text:p>縦書き</text:p></draw:text-box></draw:frame>"),
+        };
+        var path = builder.Save(Path.Combine(fx.NewFolder(), "vertical.odp"));
+        var shape = Assert.Single(Filee.Engines.Odf.Draw.OdfDrawReader.Read(path, cancellationToken: Token).Slides).Elements.OfType<SlideShape>().Single();
+        Assert.Equal((Filee.Engines.Slides.TextDirection.Down, UprightGlyphs.EastAsian), (shape.Text!.Direction, shape.Text.Upright));
+    }
+
+    // ───────────────────────── Vertical forms and numbers set across ─────────────────────────
+
+    [Fact]
+    public void Two_or_three_digits_on_their_own_are_set_across_in_one_character_s_room()
+    {
+        NeedFonts();
+        var font = new FontResolver(_fonts).Find(RepositoryFonts.Korean, FontStyle.Regular)!.Font;
+        GlyphRun Run(string text, bool across = false) => _shaper.Shape(font, text).ToGlyphRun(font, 10, new SKPoint(0, 10), text) with { Across = across };
+
+        var parts = VerticalText.Split(Run("第12回"), UprightGlyphs.EastAsian, _shaper).ToList();
+        Assert.Equal(["第", "12", "回"], parts.Select(p => p.Text));
+        Assert.All(parts, p => Assert.NotNull(p.Transform));
+        // Across: upright (its top up the page once the text is turned), within an em.
+        var digits = parts[1];
+        Assert.InRange(digits.ScaleX, 0.5f, 1);
+        Assert.InRange(digits.Positions[^1].X - digits.Positions[0].X, 0, 10);
+
+        // Four digits, digits after a letter and a number the run's neighbour goes on with lie on their side.
+        var year = VerticalText.Split(Run("第2024回"), UprightGlyphs.EastAsian, _shaper).ToList();
+        Assert.Equal(["第", "2024", "回"], year.Select(p => p.Text));
+        Assert.Null(year[1].Transform);
+        Assert.Single(VerticalText.Split(Run("A12"), UprightGlyphs.EastAsian, _shaper));
+        Assert.Single(VerticalText.Split(Run("12"), UprightGlyphs.EastAsian, _shaper, before: '3'));
+        Assert.Single(VerticalText.Split(Run("12"), UprightGlyphs.None, _shaper));
+        // A run the document sets across (Word w:eastAsianLayout w:vert): all of it, squeezed to an em.
+        var marked = Assert.Single(VerticalText.Split(Run("ABCD", across: true), UprightGlyphs.EastAsian, _shaper));
+        Assert.NotNull(marked.Transform);
+        Assert.True(marked.ScaleX < 1);
+        Assert.All(parts.Append(marked), p => p.Validate());
+    }
+
+    [Fact]
+    public void Upright_characters_take_the_font_s_vertical_forms()
+    {
+        NeedFonts();
+        var font = new FontResolver(_fonts).Find(RepositoryFonts.Korean, FontStyle.Regular)!.Font;
+        const string text = "가「나」、";
+        var run = _shaper.Shape(font, text).ToGlyphRun(font, 10, new SKPoint(0, 10), text);
+        Assert.True(_shaper.Vertical(font, "「") is { Substituted: true, Metrics: true }, "Noto Sans KR has vert and vmtx");
+        Assert.False(_shaper.Vertical(font, "가")!.Value.Substituted);
+
+        var parts = VerticalText.Split(run, UprightGlyphs.EastAsian, _shaper).ToList();
+
+        // The brackets stand in their vertical forms; Hangul keeps its glyphs; the comma takes its vertical form, which
+        // the font puts in the corner itself (no shift added: the turn only).
+        Assert.Equal(["가", "「", "나", "」", "、"], parts.Select(p => p.Text));
+        Assert.All(parts, p => Assert.NotNull(p.Transform));
+        Assert.Equal(run.Glyphs[0], parts[0].Glyphs[0]);
+        Assert.NotEqual(run.Glyphs[1], parts[1].Glyphs[0]);
+        Assert.NotEqual(run.Glyphs[4], parts[4].Glyphs[0]);
+        var turn = parts[4].Transform!.Value;
+        var corner = SKMatrix.CreateRotationDegrees(-90, run.Positions[4].X + 5, 10 - 3.8f);
+        Assert.Equal(corner.TransX, turn.TransX, 1);
+        Assert.Equal(corner.TransY, turn.TransY, 1);
+        Assert.All(parts, p => p.Validate());
+    }
+
+    [Fact]
+    public async Task A_word_run_that_names_the_korean_font_keeps_its_won_sign_for_a_backslash()
+    {
+        NeedFonts();
+        var styles = NotoStyles.Replace("w:ascii=\"Noto Sans\" w:hAnsi=\"Noto Sans\" w:eastAsia=\"Noto Sans KR\"",
+            "w:ascii=\"맑은 고딕\" w:hAnsi=\"맑은 고딕\" w:eastAsia=\"맑은 고딕\"", StringComparison.Ordinal);
+        var source = new DocxBuilder { Styles = styles }.Paragraph(P(R("C:\\Users 한글"))).Save(Path.Combine(fx.NewFolder(), "named.docx"));
+        var document = await DocumentReaders.ReadAsync(source, "docx", fx.NewFolder(), Token);
+
+        var page = new PageComposer(new FontResolver(new MalgunAsNoto(_fonts)), _shaper, document.Kinsoku, StyleResolver.FromTemplate()).Compose(document, Token).Pages[0];
+
+        // The document chose 맑은 고딕 (Noto Sans KR stands in for it here): Word draws its ₩, and so does Filee.
+        var backslash = page.Items.OfType<GlyphItem>().Select(i => i.Run).Single(r => r.Text.Contains('\\'));
+        Assert.Same(_fonts.Font(RepositoryFonts.Korean), backslash.Font);
+    }
+
+    // ───────────────────────── Slides: a rectangle gradient ─────────────────────────
+
+    [Fact]
+    public void A_rectangle_path_gradient_reaches_its_last_stop_at_the_box_s_edges()
+    {
+        using var bitmap = new SKBitmap(200, 100);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(SKColors.White);
+        using var ellipse = new SKPath();
+        ellipse.AddOval(new SKRect(0, 0, 200, 100));
+        var fill = new GradientFill([new(0, SKColors.Red), new(1, SKColors.Blue)], GradientShape.Rectangle, 0, false, new SKRect(0.5f, 0.5f, 0.5f, 0.5f));
+        using (var images = new SlideImages())
+            SlidePaint.Fill(canvas, ellipse, fill, new SKRect(0, 0, 200, 100), images);
+
+        // In rectangles from the centre (red) to the box (blue): inside the ellipse near the middle of each side it is
+        // nearly blue, as DrawingML and LibreOffice draw it (an ellipse through the corners left it two thirds of the way).
+        static void Near(SKColor actual, SKColor expected) =>
+            Assert.True(Math.Abs(actual.Red - expected.Red) < 40 && Math.Abs(actual.Blue - expected.Blue) < 40, $"{actual} vs {expected}");
+        Near(bitmap.GetPixel(100, 50), SKColors.Red);
+        Near(bitmap.GetPixel(195, 50), SKColors.Blue);
+        Near(bitmap.GetPixel(100, 3), SKColors.Blue);
+        Near(bitmap.GetPixel(150, 50), new SKColor(128, 0, 127));
+        // Contours are rectangles: half way across and half way down, the same colour.
+        var (across, down) = (bitmap.GetPixel(150, 50), bitmap.GetPixel(100, 75));
+        Assert.InRange(Math.Abs(across.Red - down.Red), 0, 12);
+
+        // A focus in the bottom-right corner (PowerPoint's "from the corner"): red there, blue at the far edges.
+        using var box = new SKPath();
+        box.AddRect(new SKRect(0, 0, 200, 100));
+        canvas.Clear(SKColors.White);
+        using (var images = new SlideImages())
+            SlidePaint.Fill(canvas, box, fill with { Focus = new SKRect(1, 1, 0, 0) }, new SKRect(0, 0, 200, 100), images);
+        Near(bitmap.GetPixel(198, 98), SKColors.Red);
+        Near(bitmap.GetPixel(2, 50), SKColors.Blue);
+        Near(bitmap.GetPixel(150, 1), SKColors.Blue);
     }
 }

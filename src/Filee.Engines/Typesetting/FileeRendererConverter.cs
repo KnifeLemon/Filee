@@ -11,9 +11,9 @@
 // presentations or spreadsheets, the engine leaves those files to it (its edge would win on cost otherwise).
 //
 // Its edges are Checked: before a file is converted, FirstUnsupported looks through it for what the layout engine
-// doesn't draw yet (OLE objects, charts other than the DrawingML ones ChartReader draws, sections written vertically
-// (vertical cells and text boxes are drawn), form controls and ActiveX controls, SmartArt without the drawing Word saves
-// with it), and such a file takes the route
+// doesn't draw yet (OLE objects, charts other than the DrawingML ones ChartReader draws, form controls it doesn't draw
+// (ActiveX controls, ODF form controls, 한글's list boxes and scroll bars), SmartArt without the drawing Word saves with
+// it), and such a file takes the route
 // it would take without the engine (JobQueue). An HWP is looked through as the HWPX package it becomes; a deck by
 // SlideCapabilities (charts, effects, ...). Pictures of document pages go on from the PDF through PDFium, which applies
 // the image options; pictures of slides are drawn directly, with the image options applied here.
@@ -326,7 +326,6 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     private static readonly (Regex Pattern, string Feature)[] HwpxMarkers =
     [
         (HwpxOle(), "OLE objects and charts"),
-        (HwpxVertical(), "vertical text"),
         (HwpxFormControl(), "form controls"),
         (HwpxVideo(), "videos"),
     ];
@@ -334,14 +333,12 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     private static readonly (Regex Pattern, string Feature)[] WordMarkers =
     [
         (WordOle(), "OLE objects and charts"),
-        (WordVertical(), "vertical text"),
         (WordControl(), "form controls"),
     ];
 
     private static readonly (Regex Pattern, string Feature)[] OdtMarkers =
     [
         (OdtObject(), "OLE objects and charts"),
-        (OdtVertical(), "vertical text"),
         (OdtFormControl(), "form controls"),
     ];
 
@@ -497,11 +494,11 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     [GeneratedRegex(@"<(\w+):default\b.*?</\1:default>", RegexOptions.Singleline)]
     private static partial Regex HwpxDefaultBranch();
 
-    /// <summary>A section written top to bottom (hp:secPr textDirection); vertical cells and text boxes are drawn.</summary>
-    [GeneratedRegex(@"<\w+:secPr\b[^>]*?\stextDirection=""VERT")]
-    private static partial Regex HwpxVertical();
-
-    [GeneratedRegex(@"<\w+:(?:btn|checkBtn|radioBtn|comboBox|listBox|edit|scrollBar)\b")]
+    /// <summary>
+    /// A form control the renderer doesn't draw: a list box or a scroll bar (buttons, check boxes, radio buttons, edit
+    /// and combo boxes are drawn as 한글 prints them, HwpxReader.FormControl).
+    /// </summary>
+    [GeneratedRegex(@"<\w+:(?:listBox|scrollBar)\b")]
     private static partial Regex HwpxFormControl();
 
     [GeneratedRegex(@"<\w+:video\b")]
@@ -516,10 +513,6 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     /// <summary>A chart part of a Word package (word/charts/chart1.xml; chartEx parts too, which aren't drawn).</summary>
     [GeneratedRegex(@"^word/charts/chart(?:Ex)?\d*\.xml$", RegexOptions.IgnoreCase)]
     private static partial Regex WordChartPart();
-
-    /// <summary>A section written top to bottom (w:textDirection in w:sectPr); vertical cells and text boxes are drawn.</summary>
-    [GeneratedRegex(@"<w:sectPr\b(?:[^<]|<(?!/w:sectPr>))*?<w:textDirection w:val=""(?:tbRl|btLr|tbRlV|tbLrV)""")]
-    private static partial Regex WordVertical();
 
     /// <summary>A SmartArt part of a Word package: a diagram's data (data1.xml) or the drawing Word saves of it (drawing1.xml).</summary>
     [GeneratedRegex(@"^word/diagrams/(data|drawing)\d*\.xml$", RegexOptions.IgnoreCase)]
@@ -538,9 +531,6 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     /// <summary>A draw:object (not -ole) with its xlink:href; an inline one (no href) doesn't match, and isn't drawn here.</summary>
     [GeneratedRegex(@"<draw:object\b(?!-)[^>]*?\sxlink:href=""([^""]*)""")]
     private static partial Regex OdtObjectHref();
-
-    [GeneratedRegex(@"writing-mode=""tb-")]
-    private static partial Regex OdtVertical();
 
     [GeneratedRegex(@"<form:\w")]
     private static partial Regex OdtFormControl();

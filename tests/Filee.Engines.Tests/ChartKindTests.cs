@@ -294,6 +294,22 @@ public sealed class ChartKindTests(EngineFixture fx) : IClassFixture<EngineFixtu
 
     // ───────────────────────── Office 2016 charts (chartex) ─────────────────────────
 
+    [Theory]
+    [InlineData("ko-KR", "증가", "합계")]
+    [InlineData("de-AT", "Zunahme", "Summe")]
+    [InlineData("zh-HK", "增加", "總計")]
+    [InlineData("pt", "Aumento", "Total")]
+    [InlineData("sv-SE", "Increase", "Total")]
+    public void A_waterfalls_legend_names_are_in_the_app_language(string culture, string increase, string total)
+    {
+        var names = ChartWords.Waterfall(System.Globalization.CultureInfo.GetCultureInfo(culture));
+        Assert.Equal((increase, total), (names[0], names[2]));
+        // Every language the app ships has its three names.
+        var folder = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Filee.App", "Assets", "i18n");
+        var languages = Directory.Exists(folder) ? Directory.GetFiles(folder, "*.json").Select(Path.GetFileNameWithoutExtension).ToList() : [];
+        Assert.True(languages.Count == 0 || languages.All(l => ChartWords.Language(System.Globalization.CultureInfo.GetCultureInfo(l!)) == l), string.Join(", ", languages));
+    }
+
     [Fact]
     public void A_waterfall_floats_each_column_from_the_running_total()
     {
@@ -303,7 +319,19 @@ public sealed class ChartKindTests(EngineFixture fx) : IClassFixture<EngineFixtu
         Assert.Equal([0, 4, 6], plot.Subtotals.Order());
         Assert.Equal("Waterfall", Assert.Single(chart.Title!.Lines));
         Assert.Equal("t", chart.Legend!.Position);
-        var (bitmap, page) = Picture(ChartSamples.Waterfall());
+        var language = System.Globalization.CultureInfo.CurrentUICulture;
+        (SKBitmap Bitmap, PageContent Page) picture;
+        try
+        {
+            // The legend's names are in the app's language: English here, whatever the machine's.
+            System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+            picture = Picture(ChartSamples.Waterfall());
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = language;
+        }
+        var (bitmap, page) = picture;
         using (bitmap)
             Assert.True(Count(bitmap, Accent1) > 500 && Count(bitmap, Accent2) > 500 && Count(bitmap, Accent3) > 1500);
         var text = Text(page);

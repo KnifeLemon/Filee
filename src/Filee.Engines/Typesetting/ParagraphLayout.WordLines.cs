@@ -157,7 +157,7 @@ internal sealed partial class ParagraphLayouter
     /// characters that one lacks.
     /// </summary>
     private ResolvedFont Measured(Item item, string language) =>
-        WordLineHeights ? Font(item.Style.Family, item.Style.Style, item.Style.Language.Length > 0 ? item.Style.Language : language) : item.Font;
+        WordLineHeights ? Font(item.Style.Family, item.Style.Style, item.Style.Language.Length > 0 ? item.Style.Language : language, item.Style.Named) : item.Font;
 
     /// <summary>
     /// A Word part of symbols only (☐ ☑ ● ■, Unicode category So): mostly a symbol font's character read as Unicode

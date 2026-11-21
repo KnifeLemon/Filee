@@ -45,6 +45,9 @@ internal sealed partial class PptxWriter
     /// <summary>Cancels a long conversion between slides and table rows.</summary>
     private CancellationToken _token;
 
+    /// <summary>The paragraph whose inlines become runs (whether an equation in it is a display equation).</summary>
+    private HParagraph? _paragraph;
+
     /// <summary>Text sizes (1/100 pt) of the list levels, PowerPoint's: 28, 24, 20 and 18 pt below.</summary>
     private static readonly int[] LevelSizes = [2800, 2400, 2000, 1800, 1800, 1800, 1800, 1800, 1800];
 
@@ -59,8 +62,16 @@ internal sealed partial class PptxWriter
 
     // ───────────────────────── Text model ─────────────────────────
 
-    /// <summary>A run of text with its look; <see cref="Break"/> is a line break.</summary>
-    private sealed record Run(string Text, HCharFormat Format, bool Code = false, string? Link = null, bool Break = false);
+    /// <summary>
+    /// A run of text with its look; <see cref="Break"/> is a line break. An equation's run has its linear text (what
+    /// tables and titles write, and what heights are estimated from) and the equation, a <see cref="Display"/> one
+    /// when it stands alone in its paragraph.
+    /// </summary>
+    private sealed record Run(string Text, HCharFormat Format, bool Code = false, string? Link = null, bool Break = false)
+    {
+        public HEquation? Equation { get; init; }
+        public bool Display { get; init; }
+    }
 
     private enum BulletKind
     {
@@ -250,6 +261,7 @@ internal sealed partial class PptxWriter
     /// <summary>A paragraph's text (and the pictures and text boxes in it, as items and paragraphs of their own).</summary>
     private void Paragraph(HParagraph paragraph, ref List<Para>? text, List<Item> items, Action flushText)
     {
+        _paragraph = paragraph;
         var current = new List<HInline>();
         var first = true;
         void Emit(ref List<Para>? sink)
@@ -368,6 +380,13 @@ internal sealed partial class PptxWriter
         {
             switch (inline)
             {
+                case HEquation equation when !codeBlock:
+                    runs.Add(new Run(EquationScript.Linear(equation.Math), equation.Format, Link: link)
+                    {
+                        Equation = equation,
+                        Display = _paragraph is { } paragraph && paragraph.Inlines.Contains(equation) && HEquation.IsDisplay(equation, paragraph),
+                    });
+                    break;
                 case HText text:
                     runs.Add(new Run(text.Text.Replace('\n', ' ').Replace('\r', ' '), text.Format, codeBlock || IsCode(text.Format), link));
                     break;
@@ -633,6 +652,20 @@ internal sealed partial class PptxWriter
             }
             var scale = size * (run.Format.Bold == true || paragraph.Bold ? 1.07 : 1) * (run.Format.Superscript == true || run.Format.Subscript == true ? 0.7 : 1);
             var code = run.Code || paragraph.Code;
+            if (run.Equation is not null)
+            {
+                // An equation isn't broken: it goes on the next line when it doesn't fit (its linear text is about as wide).
+                var whole = run.Text.Sum(c => Width(c, code)) * scale;
+                if (x + whole > available && x > 0)
+                {
+                    starts.Add(new Position(r, 0));
+                    x = 0;
+                }
+                x += whole;
+                lastBreak = new Position(r + 1, 0);
+                widthAtBreak = x;
+                continue;
+            }
             for (var i = 0; i < run.Text.Length; i++)
             {
                 var c = run.Text[i];

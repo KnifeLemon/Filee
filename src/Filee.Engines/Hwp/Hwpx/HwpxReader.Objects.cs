@@ -92,12 +92,23 @@ internal sealed partial class HwpxReader
                 // A chart ChartReader doesn't draw: the OLE object 한글 saved beside it (hp:switch's hp:default).
                 DrawingObject(ole, builder, format);
                 break;
+            case "ole" when _forLayout && OleChart(element) is { } oleChart:
+                // A 한글 chart's DrawingML part, kept in its OLE object (OOXMLChartContents).
+                builder.Add(oleChart);
+                break;
             case "ole" when _forLayout && OlePicture(element) is { } picture:
                 builder.Add(picture);
-                _leftOut.Add(HLeftOutKind.ObjectPictured);
+                // A chart whose own data isn't read (한글 Neo's older chart object) is drawn from its picture, and named so.
+                _leftOut.Add(OleContent(element).IsChart ? HLeftOutKind.ChartPictured : HLeftOutKind.ObjectPictured);
                 break;
             default:
-                if (name switch { "ole" => HLeftOutKind.ObjectLeftOut, "chart" => HLeftOutKind.Chart, "video" => HLeftOutKind.Video, _ => (HLeftOutKind?)null } is { } leftOut)
+                if (name switch
+                {
+                    "ole" => _forLayout && OleContent(element).IsChart ? HLeftOutKind.Chart : HLeftOutKind.ObjectLeftOut,
+                    "chart" => HLeftOutKind.Chart,
+                    "video" => HLeftOutKind.Video,
+                    _ => (HLeftOutKind?)null,
+                } is { } leftOut)
                     _leftOut.Add(leftOut);
                 Skip(element); // ole, chart, video, form controls, ...
                 break;
@@ -187,7 +198,7 @@ internal sealed partial class HwpxReader
     /// </summary>
     private HImage? OlePicture(XElement ole)
     {
-        if (ExtractBinary(Attr(ole, "binaryItemIDRef")) is not { } path || OlePreviews.Extract(path, path + "-preview") is not { } preview)
+        if (OleContent(ole).Preview is not { } preview)
             return null;
         _budget.Object();
         var placement = PlacementOf(ole);
@@ -205,6 +216,33 @@ internal sealed partial class HwpxReader
         };
     }
 
+    /// <summary>What an OLE object holds (read once a document through <see cref="OlePreviews"/>): its picture, its chart part, whether it is a chart.</summary>
+    private Binary.OlePreview.Content OleContent(XElement ole) =>
+        ExtractBinary(Attr(ole, "binaryItemIDRef")) is { } path ? OlePreviews.Read(path, path + "-preview") : new(null, null, false);
+
+    /// <summary>
+    /// An OLE object that is a 한글 chart with its DrawingML part (OOXMLChartContents) ChartReader draws, as a chart
+    /// picture like <see cref="ChartPicture"/>'s; null otherwise. The part is read within the XML limits.
+    /// </summary>
+    private HImage? OleChart(XElement ole)
+    {
+        if (OleContent(ole).ChartPart is not { } bytes)
+            return null;
+        XElement? root;
+        try
+        {
+            root = Infrastructure.BoundedXml.Bytes(bytes, "OOXMLChartContents", LoadOptions.None).Root;
+        }
+        catch (Exception ex) when (ex is System.Xml.XmlException or InvalidDataException)
+        {
+            return null;
+        }
+        var placement = PlacementOf(ole);
+        if (placement.Width <= 0 || placement.Height <= 0 || Charts.ChartReader.Read(root, Slides.DrawingColors.FromTheme(null)).Chart is not { } chart)
+            return null;
+        return ChartImage(ole, chart, placement);
+    }
+
     /// <summary>
     /// An hp:chart drawn from its OOXML chart part (chartIDRef, a path in the package): a PNG of it for the writers that
     /// carries the chart for the renderer; null when the part is missing or ChartReader doesn't draw it. HWPX has no
@@ -219,6 +257,12 @@ internal sealed partial class HwpxReader
         if (placement.Width <= 0 || placement.Height <= 0
             || Charts.ChartReader.Read(ChartPart(part), Slides.DrawingColors.FromTheme(null)).Chart is not { } chart)
             return null;
+        return ChartImage(element, chart, placement);
+    }
+
+    /// <summary>A chart drawn as a PNG in the object's place and size, carrying the chart for the renderer.</summary>
+    private HImage? ChartImage(XElement element, Charts.Chart chart, Placement placement)
+    {
         _budget.Object();
         _charts.Charge(chart);
         // Points are HWPUNIT / 100.

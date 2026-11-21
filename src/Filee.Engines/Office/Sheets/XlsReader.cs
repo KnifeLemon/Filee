@@ -2,7 +2,8 @@
 // records are read by ExcelDataReader (MIT), values are formatted with the same number formats as XLSX
 // (NumberFormatter), plus merged cells, column widths, row heights, hidden rows / columns / sheets and alignment.
 // Fonts, fills, borders and the full alignment (BIFF8), widths, heights and the page setup come from the BIFF records
-// themselves (XlsLayout), which ExcelDataReader doesn't expose.
+// themselves (XlsLayout), which ExcelDataReader doesn't expose, and so are the charts (embedded ones and chart sheets,
+// BiffChartReader).
 
 using System.Text;
 using ExcelDataReader;
@@ -33,13 +34,28 @@ internal static class XlsReader
             if (layout?.DefaultFontSize is { } fontSize)
                 book.DefaultFontSize = fontSize;
             var index = 0;
+            var shown = new List<int>(); // visible worksheets before each worksheet, and in all at the end
             do
             {
+                shown.Add(book.Sheets.Count);
                 if (reader.VisibleState is null or "visible")
                     book.Sheets.Add(ReadSheet(reader, formatter, layout?.Sheets.ElementAtOrDefault(index), layout?.Styles ?? []));
                 index++;
             }
             while (reader.NextResult());
+            shown.Add(book.Sheets.Count);
+            // Chart sheets print between the worksheets around them.
+            foreach (var chartSheet in layout?.ChartSheets ?? [])
+            {
+                if (chartSheet.Visible && chartSheet.Chart is { } chart)
+                {
+                    book.ChartSheets.Add((shown[Math.Min(chartSheet.WorksheetsBefore, shown.Count - 1)], new Worksheet(chartSheet.Name.Length > 0 ? chartSheet.Name : "Chart")
+                    {
+                        PageSetup = chartSheet.Layout.PageSetup,
+                        Chart = chart,
+                    }));
+                }
+            }
             return book;
         }
         catch (InvalidPasswordException)
@@ -52,7 +68,9 @@ internal static class XlsReader
                 ? "The file is not an Excel 97–2003 workbook but a web page or XML file saved with an .xls name. Open it in Excel and save it as XLSX."
                 : "The file is not an Excel 97–2003 workbook.");
         }
-        catch (Exception ex) when (ex is ExcelReaderException or NotSupportedException or EndOfStreamException)
+        // ExcelDataReader reads past the end of short or damaged records and sector tables with indexes it doesn't check.
+        catch (Exception ex) when (ex is ExcelReaderException or NotSupportedException or EndOfStreamException or ArgumentException
+            or IndexOutOfRangeException or OverflowException or InvalidCastException)
         {
             throw new InvalidDataException("The Excel 97–2003 workbook could not be read: " + ex.Message, ex);
         }
@@ -86,6 +104,7 @@ internal static class XlsReader
                     sheet.Set(r, c, new SheetCell("", blank));
             }
             sheet.PageSetup = layout.PageSetup;
+            sheet.Drawings.AddRange(layout.Charts);
             sheet.PrintArea.AddRange(layout.PrintArea);
             sheet.TitleRows = layout.TitleRows ?? sheet.TitleRows;
             sheet.TitleColumns = layout.TitleColumns;

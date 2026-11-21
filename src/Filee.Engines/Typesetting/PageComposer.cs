@@ -34,6 +34,12 @@
 //   pages, and one that must not overlap (w:tblOverlap never) goes below the floating tables in its way (see Float).
 // - Paragraph spacing: in a Word document the larger of a paragraph's space after and the next one's space before
 //   goes between them (HDocument.CollapseParagraphSpacing); the model keeps both.
+// - Sections written vertically (HSection.TextFlow: Word tbRl / btLr, 한글 세로쓰기, ODF tb-rl pages): the body is laid
+//   out across on the page turned a quarter (its lines as long as the body is high, the next line further on), then
+//   turned into place with VerticalText: top to bottom with the first line at the right (bottom to top with it at the
+//   left for btLr), CJK characters standing upright. Columns become bands from the top down, footnotes go to the
+//   far side. Headers, footers, page numbers, master pages and page borders stay across; floating pictures and shapes
+//   keep standing upright at the place their turned box takes (floating tables turn with the text).
 // - Columns: a section's newspaper columns, with their gap and separator line; what doesn't fit in a column goes on in
 //   the next, and after the last on the next page. Columns change without a new page where the model says (Word's
 //   continuous section break, 한글's 다단 설정 나누기); the columns before are balanced then, so they end at about the
@@ -132,6 +138,21 @@ internal sealed class PageComposer
                 (page.Height - page.Bottom) / 100f);
             return geometry with { MarginTop = geometry.BodyTop, MarginBottom = geometry.BodyBottom };
         }
+
+        /// <summary>
+        /// The body of these areas on the page turned a quarter, for text written vertically: lines run along the body's
+        /// height from its top (from its bottom when <paramref name="upward"/>), and go on from its right edge to its
+        /// left (from the left to the right). VerticalText.Place(upward, the paper) turns it back.
+        /// </summary>
+        public Geometry Turned(bool upward)
+        {
+            var (first, last) = upward ? (Left, Left + TextWidth) : (Width - Left - TextWidth, Width - Left);
+            return new Geometry(Height, Width, upward ? Height - BodyBottom : BodyTop, BodyBottom - BodyTop, first, first, last, last, last)
+            {
+                MarginTop = first,
+                MarginBottom = last,
+            };
+        }
     }
 
     /// <summary>A page and what its headers and footers need.</summary>
@@ -149,6 +170,16 @@ internal sealed class PageComposer
 
         /// <summary>What a paragraph on the page hides of it (한글 쪽 감추기).</summary>
         public HPageHiding? Hiding { get; set; }
+
+        /// <summary>
+        /// The body of a page written vertically, laid out across on the page turned a quarter (Geometry.Turned) and
+        /// turned into place when the page is done; null for a page written across, whose body is drawn on
+        /// <see cref="Content"/>.
+        /// </summary>
+        public PageContent? Turned { get; init; }
+
+        /// <summary>What the body is drawn on.</summary>
+        public PageContent Body => Turned ?? Content;
     }
 
     /// <summary>One composition of a document.</summary>
@@ -279,7 +310,7 @@ internal sealed class PageComposer
                 return;
             }
             var placed = balance && _columns.Count > 1 && !_columnBroken ? Balance(_placed) : _placed;
-            var page = Current.Content;
+            var page = Current.Body;
             // Paragraph borders and backgrounds first, under the text and tables; things come in their columns' order.
             var started = new HashSet<int>();
             foreach (var item in placed)
@@ -544,6 +575,8 @@ internal sealed class PageComposer
             for (var i = 0; i < _pages.Count; i++)
             {
                 var page = _pages[i];
+                if (page.Turned is { } body)
+                    page.Content.Add(VerticalText.Stand(body, VerticalText.Upright(page.Section.TextFlow)), Turn(page));
                 PageBorder(page);
                 MasterPages(page, lastOfSection: i == _pages.Count - 1 || _pages[i + 1].Section != page.Section);
                 // Headers and footers first: what of them lies behind the text (a watermark) goes under the body's
@@ -573,7 +606,10 @@ internal sealed class PageComposer
                 _guard.PageFinished(_empty);
             }
             _number++;
-            var page = new Page(new PageContent(_paper.Width, _paper.Height), _section!, _paper, _number, firstOfSection);
+            var page = new Page(new PageContent(_paper.Width, _paper.Height), _section!, _paper, _number, firstOfSection)
+            {
+                Turned = Vertical(_section!) ? new PageContent(_paper.Height, _paper.Width) : null,
+            };
             _pages.Add(page);
             Dress(page, _pages.Count - 1);
             _y = _geometry.BodyTop;
@@ -584,6 +620,13 @@ internal sealed class PageComposer
         }
 
         private Page Current => _pages[^1];
+
+        /// <summary>Whether the section's body is written vertically (and laid out turned).</summary>
+        private static bool Vertical(HSection section) => section.TextFlow is HTextFlow.Vertical or HTextFlow.Stacked or HTextFlow.Up;
+
+        /// <summary>The matrix that turns a vertical page's body (Page.Turned) into place on the paper.</summary>
+        private static SKMatrix Turn(Page page) =>
+            VerticalText.Place(VerticalText.Upward(page.Section.TextFlow), new SKRect(0, 0, page.Content.Width, page.Content.Height));
 
         // ───────────────────────── Body ─────────────────────────
 
@@ -1103,7 +1146,7 @@ internal sealed class PageComposer
             else if (!stored)
                 _y = Clear(_y, line.Height);
             if (first && paragraph.HeadingLevel > 0)
-                _outline.Add(new OutlineEntry(Title(paragraph), _pages.Count - 1, _y, paragraph.HeadingLevel - 1));
+                _outline.Add(new OutlineEntry(Title(paragraph), _pages.Count - 1, Current.Turned is null ? _y : Current.Geometry.BodyTop, paragraph.HeadingLevel - 1));
             // An object placed against the paper or the page goes on the page of the line that holds it, as 한글 places
             // it; the paragraph's first line places the others.
             if (first && !_anchored.Remove(paragraph))
@@ -1526,11 +1569,36 @@ internal sealed class PageComposer
             {
                 var layer = new PageContent(page.Content.Width, page.Content.Height);
                 if (item.Object is FloatingTable table)
-                    TableLayout.Draw(layer, table.Rows, item.Area.Left, item.Area.Top);
+                {
+                    if (page.Turned is { } body)
+                    {
+                        // A floating table of a vertical page turns with its text.
+                        var turned = new PageContent(body.Width, body.Height);
+                        TableLayout.Draw(turned, table.Rows, item.Area.Left, item.Area.Top);
+                        layer.Add(VerticalText.Stand(turned, VerticalText.Upright(page.Section.TextFlow)), Turn(page));
+                    }
+                    else
+                    {
+                        TableLayout.Draw(layer, table.Rows, item.Area.Left, item.Area.Top);
+                    }
+                }
                 else
-                    FloatingObjects.Draw(layer, item.Object, item.Area, (blocks, width) => Tables.Stack(blocks, width));
+                {
+                    FloatingObjects.Draw(layer, item.Object, page.Turned is null ? item.Area : Upright(item.Area, Turn(page)),
+                        (blocks, width) => Tables.Stack(blocks, width));
+                }
                 page.Content.Add(layer, item.Behind);
             }
+        }
+
+        /// <summary>
+        /// The place on the paper of an object a vertical page's body placed at <paramref name="area"/>: its own size,
+        /// standing upright, centred where the turned area's middle is.
+        /// </summary>
+        private static SKRect Upright(SKRect area, SKMatrix turn)
+        {
+            var middle = turn.MapPoint(area.MidX, area.MidY);
+            return SKRect.Create(middle.X - area.Width / 2, middle.Y - area.Height / 2, area.Width, area.Height);
         }
 
         // ───────────────────────── Notes ─────────────────────────
@@ -1649,7 +1717,7 @@ internal sealed class PageComposer
         {
             if (_footnotes.Count == 0 || _pages.Count == 0)
                 return;
-            var page = Current.Content;
+            var page = Current.Body;
             var shape = _section!.Footnotes;
             var top = _geometry.BodyBottom - FootnotesHeight() + shape.Above / 100f;
             SeparatorLine(page, shape, _geometry.Left, top);
@@ -1848,7 +1916,9 @@ internal sealed class PageComposer
                 g = g with { BodyTop = Math.Min(Math.Max(g.BodyTop, g.HeaderTop + Height(header, g.TextWidth)), g.BodyBottom - least) };
             if (section.FooterMovesBody && page.Footer is { } footer)
                 g = g with { BodyBottom = Math.Max(Math.Min(g.BodyBottom, g.FooterBottom - Height(footer, g.TextWidth)), g.BodyTop + least) };
-            page.Geometry = _geometry = g;
+            // Headers and footers stay across; a vertical page's body is laid out turned.
+            page.Geometry = g;
+            _geometry = page.Turned is null ? g : g.Turned(VerticalText.Upward(section.TextFlow));
         }
 
         private float Height(List<HBlock> blocks, float width)
@@ -2059,8 +2129,8 @@ internal sealed class PageComposer
 
     private IEnumerable<HInline> Inlines(IEnumerable<HInline> inlines, HParagraph paragraph, bool link, bool code = false)
     {
-        HCharFormat Format(HCharFormat format) => _styles!.Character(code && format.Font is null ? format with { Font = FontNames.MonospaceFamily } : format,
-            paragraph, HStyleContext.Body, link);
+        HCharFormat Format(HCharFormat format) => Named(format, _styles!.Character(code && format.Font is null ? format with { Font = FontNames.MonospaceFamily } : format,
+            paragraph, HStyleContext.Body, link));
         // A Word equation's number box (DocxReader.NumberBox) is placed for rhwp: the number goes with the equation after it.
         HTextBox? numberBox = null;
         foreach (var inline in inlines)
@@ -2079,6 +2149,7 @@ internal sealed class PageComposer
                     var resolved = new HEquation(equation.Math, Format(equation.Format))
                     {
                         Display = equation.Display,
+                        Wrap = equation.Wrap,
                         Width = equation.Width,
                         Height = equation.Height,
                         BaseLine = equation.BaseLine,
@@ -2117,6 +2188,22 @@ internal sealed class PageComposer
         }
         if (numberBox is not null)
             yield return numberBox;
+    }
+
+    /// <summary>
+    /// <paramref name="resolved"/> with the template fonts <paramref name="own"/> (the run's format before the template
+    /// filled it in) names itself kept as its own (HCharLayout.NamedFonts), so they keep the font's ₩ for a backslash.
+    /// </summary>
+    private HCharFormat Named(HCharFormat own, HCharFormat resolved)
+    {
+        if (_styles?.Faces is not { Count: > 0 } template)
+            return resolved;
+        var layout = own.Layout;
+        string?[] names = [own.Font, own.EastAsianFont, layout?.WordFonts?.Ascii, layout?.WordFonts?.HighAnsi, layout?.WordFonts?.EastAsia,
+            layout?.WordFonts?.ComplexScript, .. layout?.Slots is { } slots ? HLanguageSlots.Languages.Select(l => slots[l].Font) : []];
+        var named = names.OfType<string>().Select(n => n.Trim()).Where(template.Contains).Distinct(StringComparer.Ordinal).ToList();
+        return named.Count == 0 ? resolved
+            : resolved with { Layout = (resolved.Layout ?? new HCharLayout()) with { NamedFonts = string.Join('\n', named) } };
     }
 
     private static string Title(HParagraph paragraph) =>

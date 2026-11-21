@@ -162,7 +162,8 @@ internal sealed partial class OdtReader
     // ───────────────────────── Sections and master pages ─────────────────────────
 
     /// <summary>A master page: its page, columns, headers and footers.</summary>
-    private sealed record Master(HPage? Page, HColumns Columns, List<HHeaderFooter> Headers, List<HHeaderFooter> Footers, bool HideFirstHeader, bool HideFirstFooter);
+    private sealed record Master(HPage? Page, HColumns Columns, List<HHeaderFooter> Headers, List<HHeaderFooter> Footers, bool HideFirstHeader, bool HideFirstFooter,
+        HTextFlow TextFlow = HTextFlow.Horizontal);
 
     /// <summary>Where blocks go: the body (whose list moves to each new section) or a cell, note, frame or header.</summary>
     private sealed class Sink(List<HBlock> blocks, bool body)
@@ -210,6 +211,7 @@ internal sealed partial class OdtReader
         {
             Page = master.Page,
             Columns = master.Columns,
+            TextFlow = master.TextFlow,
             HideFirstHeader = master.HideFirstHeader,
             HideFirstFooter = master.HideFirstFooter,
             StartPageNumber = startPage,
@@ -249,12 +251,12 @@ internal sealed partial class OdtReader
         {
             var headers = HeadersAndFooters(Shown(header) ? header : null, Shown(headerLeft) ? headerLeft : null);
             var footers = HeadersAndFooters(Shown(footer) ? footer : null, Shown(footerLeft) ? footerLeft : null);
-            CountVerticalText([layout?.Element(Style + "page-layout-properties")]);
             var page = PageOf(layout, hasHeader, hasFooter);
             var master = new Master(page, ColumnsOf(layout?.Element(Style + "page-layout-properties"), page?.TextWidth),
                 headers, footers,
                 hasHeader && Shown(headerFirst) && IsBlank(Blocks(headerFirst!)),
-                hasFooter && Shown(footerFirst) && IsBlank(Blocks(footerFirst!)));
+                hasFooter && Shown(footerFirst) && IsBlank(Blocks(footerFirst!)),
+                TextFlowOf([layout?.Element(Style + "page-layout-properties")]));
             return _masters[name] = master;
         }
         finally

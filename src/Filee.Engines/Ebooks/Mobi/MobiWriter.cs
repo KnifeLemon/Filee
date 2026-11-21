@@ -1,5 +1,6 @@
 // Book → AZW3 (KF8) and MOBI (MOBI 6 + KF8 in one file), written from the MobileRead wiki's format description. The
-// content is the same XHTML the EPUB writer makes (XhtmlWriter: chapters split at level-1 headings, one style sheet);
+// content is the same XHTML the EPUB writer makes (XhtmlWriter: chapters split at level-1 headings, one style sheet),
+// with equations as pictures (EquationFiles) instead of MathML;
 // MobiReader reads it back into the same document model.
 //
 // KF8 part:
@@ -39,7 +40,9 @@ internal static partial class MobiWriter
     {
         var title = book.DisplayTitle(sourcePath);
         var language = book.DisplayLanguage();
-        var resources = new Resources(EbookFiles.NewFolder(workFolder, "kindle-images"));
+        var imageFolder = EbookFiles.NewFolder(workFolder, "kindle-images");
+        var resources = new Resources(imageFolder);
+        using var equations = new EquationFiles(imageFolder);
 
         var chapters = XhtmlWriter.Write(book.Document, new XhtmlOptions
         {
@@ -47,6 +50,7 @@ internal static partial class MobiWriter
             ChapterFile = PartName,
             ImageSource = path => resources.Add(path) is { } index ? $"kindle:embed:{Base32(index + 1, 4)}?mime={resources.MediaType(index)}" : null,
             Epub = true,
+            MathPictures = equations.File,
         });
         var kf8 = Kf8Text.Build(chapters, title, language);
 
@@ -59,6 +63,7 @@ internal static partial class MobiWriter
                 SplitChapters = true,
                 ChapterFile = PartName,
                 ImageSource = path => resources.Add(path) is { } index ? $"recindex:{index + 1:00000}" : null,
+                MathPictures = equations.File,
             });
             html = Mobi6Html(mobiChapters, title, language);
         }
@@ -777,6 +782,33 @@ internal static partial class MobiWriter
     // ───────────────────────── Pictures ─────────────────────────
 
     /// <summary>The pictures of the book as JPEG, PNG or GIF records, numbered from 0 in the order they are first used.</summary>
+    /// <summary>
+    /// Equations as PNG files: KF8 readers don't draw MathML (Amazon's Kindle Publishing Guidelines give MathML to
+    /// Enhanced Typesetting only, which KDP applies to the books it converts), and take no pictures with transparency,
+    /// so each equation is drawn on white at 300 ppi. One file per equation, for both parts of a MOBI.
+    /// </summary>
+    private sealed class EquationFiles(string folder) : IDisposable
+    {
+        private readonly Typesetting.EquationPicture _pictures = new();
+        private readonly Dictionary<(HEquation, bool), (string, Typesetting.EquationImage)?> _files = new();
+
+        public (string Path, Typesetting.EquationImage Image)? File(HEquation equation, bool display)
+        {
+            if (_files.TryGetValue((equation, display), out var known))
+                return known;
+            (string, Typesetting.EquationImage)? result = null;
+            if (_pictures.Draw(equation, display, opaque: true) is { } image)
+            {
+                var path = Path.Combine(folder, $"equation-{_files.Count + 1}.png");
+                System.IO.File.WriteAllBytes(path, image.Png);
+                result = (path, image);
+            }
+            return _files[(equation, display)] = result;
+        }
+
+        public void Dispose() => _pictures.Dispose();
+    }
+
     private sealed class Resources(string folder)
     {
         private readonly List<(string File, string MediaType)> _items = [];

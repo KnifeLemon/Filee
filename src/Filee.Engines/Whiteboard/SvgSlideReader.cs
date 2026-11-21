@@ -604,7 +604,7 @@ internal sealed partial class SvgSlideReader
             var angle = dx == 0 && dy == 0 ? 0 : MathF.Atan2(dy, dx) * 180 / MathF.PI;
             return new GradientFill(stops, GradientShape.Linear, float.IsFinite(angle) ? angle : 0, scaled, SKRect.Empty);
         }
-        // Radial: an ellipse over the box from its centre, as the renderer draws a rectangle gradient, whose ellipse
+        // Radial: an ellipse over the box from its centre, as the renderer draws an ellipse gradient, whose ellipse
         // passes through the box's corners; SVG's radius (50 % of the box) reaches the middle of its sides.
         var radius = userSpace ? 0.5f : Math.Clamp(Fraction(Get("r")) ?? 0.5f, 0.01f, 10);
         var cx = userSpace ? 0.5f : Math.Clamp(Fraction(Get("cx")) ?? 0.5f, 0, 1);
@@ -613,7 +613,7 @@ internal sealed partial class SvgSlideReader
         var reaching = stops.Select(s => s with { Position = Math.Clamp(s.Position * reach, 0, 1) }).ToList();
         if (reaching[^1].Position < 1)
             reaching.Add(new GradientStop(1, reaching[^1].Color));
-        return new GradientFill(reaching, GradientShape.Rectangle, 0, false, new SKRect(cx, cy, 1 - cx, 1 - cy));
+        return new GradientFill(reaching, GradientShape.Ellipse, 0, false, new SKRect(cx, cy, 1 - cx, 1 - cy));
     }
 
     // ───────────────────────── Text ─────────────────────────

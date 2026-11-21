@@ -1,6 +1,6 @@
 // Disk images unpacked in-process (DiskImageReader): FAT12/16/32 volumes with long names, MBR / GPT / Apple partition
 // maps with a folder per volume, UDF discs (plain and behind an ISO 9660 bridge) and DMG files with every run type
-// DiscUtils.Dmg decodes. Images are built in code (DiskImageBuilders, and DiscUtils.Fat as an independent FAT writer);
+// UdifDisk decodes (raw, zero, ADC, zlib, bzip2, LZFSE, LZMA). Images are built in code (DiskImageBuilders, and DiscUtils.Fat as an independent FAT writer);
 // 7-Zip, where present, reads the same images, and the tools of the PC write real ones where there are
 // any: Windows' IMAPI2 (UDF 1.02 / 2.01 / 2.50 with an ISO 9660 bridge) and macOS' hdiutil (HFS+ DMGs). Then the
 // hostile and damaged inputs, and what is left to 7-Zip.
@@ -176,7 +176,9 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData(new[] { DmgRun.Zlib })]
     [InlineData(new[] { DmgRun.Bzip2 })]
     [InlineData(new[] { DmgRun.Adc })]
-    [InlineData(new[] { DmgRun.Zlib, DmgRun.Raw, DmgRun.Bzip2, DmgRun.Adc })]
+    [InlineData(new[] { DmgRun.Lzfse })]
+    [InlineData(new[] { DmgRun.Lzma })]
+    [InlineData(new[] { DmgRun.Zlib, DmgRun.Raw, DmgRun.Bzip2, DmgRun.Adc, DmgRun.Lzfse, DmgRun.Lzma })]
     public async Task Dmg_files_unpack_in_process(DmgRun[] runs)
     {
         // A file with zeros over whole chunks: those are stored as zero-fill (type 0) and ignore (type 2) runs.
@@ -184,6 +186,80 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // A GPT disk (as hdiutil makes by default) and a bare volume (hdiutil -layout NONE).
         await AssertUnpacksAsync(Write("disk.dmg", Dmg(Gpt(("disk image", Fat(entries, 16))), runs)), "dmg", entries);
         await AssertUnpacksAsync(Write("volume.dmg", Dmg(Fat(entries, 12), runs)), "dmg", entries);
+    }
+
+    [Theory]
+    [InlineData(DmgRun.Raw)]
+    [InlineData(DmgRun.Zlib)]
+    [InlineData(DmgRun.Bzip2)]
+    [InlineData(DmgRun.Adc)]
+    [InlineData(DmgRun.Lzfse)]
+    [InlineData(DmgRun.Lzma)]
+    public void Dmg_disks_read_back_byte_for_byte(DmgRun kind)
+    {
+        var disk = Fat(Entries(), 16);
+        using var file = new MemoryStream(Dmg(disk, [kind], chunkSectors: 100));
+        using var read = UdifCheck.Open(file, "disk.dmg", Ct)!;
+        Assert.Equal(disk.Length, read.Length);
+        var back = new byte[disk.Length];
+        // Out of order and across chunks, as a file system reads.
+        foreach (var at in new[] { disk.Length / 2, 0, disk.Length - 700, 51_000 })
+        {
+            read.Position = at;
+            read.ReadExactly(back.AsSpan(at, Math.Min(70_000, disk.Length - at)));
+        }
+        read.Position = 0;
+        read.ReadExactly(back);
+        Assert.True(disk.AsSpan().SequenceEqual(back), "the disk read back differs");
+    }
+
+    [Fact]
+    public async Task Dmg_block_tables_for_each_partition_read_as_one_disk()
+    {
+        // hdiutil writes one block table per partition; here each holds part of the disk, and the runs of the second
+        // count from its own first sector.
+        var entries = Entries();
+        var whole = Dmg(Fat(entries, 12), [DmgRun.Lzfse, DmgRun.Zlib]);
+        var mish = Mish(whole);
+        var runs = BinaryPrimitives.ReadInt32BigEndian(mish.AsSpan(200));
+        var sectors = BinaryPrimitives.ReadInt64BigEndian(mish.AsSpan(16));
+        var split = (int)BinaryPrimitives.ReadInt64BigEndian(mish.AsSpan(204 + 2 * 40 + 8)); // the third run's start
+        var (head, tail) = ((byte[])mish.Clone(), (byte[])mish.Clone());
+        BinaryPrimitives.WriteInt64BigEndian(head.AsSpan(16), split);
+        BinaryPrimitives.WriteInt32BigEndian(head.AsSpan(200), 2);
+        BinaryPrimitives.WriteInt64BigEndian(tail.AsSpan(8), split);
+        BinaryPrimitives.WriteInt64BigEndian(tail.AsSpan(16), sectors - split);
+        BinaryPrimitives.WriteInt32BigEndian(tail.AsSpan(200), runs - 2);
+        Array.Copy(mish, 204 + 2 * 40, tail, 204, (runs - 2) * 40);
+        for (var i = 0; i < runs - 2; i++)
+        {
+            var at = tail.AsSpan(204 + i * 40 + 8);
+            BinaryPrimitives.WriteInt64BigEndian(at, BinaryPrimitives.ReadInt64BigEndian(at) - split);
+        }
+        var xml = Xml(whole);
+        var entry = xml[xml.IndexOf("<dict>", xml.IndexOf("<array>", StringComparison.Ordinal), StringComparison.Ordinal)..(xml.IndexOf("</array>", StringComparison.Ordinal))];
+        string Table(byte[] table) => entry[..(entry.IndexOf("<data>", StringComparison.Ordinal) + 6)] + Convert.ToBase64String(table)
+            + entry[entry.IndexOf("</data>", StringComparison.Ordinal)..];
+        var two = xml.Replace(entry, Table(head) + Table(tail), StringComparison.Ordinal);
+        await AssertUnpacksAsync(Write("partitions.dmg", WithXml(whole, two)), "dmg", entries);
+    }
+
+    [Fact]
+    public async Task Dmg_data_after_other_bytes_is_found_from_the_data_fork_and_data_start()
+    {
+        // 3,000 bytes before the data fork (a DMG behind a header of some other file) and 700 between it and the
+        // block table's data start: the runs' offsets count from there.
+        var entries = Entries();
+        var dmg = Dmg(Fat(entries, 12), [DmgRun.Lzfse, DmgRun.Raw, DmgRun.Zlib]);
+        var (fork, start) = (3000, 700);
+        var mish = Mish(dmg);
+        BinaryPrimitives.WriteUInt64BigEndian(mish.AsSpan(24), (ulong)start);
+        var moved = WithMish(dmg, mish);
+        var koly = moved.AsSpan(moved.Length - 512).ToArray();
+        BinaryPrimitives.WriteUInt64BigEndian(koly.AsSpan(24), (ulong)fork);
+        BinaryPrimitives.WriteUInt64BigEndian(koly.AsSpan(216), BinaryPrimitives.ReadUInt64BigEndian(koly.AsSpan(216)) + (ulong)(fork + start));
+        byte[] shifted = [.. Noise(fork, 9), .. Noise(start, 10), .. moved.AsSpan(0, moved.Length - 512), .. koly];
+        await AssertUnpacksAsync(Write("shifted.dmg", shifted), "dmg", entries);
     }
 
     [Fact]
@@ -215,6 +291,16 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
             await Run7zAsync("x", "-y", "-o" + target, image);
             Assert.True(Expected(entries).SequenceEqual(Snapshot(target)), $"7-Zip unpacks {name} differently: {string.Join(", ", Snapshot(target).Keys)}");
             Assert.Equal(Expected(entries), Snapshot(await UnpackAsync(image, Path.GetExtension(name)[1..])));
+        }
+        // DMGs around the FAT12 volume, a run type at a time (raw runs between): 7-Zip decodes the chunks and reads
+        // the volume inside.
+        foreach (var kind in new[] { DmgRun.Adc, DmgRun.Lzfse, DmgRun.Lzma, DmgRun.Bzip2, DmgRun.Zlib })
+        {
+            var image = Write(kind + ".dmg", Dmg(Fat(entries, 12), [kind, DmgRun.Raw], chunkSectors: 64));
+            var target = fx.NewFolder();
+            await Run7zAsync("x", "-y", "-o" + target, image);
+            Assert.True(Expected(entries).SequenceEqual(Snapshot(target)), $"7-Zip unpacks the {kind} DMG differently: {string.Join(", ", Snapshot(target).Keys)}");
+            Assert.Equal(Expected(entries), Snapshot(await UnpackAsync(image, "dmg")));
         }
     }
 
@@ -364,8 +450,20 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Assert.Contains(kind, reason);
         }
         await NeedsSevenZipAsync(Write("blank.img", new byte[1 << 20]), "img");
-        var lzfse = Dmg(Fat(Entries(), 12), [DmgRun.Lzfse]);
-        Assert.Contains("LZFSE", await NeedsSevenZipAsync(Write("lzfse.dmg", lzfse), "dmg"));
+        // LZMA runs that aren't .xz streams (the only kind Apple's tools write), and block tables that overlap.
+        var dmg = Dmg(Fat(Entries(), 12), [DmgRun.Raw], chunkSectors: 64);
+        var lzma = Mish(dmg);
+        for (var i = 0; i < BinaryPrimitives.ReadInt32BigEndian(lzma.AsSpan(200)); i++)
+        {
+            if (BinaryPrimitives.ReadUInt32BigEndian(lzma.AsSpan(204 + i * 40)) == 1)
+                BinaryPrimitives.WriteUInt32BigEndian(lzma.AsSpan(204 + i * 40), 0x80000008);
+        }
+        Assert.Contains("LZMA", await NeedsSevenZipAsync(Write("lzma.dmg", WithMish(dmg, lzma)), "dmg"));
+        var overlap = Mish(dmg);
+        var raw = Enumerable.Range(0, BinaryPrimitives.ReadInt32BigEndian(overlap.AsSpan(200)))
+            .Where(i => BinaryPrimitives.ReadUInt32BigEndian(overlap.AsSpan(204 + i * 40)) == 1).Take(2).ToArray();
+        overlap.AsSpan(204 + raw[0] * 40 + 8, 8).CopyTo(overlap.AsSpan(204 + raw[1] * 40 + 8));
+        Assert.Contains("overlap", await NeedsSevenZipAsync(Write("overlap.dmg", WithMish(dmg, overlap)), "dmg"));
     }
 
     [Fact]
@@ -494,6 +592,37 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // XML nested deeper than any property list.
         var deep = WithXml(dmg, "<?xml version=\"1.0\"?><plist>" + string.Concat(Enumerable.Repeat("<array>", 5000)) + "</plist>");
         Assert.Contains("damaged", await RefusedAsync(Write("deep.dmg", deep), "dmg"));
+    }
+
+    [Theory]
+    [InlineData(DmgRun.Lzfse)]
+    [InlineData(DmgRun.Lzma)]
+    public async Task Damaged_compressed_runs_are_refused(DmgRun kind)
+    {
+        var dmg = Dmg(Fat(Entries(), 12), [kind], chunkSectors: 8);
+        var mish = Mish(dmg);
+        var packed = BinaryPrimitives.ReadInt64BigEndian(mish.AsSpan(204 + 32));
+        // Cut short: the chunk's data ends before its stream does.
+        var cut = (byte[])mish.Clone();
+        BinaryPrimitives.WriteInt64BigEndian(cut.AsSpan(204 + 32), packed / 2);
+        Assert.Contains("damaged", await RefusedAsync(Write("cut.dmg", WithMish(dmg, cut)), "dmg"));
+        // A run of one sector whose LZFSE data unpacks to eight: more than the run holds.
+        if (kind == DmgRun.Lzfse)
+        {
+            var small = (byte[])mish.Clone();
+            BinaryPrimitives.WriteInt64BigEndian(small.AsSpan(204 + 16), 1);
+            Assert.Contains("damaged", await RefusedAsync(Write("small.dmg", WithMish(dmg, small)), "dmg"));
+        }
+    }
+
+    [Fact]
+    public async Task Lzfse_runs_larger_than_their_data_can_be_are_refused_before_they_are_read()
+    {
+        var dmg = Dmg(Fat(Entries(), 12), [DmgRun.Lzfse], chunkSectors: 8);
+        var mish = Mish(dmg);
+        BinaryPrimitives.WriteInt64BigEndian(mish.AsSpan(204 + 24), 0);
+        BinaryPrimitives.WriteInt64BigEndian(mish.AsSpan(204 + 32), 8 * 512 * 3);
+        Assert.Contains("larger than the data", await RefusedAsync(Write("large.dmg", WithMish(dmg, mish)), "dmg"));
     }
 
     /// <summary>The block table of a DMG made by <see cref="Dmg"/>.</summary>

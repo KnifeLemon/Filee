@@ -209,8 +209,14 @@ internal enum GradientShape
     /// <summary>Outwards from the focus rectangle in circles.</summary>
     Circle,
 
-    /// <summary>Outwards from the focus rectangle in rectangles (DrawingML path rect and shape).</summary>
+    /// <summary>
+    /// Outwards from the focus rectangle in rectangles (DrawingML path rect and shape): each between the focus rectangle
+    /// (the first stop) and the box (the last), their corners on the lines from the focus rectangle's to the box's.
+    /// </summary>
     Rectangle,
+
+    /// <summary>Outwards from the focus in ellipses of the box's proportions, the last through its corners (ODF ellipsoid, SVG radial).</summary>
+    Ellipse,
 }
 
 /// <param name="Angle">Degrees clockwise from left-to-right (linear gradients).</param>

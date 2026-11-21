@@ -82,7 +82,8 @@ internal sealed partial class ChartDrawer
         switch (plot.Kind)
         {
             case ChartKind.Waterfall:
-                return [.. new[] { "Increase", "Decrease", "Total" }.Select((name, i) => new LegendEntry(name, KeyKind.Box, new Brush(_chart.Palette.Color(i)), null, null, _chart.Palette.Color(i)))];
+                // The file names none of the three: they are in the app's language, as Excel shows them in its own.
+                return [.. ChartWords.Waterfall(System.Globalization.CultureInfo.CurrentUICulture).Select((name, i) => new LegendEntry(name, KeyKind.Box, new Brush(_chart.Palette.Color(i)), null, null, _chart.Palette.Color(i)))];
             case ChartKind.Treemap or ChartKind.Sunburst:
                 var root = Hierarchy(plot.Series[0]);
                 return [.. root.Children.Take(MaxLabels).Select((node, i) => new LegendEntry(node.Label, KeyKind.Box, BranchFill(plot.Series[0], node, i), null, null, _chart.Palette.Color(i)))];

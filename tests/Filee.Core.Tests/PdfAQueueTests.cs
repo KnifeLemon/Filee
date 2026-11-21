@@ -259,7 +259,7 @@ public class PdfAQueueTests
         using var dir = new TempDir();
         var log = new List<string>();
         var office = new FakeConverter("ooxml", new ConversionEdge("docx", "pdf"));
-        await using var queue = new JobQueue(new ConverterCatalog([office, new RefusingArchiver(log, "pdfa.reason.cmyk"), new FakeArchiver(log)]));
+        await using var queue = new JobQueue(new ConverterCatalog([office, new RefusingArchiver(log, "pdfa.reason.unsupported"), new FakeArchiver(log)]));
 
         var job = new ConversionJob([dir.File("report.docx")], PdfA(), "Test");
         await queue.RunAsync(job);
@@ -276,7 +276,7 @@ public class PdfAQueueTests
         using var dir = new TempDir();
         var log = new List<string>();
         var office = new FakeConverter("ooxml", new ConversionEdge("docx", "pdf"));
-        var catalog = new ConverterCatalog([office, new RefusingArchiver(log, "pdfa.reason.cmyk"), new FakeArchiver(log)])
+        var catalog = new ConverterCatalog([office, new RefusingArchiver(log, "pdfa.reason.unsupported"), new FakeArchiver(log)])
         {
             Priority = ["ooxml", "ghostscript", "pdfsharp"],
         };

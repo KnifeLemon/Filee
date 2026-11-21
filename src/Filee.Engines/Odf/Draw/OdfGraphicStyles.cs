@@ -251,7 +251,9 @@ internal sealed class OdfGraphicStyles
                     GradientShape.Linear, 90 - Angle(Get("angle")), false, SKRect.Empty);
             case "radial":
                 return new GradientFill([new(0, end), new(1 - border, start), new(1, start)], GradientShape.Circle, 0, false, focus);
-            case "ellipsoid" or "square" or "rectangular":
+            case "ellipsoid":
+                return new GradientFill([new(0, end), new(1 - border, start), new(1, start)], GradientShape.Ellipse, 0, false, focus);
+            case "square" or "rectangular":
                 return new GradientFill([new(0, end), new(1 - border, start), new(1, start)], GradientShape.Rectangle, 0, false, focus);
             default:
                 // Linear: at angle 0 the start colour is at the top; the angle turns the axis counter-clockwise.

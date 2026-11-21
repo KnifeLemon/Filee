@@ -89,6 +89,13 @@ internal sealed class HSection
     public HPage? Page { get; set; }
 
     public HColumns Columns { get; set; } = HColumns.Single;
+
+    /// <summary>
+    /// How the body's text runs (Word sectPr w:textDirection, 한글 secPr textDirection, ODF page writing-mode): written
+    /// vertically, the body is laid out turned (PageComposer); headers and footers stay across. Read for layout only.
+    /// </summary>
+    public HTextFlow TextFlow { get; set; }
+
     public List<HHeaderFooter> Headers { get; } = [];
     public List<HHeaderFooter> Footers { get; } = [];
 
@@ -715,6 +722,12 @@ internal sealed class HEquation(MathNode math, HCharFormat format, string? sourc
     public bool Display { get; init; }
 
     /// <summary>
+    /// How a display equation too wide for its column breaks into lines (Word's m:mathPr); null for Word's defaults.
+    /// Read for layout only.
+    /// </summary>
+    public HMathWrap? Wrap { get; init; }
+
+    /// <summary>
     /// Whether <paramref name="paragraph"/> is a display equation: a <see cref="Display"/> one, or a Word equation
     /// alone in a centred paragraph (as DocxReader reads m:oMathPara).
     /// </summary>
@@ -732,6 +745,27 @@ internal sealed class HEquation(MathNode math, HCharFormat format, string? sourc
     public int? Size { get; init; }
     public string? Color { get; init; }
 }
+
+/// <summary>Where a line of a display equation breaks at a binary operator (Word's m:brkBin).</summary>
+internal enum HMathBreak
+{
+    /// <summary>Before the operator: it starts the next line.</summary>
+    Before,
+
+    /// <summary>After it: it ends the line.</summary>
+    After,
+
+    /// <summary>Both: it ends the line and starts the next one again.</summary>
+    Repeat,
+}
+
+/// <summary>
+/// Word's line breaking of display equations (m:mathPr in the settings): where lines break at binary operators, the
+/// signs a subtraction repeated across a break shows (m:brkBinSub: "--", "-+" or "+-", the one ending the line first),
+/// how far the lines after the first are indented (m:wrapIndent, HWPUNIT) or whether they go to the right instead
+/// (m:wrapRight).
+/// </summary>
+internal sealed record HMathWrap(HMathBreak Break = HMathBreak.Before, string Subtraction = "--", int Indent = 7200, bool Right = false);
 
 internal sealed class HLineBreak(HCharFormat format) : HInline
 {

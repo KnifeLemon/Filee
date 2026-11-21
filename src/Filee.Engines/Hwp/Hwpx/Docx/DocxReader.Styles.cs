@@ -220,6 +220,9 @@ internal sealed partial class DocxReader
         public bool? BoldCs, ItalicCs;
         public int? SizeCs;
 
+        /// <summary>w:eastAsianLayout w:vert: set across in vertical text (縦中横).</summary>
+        public bool? Across;
+
         public RunProps Clone() => (RunProps)MemberwiseClone();
 
         public void Apply(XElement? rPr)
@@ -248,6 +251,8 @@ internal sealed partial class DocxReader
             ItalicCs = Toggle(rPr, "iCs") ?? ItalicCs;
             RightToLeft = Toggle(rPr, "rtl") ?? RightToLeft;
             ComplexScriptRun = Toggle(rPr, "cs") ?? ComplexScriptRun;
+            if (Attr(rPr.Element(W + "eastAsianLayout"), "vert") is { } across)
+                Across = across is "1" or "true" or "on";
             if (rPr.Element(W + "spacing") is { } spacing && int.TryParse(Val(spacing), out var twips))
                 Spacing = twips;
             if (rPr.Element(W + "w") is { } scale && int.TryParse(Val(scale), out var percent))
@@ -699,7 +704,8 @@ internal sealed partial class DocxReader
                 // keeps its w:sz.
                 ComplexSize: r.SizeCs is { } complexSize ? Math.Clamp(complexSize, 2, 8192) * 50 : null,
                 ComplexBold: (r.BoldCs ?? false) != (r.Bold ?? false) ? r.BoldCs ?? false : null,
-                ComplexItalic: (r.ItalicCs ?? false) != (r.Italic ?? false) ? r.ItalicCs ?? false : null));
+                ComplexItalic: (r.ItalicCs ?? false) != (r.Italic ?? false) ? r.ItalicCs ?? false : null,
+                Across: r.Across == true ? true : null));
     }
 
     /// <summary>Word's four run fonts, theme references resolved.</summary>

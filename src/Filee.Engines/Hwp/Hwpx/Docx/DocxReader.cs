@@ -256,6 +256,7 @@ internal sealed partial class DocxReader
         _bordersAroundFooter = !(settings?.Element(W + "bordersDoNotSurroundFooter") is { } noFooter && Val(noFooter) is not ("0" or "false"));
         _collapseSpacing = !(settings?.Element(W + "compat")?.Element(W + "doNotUseHTMLParagraphAutoSpacing") is { } sum && Val(sum) is not ("0" or "false"));
         _compatibilityMode = CompatibilityMode(settings);
+        _mathWrap = MathWrap(settings?.Element(M + "mathPr"));
         _body = main;
         _gridInTables = settings?.Element(W + "compat")?.Element(W + "adjustLineHeightInTable") is { } inTables && Val(inTables) is not ("0" or "false");
         _footnotesPart = RelatedPart(main, "/footnotes");
@@ -318,7 +319,7 @@ internal sealed partial class DocxReader
     {
         var page = Page(sectPr);
         var columns = Columns(sectPr);
-        CountVerticalText(sectPr);
+        var flow = TextFlow(sectPr);
         var previous = document.Sections.LastOrDefault();
 
         // Sections without their own header or footer reference inherit the previous section's.
@@ -331,7 +332,7 @@ internal sealed partial class DocxReader
 
         // Word uses continuous section breaks to change the number of columns mid-page. 한글 does that with a
         // column definition inside the section, so keep one section when the paper does not change.
-        if (previous is not null && Val(sectPr?.Element(W + "type")) == "continuous" && previous.Page == page)
+        if (previous is not null && Val(sectPr?.Element(W + "type")) == "continuous" && previous.Page == page && previous.TextFlow == flow)
         {
             if (blocks.FirstOrDefault() is not HParagraph first)
                 blocks.Insert(0, first = new HParagraph());
@@ -350,6 +351,8 @@ internal sealed partial class DocxReader
         {
             Page = page,
             Columns = columns,
+            // A section written vertically (w:textDirection tbRl, btLr, ...) is drawn turned.
+            TextFlow = flow,
             Grid = Grid(sectPr),
             HeaderMovesBody = Twips(sectPr?.Element(W + "pgMar"), "top") is not < 0,
             FooterMovesBody = Twips(sectPr?.Element(W + "pgMar"), "bottom") is not < 0,
@@ -1296,8 +1299,36 @@ internal sealed partial class DocxReader
         }
     }
 
-    /// <summary>The installed fonts long equations are measured in for Filee's own drawing; found on first need.</summary>
-    private FontResolver? _equationFonts;
+    /// <summary>How the document's display equations break into lines (m:mathPr); null for Word's defaults.</summary>
+    private HMathWrap? _mathWrap;
+
+    /// <summary>
+    /// Word's line breaking of display equations from the settings' m:mathPr: m:brkBin (before, after, repeat),
+    /// m:brkBinSub (--, -+, +-), m:wrapIndent (twips) and m:wrapRight; null when the settings say nothing of them.
+    /// </summary>
+    internal static HMathWrap? MathWrap(XElement? mathPr)
+    {
+        if (mathPr is null)
+            return null;
+        string? Of(string name) => (string?)mathPr.Element(M + name)?.Attribute(M + "val");
+        var (breaking, subtraction, indent, right) = (Of("brkBin"), Of("brkBinSub"), Of("wrapIndent"), mathPr.Element(M + "wrapRight"));
+        if (breaking is null && subtraction is null && indent is null && right is null)
+            return null;
+        var wrap = new HMathWrap
+        {
+            Break = breaking switch
+            {
+                "after" => HMathBreak.After,
+                "repeat" => HMathBreak.Repeat,
+                _ => HMathBreak.Before,
+            },
+            Subtraction = subtraction is "--" or "-+" or "+-" ? subtraction : "--",
+            Right = right is not null && (string?)right.Attribute(M + "val") is null or "1" or "on" or "true",
+        };
+        if (int.TryParse(indent, NumberStyles.Integer, CultureInfo.InvariantCulture, out var twips) && twips >= 0)
+            wrap = wrap with { Indent = HwpxUnits.FromTwips(Math.Min(twips, 31_680)) };
+        return wrap;
+    }
 
     /// <summary>
     /// Word math (m:oMath, or m:oMathPara with one or more lines) as equations in the size of its runs. A display
@@ -1341,7 +1372,7 @@ internal sealed partial class DocxReader
             if (number is not null)
             {
                 var text = new HText(EquationScript.Linear(number), format with { Italic = false });
-                var numbered = new HEquation(body, format) { Display = display };
+                var numbered = new HEquation(body, format) { Display = display, Wrap = display ? _mathWrap : null };
                 if (width > 0)
                 {
                     builder.Add(NumberBox(numbered, text, width));
@@ -1356,26 +1387,9 @@ internal sealed partial class DocxReader
                 continue;
             }
 
-            var size = format.Size ?? 1000;
-            IReadOnlyList<MathNode> rows;
-            if (width > 0 && EquationScript.Measure(body, size).Width > width / 2)
-            {
-                // Lines that fit Filee's own drawing too, which is wider than rhwp's estimate (#355).
-                using var shaper = new Shaper();
-                var drawn = new MathLayout(_equationFonts ??= new FontResolver(), shaper);
-                rows = EquationScript.BreakLines(body, width, size, node => drawn.ItemWidth(node, size / 100f) * 100);
-            }
-            else
-            {
-                rows = EquationScript.BreakLines(body, width, size);
-            }
-            for (var i = 0; i < rows.Count; i++)
-            {
-                // Paragraphs of their own: rhwp draws the first equation of a paragraph split by a page again on the next page.
-                if (i > 0)
-                    builder.NextRow();
-                builder.Add(new HEquation(rows[i], format) { Display = display });
-            }
+            // Whole: the layout breaks a display equation too wide for its column the way Word does (with the
+            // document's m:mathPr), and the HWPX writer breaks it into paragraphs for 한글, which doesn't.
+            builder.Add(new HEquation(body, format) { Display = display, Wrap = display ? _mathWrap : null });
         }
     }
 
@@ -1442,7 +1456,10 @@ internal sealed partial class DocxReader
         return note;
     }
 
-    /// <summary>How a cell's text runs (w:textDirection; the strict names too): top to bottom East Asian style, or bottom to top.</summary>
+    /// <summary>
+    /// How a section's or cell's text runs (w:textDirection; the strict names too): top to bottom East Asian style, or
+    /// bottom to top.
+    /// </summary>
     private static HTextFlow TextFlow(XElement? properties) => Val(properties?.Element(W + "textDirection")) switch
     {
         "tbRl" or "tbRlV" or "tbLrV" or "tb" or "tbV" => HTextFlow.Vertical,
@@ -1459,13 +1476,6 @@ internal sealed partial class DocxReader
         "wordArtVert" or "wordArtVertRtl" => HTextFlow.Stacked,
         _ => HTextFlow.Horizontal,
     };
-
-    /// <summary>Counts text a section writes top to bottom (w:textDirection), which is set horizontally.</summary>
-    private void CountVerticalText(XElement? properties)
-    {
-        if (Val(properties?.Element(W + "textDirection")) is "tbRl" or "btLr" or "tbRlV" or "tbLrV")
-            _leftOut.Add(HLeftOutKind.VerticalText);
-    }
 
     /// <summary>
     /// mc:AlternateContent: the Choice when it is DrawingML we understand (an Office 2016 chart when ChartReader reads its

@@ -17,8 +17,6 @@
     <!-- Tests only: Filee reads FAT itself (DiscUtils.Fat reads 8.3 names only). -->
     <PackageVersion Include="LTRData.DiscUtils.Fat" Version="1.0.90" />
     <PackageVersion Include="LTRData.DiscUtils.HfsPlus" Version="1.0.90" />
-    <!-- Brings LzfseSharp (managed) for its LZFSE chunks; Filee leaves LZFSE chunks to 7-Zip before DiscUtils reads them. -->
-    <PackageVersion Include="LTRData.DiscUtils.Dmg" Version="1.0.90" />
   </ItemGroup>
   <ItemGroup Label="UI">
     <PackageVersion Include="Avalonia" Version="$(AvaloniaVersion)" />

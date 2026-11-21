@@ -6,7 +6,8 @@
 // at the end of a table, and empty cells at the end of a row past the declared columns, are kept once however often
 // they repeat (spreadsheet-like tables fill the grid out to a million rows that way). Frames and
 // shapes anchored as characters stay in the text, the others float (HAnchor from the graphic style's position, its
-// relation and wrap). Formulas (embedded Math objects) become their text. Charts (embedded chart objects) are read by
+// relation and wrap). Formulas (embedded Math objects) in the text become equations (MathMLReader), others their
+// picture or text. Charts (embedded chart objects) are read by
 // OdfChartReader and become a picture of the chart that carries it, so the renderer draws it as vectors; a chart it
 // doesn't draw takes its replacement picture, and both are counted as charts in the left-out notice.
 
@@ -191,13 +192,13 @@ internal sealed partial class OdtReader
         if (++_cells > _budget.Limits.MaxParagraphs)
             throw DocumentLimits.TooLarge($"The document has more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} table cells.");
         var props = Chain("table-cell", Attr(element, Table + "style-name")).Select(s => s.Element(Style + "table-cell-properties")).ToList();
-        CountVerticalText(props);
         var fill = Inherited(props, Fo + "background-color");
         var cell = new HCell
         {
             Column = column,
             ColSpan = Math.Clamp(Int(Attr(element, Table + "number-columns-spanned")) ?? 1, 1, maxColumns - column),
             RowSpan = Math.Clamp(Int(Attr(element, Table + "number-rows-spanned")) ?? 1, 1, 1_000_000),
+            TextFlow = TextFlowOf(props),
             Fill = fill == "transparent" ? null : Color(fill),
             Borders = Borders(props),
             CellMargin = Padding(props),
@@ -346,12 +347,16 @@ internal sealed partial class OdtReader
         return result;
     }
 
-    /// <summary>Counts text a cell, page or text box writes top to bottom (style:writing-mode tb-rl / tb-lr), which is set horizontally.</summary>
-    private void CountVerticalText(IEnumerable<XElement?> chain)
+    /// <summary>
+    /// How a cell's, page's or text box's text runs (style:writing-mode): tb-rl (and tb, tb-lr) top to bottom East
+    /// Asian style, bt-lr bottom to top.
+    /// </summary>
+    private static HTextFlow TextFlowOf(IEnumerable<XElement?> chain) => Inherited(chain, Style + "writing-mode") switch
     {
-        if (Inherited(chain, Style + "writing-mode")?.StartsWith("tb", StringComparison.Ordinal) == true)
-            _document.LeftOut.Add(HLeftOutKind.VerticalText);
-    }
+        "tb-rl" or "tb" or "tb-lr" => HTextFlow.Vertical,
+        "bt-lr" => HTextFlow.Up,
+        _ => HTextFlow.Horizontal,
+    };
 
     /// <summary>The graphic properties of an object's style and its parents; with the default style for shapes.</summary>
     private List<XElement?> GraphicProps(XElement element, bool withDefault) =>
@@ -370,9 +375,9 @@ internal sealed partial class OdtReader
 
         if (frame.Element(Draw + "text-box") is { } content)
         {
-            CountVerticalText(all);
             var box = new HTextBox
             {
+                TextFlow = TextFlowOf(all),
                 Width = Size(width ?? Length(Attr(content, Fo + "min-width"))),
                 Height = Size(height ?? Length(Attr(content, Fo + "min-height"))),
                 Anchor = anchor,
@@ -392,6 +397,14 @@ internal sealed partial class OdtReader
         var chart = embedded is not null && embedded.Name == Draw + "object" ? ChartObject(embedded) : null;
         if (chart is not null && ChartPicture(chart, Size(width), Size(height), anchor, zOrder) is { } drawn)
             return drawn;
+        // A formula in the text is an equation again, drawn from its MathML rather than its picture.
+        if (anchor is null && embedded is not null && embedded.Name == Draw + "object" && FormulaObject(embedded) is { } math)
+        {
+            var format = CharFormat(text);
+            if (math.Size is { } size)
+                format = format with { Size = size };
+            return new HEquation(math.Formula.Math, format, math.Formula.Tex) { Tex = math.Formula.Tex, Display = math.Formula.Display };
+        }
         foreach (var image in frame.Elements(Draw + "image"))
         {
             if (Picture(image) is { } path)
@@ -725,6 +738,35 @@ internal sealed partial class OdtReader
         if (!_formulas.TryGetValue(folder, out var formula))
             _formulas[folder] = formula = ReadFormula(folder);
         return formula;
+    }
+
+    /// <summary>Formula objects read as equations, by their folder.</summary>
+    private readonly Dictionary<string, (MathMLReader.Formula Formula, int? Size)?> _equations = [];
+
+    /// <summary>
+    /// The equation of a formula object (its folder's content.xml in MathML) and its size (an mstyle's mathsize, else the
+    /// object's BaseFontHeight); null for other objects and for formulas that show nothing.
+    /// </summary>
+    private (MathMLReader.Formula Formula, int? Size)? FormulaObject(XElement embedded)
+    {
+        if (Attr(embedded, XLink + "href") is not { } href || InternalPath(href) is not { } folder)
+            return null;
+        if (_equations.TryGetValue(folder, out var known))
+            return known;
+        (MathMLReader.Formula, int?)? result = null;
+        if (Load(folder.TrimEnd('/') + "/content.xml")?.Root is { } math && math.Name == MathMl + "math" && MathMLReader.Read(math) is { } formula)
+        {
+            int? size = null;
+            if (math.Descendants(MathMl + "mstyle").FirstOrDefault() is { } style && (string?)style.Attribute("mathsize") is { } mathSize
+                && mathSize.Trim().EndsWith("pt", StringComparison.Ordinal))
+                size = Length(mathSize);
+            else if (Load(folder.TrimEnd('/') + "/settings.xml")?.Root?.Descendants().FirstOrDefault(e => e.Name.LocalName == "config-item" && Attr(e, "{urn:oasis:names:tc:opendocument:xmlns:config:1.0}name") == "BaseFontHeight") is { } item
+                     && int.TryParse(item.Value.Trim(), out var points))
+                size = points * 100;
+            result = (formula, size is >= 100 and <= 100_000 ? size : null);
+        }
+        _equations[folder] = result;
+        return result;
     }
 
     private string? ReadFormula(string folder)

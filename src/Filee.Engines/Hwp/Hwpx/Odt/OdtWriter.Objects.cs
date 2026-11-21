@@ -1,11 +1,15 @@
 // Objects in the text of an ODT: pictures and text boxes as draw:frame, shapes as draw:rect / draw:ellipse /
-// draw:line, each with an automatic graphic style that holds its position, wrap, fill and outline.
+// draw:line, each with an automatic graphic style that holds its position, wrap, fill and outline. Equations are
+// formula objects as LibreOffice Writer keeps them: a frame on the baseline with draw:object (a folder "Object N" whose
+// content.xml is the MathML, set at the equation's size) and draw:image (a PNG of it in ObjectReplacements/, drawn by
+// MathLayout, for readers without a formula editor), the linear text as its description.
 //
 // Objects in the text stay characters (text:anchor-type="as-char"); floating ones are anchored to their paragraph, or
 // to a character when the model places them relative to the paragraph's text, with the horizontal and vertical
 // relation (page, page-content, paragraph) the model's anchor names.
 
 using System.Text;
+using Filee.Engines.Typesetting;
 using ImageMagick;
 
 namespace Filee.Engines.Hwp.Hwpx.Odt;
@@ -56,6 +60,48 @@ internal sealed partial class OdtWriter
             .Append(PaddingAttributes(image.Margin));
         var content = $"<draw:image xlink:href=\"{Escape(target)}\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>";
         return Frame("Image", image.Anchor, image.OuterMargin, image.ZOrder, props.ToString(), w, h, content);
+    }
+
+    // ───────────────────────── Formulas ─────────────────────────
+
+    /// <summary>A formula object of the package: its folder ("Object 1"), its MathML and its replacement picture.</summary>
+    private sealed record FormulaPart(string Name, string MathMl, byte[]? Picture);
+
+    private readonly List<FormulaPart> _formulas = [];
+    private EquationPicture? _equationPictures;
+
+    /// <summary>
+    /// An equation as LibreOffice Writer keeps one: a frame in the text holding an embedded formula object (a folder
+    /// with its MathML, which Math edits) and the picture of it that readers without Math show, on the baseline.
+    /// </summary>
+    private string Formula(HEquation equation, bool display)
+    {
+        var size = Math.Clamp((equation.Size ?? equation.Format.Size ?? 1000) / 100f, 1, 1000);
+        var pictures = _equationPictures ??= new EquationPicture();
+        var image = pictures.Draw(equation, display, dpi: 200);
+        float width, ascent, descent;
+        if (image is not null)
+        {
+            (width, ascent, descent) = (image.Width, image.Ascent, image.Descent);
+        }
+        else
+        {
+            var box = pictures.Measure(equation, display);
+            (width, ascent, descent) = (Math.Max(1, box.Width), Math.Max(1, box.Ascent), box.Descent);
+        }
+        var name = "Object " + Number(_formulas.Count + 1);
+        var content = Declaration + MathMLWriter.Write(equation.Math, display, equation.Tex, EquationScript.Linear(equation.Math), size);
+        _formulas.Add(new FormulaPart(name, content, image?.Png));
+
+        static int Hwp(float points) => Math.Max(1, (int)Math.Round(points * 100));
+        var style = _styles.Add("graphic", "fr", "",
+            "<style:graphic-properties style:vertical-pos=\"from-top\" style:vertical-rel=\"baseline\" draw:fill=\"none\" fo:border=\"none\"" +
+            " fo:padding=\"0pt\" fo:margin-left=\"0pt\" fo:margin-right=\"0pt\" fo:margin-top=\"0pt\" fo:margin-bottom=\"0pt\" draw:ole-draw-aspect=\"1\"/>");
+        var link = "xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"";
+        var replacement = image is null ? "" : $"<draw:image xlink:href=\"./ObjectReplacements/{name}\" {link}/>";
+        return $"<draw:frame draw:style-name=\"{style}\" draw:name=\"{name.Replace(" ", "", StringComparison.Ordinal)}\" text:anchor-type=\"as-char\" " +
+               $"svg:y=\"-{Odf.Points(Hwp(ascent))}\" svg:width=\"{Odf.Points(Hwp(width))}\" svg:height=\"{Odf.Points(Hwp(ascent + descent))}\">" +
+               $"<draw:object xlink:href=\"./{name}\" {link}/>{replacement}<svg:desc>{Escape(EquationScript.Linear(equation.Math))}</svg:desc></draw:frame>";
     }
 
     // ───────────────────────── Text boxes and shapes ─────────────────────────
