@@ -324,7 +324,7 @@ internal sealed partial class OdtReader
                 if (Frame(element, text, groupAnchor) is { } frame)
                     result.Add(frame);
                 break;
-            case "rect" or "ellipse" or "circle" or "custom-shape" or "line":
+            case "rect" or "ellipse" or "circle" or "custom-shape" or "line" or "connector":
                 if (Shape(element, groupAnchor) is { } shape)
                     result.Add(shape);
                 break;
@@ -498,6 +498,16 @@ internal sealed partial class OdtReader
         return background == "transparent" ? null : Color(background);
     }
 
+    /// <summary>The arrowhead of a line's start or end: draw:marker-start / -end (a draw:marker) at its width; null for none.</summary>
+    private HArrow? Marker(List<XElement?> props, string end)
+    {
+        if (Inherited(props, Draw + "stroke") == "none" || Inherited(props, Draw + "marker-" + end) is not { } name ||
+            !_markers.TryGetValue(name, out var marker))
+            return null;
+        var lineWidth = Math.Clamp(Length(Inherited(props, Svg + "stroke-width")) ?? 0, 0, 100_000) / 100.0;
+        return OdfMarkers.Arrow(marker, Inherited(props, Draw + "marker-" + end + "-width"), lineWidth);
+    }
+
     /// <summary>The outline of a shape: draw:stroke, svg:stroke-width (0: a hairline, as thin as the output allows) and svg:stroke-color.</summary>
     private static HBorder Stroke(List<XElement?> props)
     {
@@ -571,7 +581,8 @@ internal sealed partial class OdtReader
         var zOrder = Int(Attr(element, Draw + "z-index"));
         var (translateX, translateY) = Translation(Attr(element, Draw + "transform"));
 
-        if (element.Name.LocalName == "line")
+        // A straight connector (draw:type="line") is drawn like a line; other connectors bend.
+        if (element.Name.LocalName == "line" || element.Name.LocalName == "connector" && Attr(element, Draw + "type") == "line")
         {
             var x1 = Length(Attr(element, Svg + "x1")) ?? 0;
             var y1 = Length(Attr(element, Svg + "y1")) ?? 0;
@@ -586,8 +597,12 @@ internal sealed partial class OdtReader
                 Line = Stroke(props),
                 FlipHorizontal = x2 < x1,
                 FlipVertical = y2 < y1,
+                Head = Marker(props, "start"),
+                Tail = Marker(props, "end"),
             };
         }
+        if (element.Name.LocalName == "connector")
+            return null;
 
         HShapeKind? kind = element.Name.LocalName switch
         {

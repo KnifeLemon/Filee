@@ -259,9 +259,40 @@ internal sealed partial class RtfWriter
             Property("fFlipH", "1");
         if (shape.FlipVertical)
             Property("fFlipV", "1");
+        if (shape.Kind == HShapeKind.Line)
+        {
+            Arrowhead("lineStart", shape.Head);
+            Arrowhead("lineEnd", shape.Tail);
+        }
         Transform(shape.Transform);
         o.Close();
         o.Close();
+    }
+
+    /// <summary>
+    /// A line's arrowhead as Word's shape properties; spears are written as arrows, squares as diamonds and hollow marks
+    /// filled (Word has none of them).
+    /// </summary>
+    private void Arrowhead(string end, HArrow? arrow)
+    {
+        if (arrow is null)
+            return;
+        Property(end + "Arrowhead", arrow.Kind switch
+        {
+            HArrowKind.Stealth => "2",
+            HArrowKind.Diamond or HArrowKind.Square => "3",
+            HArrowKind.Oval => "4",
+            HArrowKind.Open => "5",
+            _ => "1",
+        });
+        static string Size(HArrowSize size) => size switch
+        {
+            HArrowSize.Small => "0",
+            HArrowSize.Large => "2",
+            _ => "1",
+        };
+        Property(end + "ArrowWidth", Size(arrow.Width));
+        Property(end + "ArrowLength", Size(arrow.Length));
     }
 
     /// <summary>

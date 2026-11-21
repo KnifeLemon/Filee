@@ -157,6 +157,8 @@ internal sealed partial class OdtWriter
         var h = Math.Max(0, shape.Height);
         var props = new StringBuilder(shape.Kind == HShapeKind.Line ? " draw:fill=\"none\"" : Fill(shape.Fill ?? shape.Gradient?.Colors.FirstOrDefault()))
             .Append(Stroke(shape.Line));
+        if (shape.Kind == HShapeKind.Line && shape.Line.Style != HBorderStyle.None)
+            props.Append(Marker("start", shape.Head, shape.Line)).Append(Marker("end", shape.Tail, shape.Line));
         switch (shape.Kind)
         {
             case HShapeKind.Line:
@@ -276,6 +278,20 @@ internal sealed partial class OdtWriter
         var width = Math.Max(0, (int)Math.Round(line.WidthMm * HwpxUnits.PerMm));
         var stroke = line.Style is HBorderStyle.Dash or HBorderStyle.Dot or HBorderStyle.DashDot ? "dash" : "solid";
         return $" draw:stroke=\"{stroke}\" svg:stroke-width=\"{Odf.Points(width)}\" svg:stroke-color=\"{Hex(line.Color) ?? "#000000"}\"";
+    }
+
+    /// <summary>
+    /// draw:marker-start / -end and its width for a line's arrowhead (the marker added to office:styles); empty for none.
+    /// ODF markers are filled: hollow marks are written filled.
+    /// </summary>
+    private string Marker(string end, HArrow? arrow, HBorder line)
+    {
+        if (arrow is null)
+            return "";
+        var (name, xml) = OdfMarkers.Definition(arrow);
+        _markers.TryAdd(name, xml);
+        var (width, _) = LineArrows.Size(arrow, (float)Math.Max(0.25, line.WidthMm * 72 / 25.4));
+        return $" draw:marker-{end}=\"{Escape(name)}\" draw:marker-{end}-width=\"{Odf.Points((int)Math.Round(width * 100))}\"";
     }
 
     /// <summary>The border of a frame (fo:border).</summary>

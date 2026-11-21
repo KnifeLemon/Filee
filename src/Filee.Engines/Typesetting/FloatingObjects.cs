@@ -14,7 +14,7 @@
 //
 // Drawing: pictures with their crop inside their inner margin, under their outline (EMF / WMF as vector drawing); rectangles (rounded by their corner ratio), ellipses, lines, polygons, curves and
 // arcs with their fill (a colour or a linear gradient) and outline (solid, dashed, dotted, dash-dot or double, at its
-// width), rotated and mirrored about their centre; text boxes as their shape with their paragraphs and tables inside
+// width; lines, open curves and arcs with their arrowheads, LineArrows), rotated and mirrored about their centre; text boxes as their shape with their paragraphs and tables inside
 // their padding, at the top, middle or bottom, turned with the box (not mirrored); vertical text in a box is turned
 // into it (VerticalText). SmartArt (HImage.Drawing) is drawn by the slide renderer, scaled into its box. Curves go smoothly through their
 // points; arcs run counterclockwise from their first axis point to the second. WordArt (Word's watermarks) is a text
@@ -341,7 +341,7 @@ internal static class FloatingObjects
                 break;
             case HShape shape:
                 page.Draw(canvas => Transformed(canvas, shape.Transform, area, () => Shape(canvas, shape.Kind, shape.Geometry, shape.CornerRatio,
-                    shape.Fill, shape.Gradient, shape.Line, area, shape.FlipHorizontal, shape.FlipVertical)));
+                    shape.Fill, shape.Gradient, shape.Line, area, shape.FlipHorizontal, shape.FlipVertical, shape.Head, shape.Tail)));
                 break;
             case HTextBox box:
                 page.Draw(canvas => Transformed(canvas, box.Transform, area, () => Shape(canvas, box.Shape, box.Geometry, box.CornerRatio,
@@ -591,7 +591,7 @@ internal static class FloatingObjects
     }
 
     private static void Shape(SKCanvas canvas, HShapeKind kind, HGeometry? geometry, int cornerRatio, string? fill, HGradient? gradient,
-        HBorder line, SKRect area, bool flipHorizontal, bool flipVertical)
+        HBorder line, SKRect area, bool flipHorizontal, bool flipVertical, HArrow? head = null, HArrow? tail = null)
     {
         using var path = Outline(kind, geometry, cornerRatio, area, flipHorizontal, flipVertical);
         if (kind != HShapeKind.Line && (gradient is not null || ParagraphText.Color(fill) is not null))
@@ -604,7 +604,15 @@ internal static class FloatingObjects
                 paint.Color = ParagraphText.Color(fill)!.Value;
             canvas.DrawPath(path, paint);
         }
-        Stroke(canvas, line, path);
+        if ((head ?? tail) is not null && line.Style != HBorderStyle.None && LineArrows.Open(path))
+        {
+            // A line, open curve or arc with arrowheads (closed outlines have no ends to put them on).
+            LineArrows.Draw(canvas, line, path, head, tail, part => Stroke(canvas, line, part));
+        }
+        else
+        {
+            Stroke(canvas, line, path);
+        }
     }
 
     /// <summary>The outline of a shape in <paramref name="area"/>.</summary>

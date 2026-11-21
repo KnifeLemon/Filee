@@ -310,19 +310,81 @@ internal sealed partial class DocxReader
         if (kind is null)
             return null;
         var xfrm = spPr?.Element(A + "xfrm");
+        var line = kind == HShapeKind.Line;
+        var ln = spPr?.Element(A + "ln");
+        var transform = Transform(xfrm);
+        // A line's flips say which corners it joins (FlipHorizontal / FlipVertical); mirroring it again would undo them.
+        if (line && transform is not null)
+            transform = transform.Rotation == 0 ? null : new HTransform(transform.Rotation);
         return new HShape(kind.Value)
         {
             Width = width,
             Height = height,
             Anchor = anchor,
-            Fill = kind == HShapeKind.Line ? null : fill,
-            Gradient = kind == HShapeKind.Line ? null : gradient,
-            Line = Line(spPr?.Element(A + "ln"), style),
+            Fill = line ? null : fill,
+            Gradient = line ? null : gradient,
+            Line = Line(ln, style),
             CornerRatio = geometry is "roundRect" or "round1Rect" or "round2SameRect" or "flowChartAlternateProcess" ? 20 : 0,
             FlipHorizontal = Attr(xfrm, "flipH") is "1" or "true",
             FlipVertical = Attr(xfrm, "flipV") is "1" or "true",
-            Transform = Transform(xfrm),
+            Transform = transform,
+            Head = line ? LineEnd(ln?.Element(A + "headEnd")) : null,
+            Tail = line ? LineEnd(ln?.Element(A + "tailEnd")) : null,
         };
+    }
+
+    /// <summary>
+    /// An arrowhead from a:headEnd / a:tailEnd: type (triangle, stealth, diamond, oval, arrow; none), w and len (sm,
+    /// med, lg; med when left out). Null for none.
+    /// </summary>
+    private static HArrow? LineEnd(XElement? end)
+    {
+        HArrowKind? kind = Attr(end, "type") switch
+        {
+            "triangle" => HArrowKind.Triangle,
+            "stealth" => HArrowKind.Stealth,
+            "diamond" => HArrowKind.Diamond,
+            "oval" => HArrowKind.Oval,
+            "arrow" => HArrowKind.Open,
+            _ => null,
+        };
+        static HArrowSize Size(string? value) => value switch
+        {
+            "sm" => HArrowSize.Small,
+            "lg" => HArrowSize.Large,
+            _ => HArrowSize.Medium,
+        };
+        return kind is { } k ? new HArrow(k, Size(Attr(end, "w")), Size(Attr(end, "len"))) : null;
+    }
+
+    /// <summary>
+    /// An arrowhead from v:stroke startarrow / endarrow (block, classic, diamond, oval, open; none) with its
+    /// …arrowwidth (narrow, medium, wide) and …arrowlength (short, medium, long). Null for none.
+    /// </summary>
+    private static HArrow? VmlArrow(XElement? stroke, string end)
+    {
+        HArrowKind? kind = (string?)stroke?.Attribute(end + "arrow") switch
+        {
+            "block" => HArrowKind.Triangle,
+            "classic" => HArrowKind.Stealth,
+            "diamond" => HArrowKind.Diamond,
+            "oval" => HArrowKind.Oval,
+            "open" => HArrowKind.Open,
+            _ => null,
+        };
+        var width = (string?)stroke?.Attribute(end + "arrowwidth") switch
+        {
+            "narrow" => HArrowSize.Small,
+            "wide" => HArrowSize.Large,
+            _ => HArrowSize.Medium,
+        };
+        var length = (string?)stroke?.Attribute(end + "arrowlength") switch
+        {
+            "short" => HArrowSize.Small,
+            "long" => HArrowSize.Large,
+            _ => HArrowSize.Medium,
+        };
+        return kind is { } k ? new HArrow(k, width, length) : null;
     }
 
     private HTextBox TextBox(XElement wsp, XElement content, int width, int height, HAnchor? anchor, string? fill)
@@ -727,21 +789,23 @@ internal sealed partial class DocxReader
                     yield return box;
                 }
             }
-            else if (shape.Name.LocalName is "rect" or "roundrect" or "oval" or "line")
+            else if (shape.Name.LocalName is "rect" or "roundrect" or "oval" or "line" || VmlStraightLine(shape))
             {
                 var kind = shape.Name.LocalName switch
                 {
                     "oval" => HShapeKind.Ellipse,
-                    "line" => HShapeKind.Line,
-                    _ => HShapeKind.Rectangle,
+                    "rect" or "roundrect" => HShapeKind.Rectangle,
+                    _ => HShapeKind.Line,
                 };
-                if (kind == HShapeKind.Line)
+                var (flipHorizontal, flipVertical) = (false, false);
+                if (shape.Name.LocalName == "line")
                 {
-                    // v:line has from="x,y" to="x,y" instead of a size.
+                    // v:line has from="x,y" to="x,y" instead of a size; it runs from the one to the other.
                     var from = VmlPoint((string?)shape.Attribute("from"));
                     var to = VmlPoint((string?)shape.Attribute("to"));
                     width = Math.Abs(to.X - from.X);
                     height = Math.Abs(to.Y - from.Y);
+                    (flipHorizontal, flipVertical) = (to.X < from.X, to.Y < from.Y);
                     var lineAnchor = anchor ?? VmlAnchor(shape, style);
                     distance = VmlWrapDistance(style);
                     anchor = lineAnchor with
@@ -750,6 +814,13 @@ internal sealed partial class DocxReader
                         VerticalOffset = lineAnchor.VerticalOffset + Math.Min(from.Y, to.Y),
                     };
                 }
+                else if (kind == HShapeKind.Line)
+                {
+                    // A straight connector (type 32) or line (20) runs corner to corner of its box; "flip" picks the corners.
+                    (flipHorizontal, flipVertical) = (transform?.FlipHorizontal == true, transform?.FlipVertical == true);
+                    transform = transform is { Rotation: not 0 } turned ? new HTransform(turned.Rotation) : null;
+                }
+                var stroke = shape.Element(V + "stroke");
                 yield return new HShape(kind)
                 {
                     Width = width,
@@ -761,6 +832,10 @@ internal sealed partial class DocxReader
                     Transform = transform,
                     ZOrder = zOrder,
                     OuterMargin = distance,
+                    FlipHorizontal = flipHorizontal,
+                    FlipVertical = flipVertical,
+                    Head = kind == HShapeKind.Line ? VmlArrow(stroke, "start") : null,
+                    Tail = kind == HShapeKind.Line ? VmlArrow(stroke, "end") : null,
                 };
             }
         }
@@ -808,6 +883,20 @@ internal sealed partial class DocxReader
             Color = color ?? format.Color,
             Layout = family is null ? format.Layout : (format.Layout ?? new HCharLayout()) with { WordFonts = new HWordFonts(family, family, family, family) },
         }), stretched);
+    }
+
+    /// <summary>
+    /// A v:shape (without text or picture) that is a straight line: its type (o:spt of its v:shapetype, or the
+    /// "#_x0000_tN" Word names its built-in types by) is 20 (line) or 32 (straight connector, as Word writes arrows).
+    /// </summary>
+    private bool VmlStraightLine(XElement shape)
+    {
+        if (shape.Name.LocalName != "shape")
+            return false;
+        var spt = (string?)shape.Attribute(O + "spt") ?? (string?)ShapeType(shape)?.Attribute(O + "spt");
+        if (spt is null && (string?)shape.Attribute("type") is { } type && type.StartsWith("#_x0000_t", StringComparison.Ordinal))
+            spt = type["#_x0000_t".Length..];
+        return spt is "20" or "32";
     }
 
     /// <summary>The v:shapetype a VML shape's type ("#id") names, from anywhere in its part; null when there is none.</summary>

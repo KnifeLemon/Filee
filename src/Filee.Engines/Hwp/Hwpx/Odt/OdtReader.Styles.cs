@@ -52,6 +52,7 @@ internal sealed partial class OdtReader
     private readonly Dictionary<string, XElement> _masterPages = [];
     private readonly Dictionary<string, string> _fontFaces = [];
     private readonly Dictionary<string, XElement> _gradients = [];
+    private readonly Dictionary<string, XElement> _markers = [];
     private readonly Dictionary<(Scope, string?), ParagraphStyle> _paragraphStyles = [];
     private XElement? _firstMasterPage;
     private Scope _scope = Scope.Content;
@@ -74,6 +75,8 @@ internal sealed partial class OdtReader
                 _defaults.TryAdd(family, element);
             else if (element.Name == Draw + "gradient" && Attr(element, Draw + "name") is { } gradient)
                 _gradients.TryAdd(gradient, element);
+            else if (element.Name == Draw + "marker" && Attr(element, Draw + "name") is { } marker)
+                _markers.TryAdd(marker, element);
         }
         Collect(common, _named, _listStyles);
         Collect(styles?.Root?.Element(Office + "automatic-styles"), _stylesAutomatic, _stylesListStyles);
