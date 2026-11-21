@@ -57,6 +57,13 @@ public sealed class SpreadsheetPrintService(IReadOnlyList<IConverter> converters
     }
 
     /// <summary>
+    /// The engine that prints <paramref name="workbook"/>'s pages: the built-in printer for an Excel binary workbook
+    /// (SpreadsheetPrintBinary, whichever engine is chosen), else <see cref="Engine"/>.
+    /// </summary>
+    public SpreadsheetPrintEngine? EngineFor(SpreadsheetWorkbookInfo workbook) =>
+        SpreadsheetPrintBinary.Handles(workbook) ? SpreadsheetPrintEngine.BuiltIn : Engine;
+
+    /// <summary>
     /// The sheet printer, like the spreadsheet → PDF route: LibreOffice only when the user chose it for spreadsheets
     /// (<paramref name="preferLibreOffice"/>) and it is installed, or when there is no sheet printer at all.
     /// </summary>

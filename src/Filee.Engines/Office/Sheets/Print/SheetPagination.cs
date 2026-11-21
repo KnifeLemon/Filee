@@ -70,7 +70,7 @@ internal static class SheetPagination
             return new SheetPrintPlan(sheet, new SheetGrid([], []), 1, [new SheetPage(new CellRange(0, 0, 0, 0), 0, -1, 0, -1, false, false)], 0, 0, defaultFont);
         }
         // Pictures and shapes placed by a size (one-cell and absolute anchors) reach as far as their size does.
-        var reach = sheet.PrintArea.Count == 0 && sheet.Drawings.Any(d => d.To is null)
+        var reach = sheet.PrintArea.Count == 0 && PrintedDrawings(sheet).Any(d => d.To is null)
             ? new DrawingReach(book, sheet, index, fonts, defaultFont, cancellationToken)
             : null;
         var areas = Areas(sheet, reach);
@@ -240,10 +240,15 @@ internal static class SheetPagination
         return areas;
     }
 
+    /// <summary>The drawings a sheet prints: its own, and the boxes of the notes shown on it when notes print as displayed.</summary>
+    internal static IEnumerable<SheetDrawing> PrintedDrawings(Worksheet sheet) => sheet.PageSetup.Comments == SheetCommentsPrint.AsDisplayed
+        ? sheet.Drawings.Concat(sheet.Comments.Where(c => c.Shown).Select(c => (SheetDrawing)(c.Box ?? SheetComments.DefaultBox(c))))
+        : sheet.Drawings;
+
     private static CellRange? Used(Worksheet sheet, DrawingReach? reach)
     {
         var used = sheet.UsedRange();
-        foreach (var drawing in sheet.Drawings)
+        foreach (var drawing in PrintedDrawings(sheet))
         {
             var (row, column) = (Math.Clamp(drawing.Row, 0, MaxRow), Math.Clamp(drawing.Column, 0, MaxColumn));
             var (lastRow, lastColumn) = drawing.To is { } to ? (Math.Clamp(to.Row, row, MaxRow), Math.Clamp(to.Column, column, MaxColumn)) : (row, column);

@@ -890,7 +890,7 @@ the text the spreadsheet shows, the value behind it and its Excel number format.
 | Format | Read | Written |
 |---|---|---|
 | XLSX | own reader: values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print titles; for printing the page setup, print areas, page breaks, headers and footers, conditional formats and pictures | every sheet, numbers and dates as numbers with their formats, booleans, styles, merges, widths, heights, hidden rows / columns, frozen rows |
-| XLSB (Excel binary workbook) | own reader from [MS-XLSB] (`XlsbReader.cs`): the BIFF12 records of the workbook, shared strings, styles and sheets give what the XLSX reader gives (values, formulas' cached values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print areas and titles, page setup, breaks, headers and footers, pictures, conditional formats, chart sheets); comments, tables and data validation are not read (nor by the XLSX reader) | no |
+| XLSB (Excel binary workbook) | own reader from [MS-XLSB] (`XlsbReader.cs`): the BIFF12 records of the workbook, shared strings, styles and sheets give what the XLSX reader gives (values, formulas' cached values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print areas and titles, page setup, breaks, headers and footers, pictures, conditional formats, chart sheets, tables with their table style, notes on cells for printing); data validation is not read (nor by the XLSX reader) | no |
 | XLS (Excel 97–2003, also Excel 5/95) | ExcelDataReader (MIT): values, number formats, merges; fonts, fills, borders and alignment (BIFF8), widths, heights, hidden rows / columns and the page setup from the BIFF records (`XlsLayout.cs`) | no (LibreOffice) |
 | ODS | own reader (`content.xml`, `styles.xml`, `settings.xml`): repeated rows / columns (the empty repeats up to the end of the sheet are skipped), spans, every value type, the text Calc shows (`text:p`), data styles as Excel codes, cell styles, widths, heights, hidden rows / columns / sheets, frozen and header rows | every sheet, typed cells (float, percentage, currency, date, time, boolean) with data styles and the shown text, styles, merges, widths, heights, hidden rows / columns, frozen rows |
 | CSV / TSV | delimiter (CSV: comma, semicolon or tab; TSV: tab) and encoding (UTF-8 / UTF-16 with BOM, CP949 when it looks Korean or on Korean Windows, else the PC's code page) | UTF-8 with BOM, CRLF, one file per sheet |
@@ -990,8 +990,10 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   margins, scale-to percent, pages and X × Y, printed grid and headers, page order, table centring, first page
   number), header and footer regions, table:print-ranges, header rows and columns, page breaks before rows and
   columns, rotation, stacked text, indent, shrink to fit, font names, and pictures and shapes (`OdsDrawing`: frames
-  with PNG / JPEG / GIF / BMP / WebP pictures, rectangles, ellipses, lines and custom shapes of a known type, groups,
-  turned by draw:transform, filled and outlined from their graphic style). A date without a data style takes the
+  with PNG / JPEG / GIF / BMP / WebP pictures (cropped by fo:clip) or text boxes, rectangles, ellipses, lines, custom
+  shapes of a known type or with their own path, polygons, polylines and paths, groups, turned by draw:transform,
+  filled in one colour or a draw:gradient and outlined from their graphic style, with their text), charts in their
+  place among them. A date without a data style takes the
   standard short date (or date and time) of the document's language, as Calc does (`m/d/yy` for en-US, `dd.mm.yy`
   for de-DE, ...; ISO 8601 for languages Filee has no table for).
 - **Hostile input.** Packages are read within `DocumentLimits` (a malformed part is `InvalidDataException`, a bomb
@@ -1008,7 +1010,13 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   anchored to a cell or the sheet) are read by `OdfChartReader` and printed the same way. 3D, radar, stock, surface
   and bubble charts and new chart types (`chartex`) are named, so such a workbook takes LibreOffice where it is
   installed.
-- **Not printed yet.** Shapes with text, text boxes, freeform shapes, comments, table styles, sparklines; data bars, icon sets and conditional formats
+- **Notes and tables.** Notes on cells print when the page setup asks for them (XLSX pageSetup cellComments, XLSB
+  BrtPageSetup fNotes / fEndNotes, ODS style:print "annotations"): at the end, as a list after the sheet ("Cell: B2",
+  "Comment: …", Excel's words), or as displayed, the shown notes in their boxes (the legacy VML drawing's anchor and
+  colours, or Calc's annotation box) with a line to their cell (`SheetComments`, `SheetCommentList`). Tables (XLSX
+  table parts, XLSB BrtBeginList / BrtTableStyleClient) take the look of their table style: the 60 built-in styles
+  of ECMA-376's presetTableStyles.xml or the workbook's own (`SheetTables`), under the cells' own formatting.
+- **Not printed yet.** XLSX shapes with text, sparklines; data bars, icon sets and conditional formats
   with formulas of their own; conditional formats of XLS and ODS files; rich text in XLS cells; text running past the
   edge of a page onto the next one; black-and-white and draft printing; the margins a real printer can't print in
   (a PDF has none).

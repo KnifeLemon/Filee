@@ -2,8 +2,10 @@
 // when the sheet says so), fills (solid, patterns as their mixed colour, gradients), the gridlines and the row and
 // column headings when they print, borders (shared with the neighbour, merged areas only at their edges, diagonals),
 // text (aligned, indented, wrapped, justified, shrunk, rotated or stacked; text overflowing into empty cells; numbers
-// too wide for their column as ####), pictures (turned, mirrored and cropped), preset shapes and charts, and the header
-// and footer with their fields. A chart sheet's page is its chart inside the margins, with the header and footer.
+// too wide for their column as ####), pictures (turned, mirrored and cropped), preset and freeform shapes (filled in
+// one colour or a gradient, with their text) and charts, the shown notes on cells when they print as displayed, and the
+// header and footer with their fields. A chart sheet's page is its chart inside the margins, with the header and
+// footer; the list of notes printed at a sheet's end is a page of lines (DrawCommentPage).
 
 using System.Globalization;
 using Filee.Engines.Charts;
@@ -865,7 +867,8 @@ internal sealed class SheetPageRenderer
 
     private void DrawDrawings(PageContent page, List<Placed> columns, List<Placed> rows, SKRect area)
     {
-        if (_drawings.Count == 0)
+        var shownNotes = Sheet.PageSetup.Comments == SheetCommentsPrint.AsDisplayed && Sheet.Comments.Any(c => c.Shown);
+        if (_drawings.Count == 0 && !shownNotes)
             return;
         var s = _scale;
         var first = columns.MinBy(c => c.Index);
@@ -873,31 +876,73 @@ internal sealed class SheetPageRenderer
         var placed = new List<(SheetDrawing, SKImage?, SKRect)>();
         foreach (var (drawing, image) in _drawings)
         {
-            // Position from the page's first column and row (drawings over print titles are left out).
-            var dx = (float)((Grid.ColumnSpan(first.Index, drawing.Column) + drawing.OffsetX) * s);
-            var dy = (float)((Grid.RowSpan(top.Index, drawing.Row) + drawing.OffsetY) * s);
-            var w = (float)((drawing.To is { } to ? Grid.ColumnSpan(drawing.Column, to.Column) + to.OffsetX - drawing.OffsetX : drawing.Width) * s);
-            var h = (float)((drawing.To is { } end ? Grid.RowSpan(drawing.Row, end.Row) + end.OffsetY - drawing.OffsetY : drawing.Height) * s);
-            // A line is a shape without width or height; a picture needs both.
-            if (!float.IsFinite(w) || !float.IsFinite(h) || w < 0 || h < 0 || drawing is SheetPicture && (w == 0 || h == 0))
-                continue;
-            var x = Sheet.RightToLeft ? first.End - dx - w : first.Start + dx;
-            var rect = new SKRect(x, top.Start + dy, x + w, top.Start + dy + h);
-            if (drawing.Part is { } part)
-                rect = new SKRect(rect.Left + (float)part.Left * w, rect.Top + (float)part.Top * h, rect.Left + (float)part.Right * w, rect.Top + (float)part.Bottom * h);
-            // Turned, the drawing stays within the circle around its box.
-            var reach = (float)Math.Sqrt(rect.Width * rect.Width + rect.Height * rect.Height) / 2 + 1;
-            if (SKRect.Create(rect.MidX - reach, rect.MidY - reach, 2 * reach, 2 * reach).IntersectsWith(area))
+            if (Place(drawing, first, top, area) is { } rect)
                 placed.Add((drawing, image, rect));
+        }
+        // Shown notes over everything else, each with a line from its box to its cell's corner.
+        var callouts = new List<(SKPoint From, SKPoint To)>();
+        if (shownNotes)
+        {
+            foreach (var comment in Sheet.Comments.Where(c => c.Shown))
+            {
+                var box = comment.Box ?? SheetComments.DefaultBox(comment);
+                box = box with { Text = box.Text ?? SheetComments.BoxText(comment) };
+                if (Place(box, first, top, area, onlyShown: false) is not { } rect)
+                    continue;
+                var cornerX = (float)(Grid.ColumnSpan(first.Index, comment.Column + 1) * s);
+                var corner = new SKPoint(Sheet.RightToLeft ? first.End - cornerX : first.Start + cornerX, top.Start + (float)(Grid.RowSpan(top.Index, comment.Row) * s));
+                var reach = SKRect.Union(rect, SKRect.Create(corner.X, corner.Y, 0, 0));
+                if (!reach.IntersectsWith(area))
+                    continue;
+                if (!rect.Contains(corner))
+                    callouts.Add((corner, new SKPoint(Math.Clamp(corner.X, rect.Left, rect.Right), Math.Clamp(corner.Y, rect.Top, rect.Bottom))));
+                placed.Add((box, null, rect));
+            }
+        }
+        if (callouts.Count > 0)
+        {
+            page.Draw(canvas =>
+            {
+                canvas.Save();
+                canvas.ClipRect(area);
+                using var paint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, Color = SKColors.Black, StrokeWidth = 0.75f * s };
+                foreach (var (from, to) in callouts)
+                    canvas.DrawLine(from, to, paint);
+                canvas.Restore();
+            });
         }
         if (placed.Count > 0)
             DrawPlaced(page, placed, area, s);
     }
 
+    /// <summary>
+    /// Where a drawing lies on the page, placed from the page's first column and row (drawings over print titles are
+    /// left out); null when it can't be placed or, with <paramref name="onlyShown"/>, lies off the page.
+    /// </summary>
+    private SKRect? Place(SheetDrawing drawing, Placed first, Placed top, SKRect area, bool onlyShown = true)
+    {
+        var s = _scale;
+        var dx = (float)((Grid.ColumnSpan(first.Index, drawing.Column) + drawing.OffsetX) * s);
+        var dy = (float)((Grid.RowSpan(top.Index, drawing.Row) + drawing.OffsetY) * s);
+        var w = (float)((drawing.To is { } to ? Grid.ColumnSpan(drawing.Column, to.Column) + to.OffsetX - drawing.OffsetX : drawing.Width) * s);
+        var h = (float)((drawing.To is { } end ? Grid.RowSpan(drawing.Row, end.Row) + end.OffsetY - drawing.OffsetY : drawing.Height) * s);
+        // A line is a shape without width or height; a picture needs both.
+        if (!float.IsFinite(w) || !float.IsFinite(h) || w < 0 || h < 0 || drawing is SheetPicture && (w == 0 || h == 0))
+            return null;
+        var x = Sheet.RightToLeft ? first.End - dx - w : first.Start + dx;
+        var rect = new SKRect(x, top.Start + dy, x + w, top.Start + dy + h);
+        if (drawing.Part is { } part)
+            rect = new SKRect(rect.Left + (float)part.Left * w, rect.Top + (float)part.Top * h, rect.Left + (float)part.Right * w, rect.Top + (float)part.Bottom * h);
+        // Turned, the drawing stays within the circle around its box.
+        var reach = (float)Math.Sqrt(rect.Width * rect.Width + rect.Height * rect.Height) / 2 + 1;
+        return !onlyShown || SKRect.Create(rect.MidX - reach, rect.MidY - reach, 2 * reach, 2 * reach).IntersectsWith(area) ? rect : null;
+    }
+
     /// <summary>Placed pictures, shapes and charts in drawing order, clipped to <paramref name="area"/>.</summary>
     private void DrawPlaced(PageContent page, List<(SheetDrawing, SKImage?, SKRect)> placed, SKRect area, float s)
     {
-        // Pictures and shapes in runs between charts, which add their text as text.
+        // Pictures and shapes in runs between charts, which add their text as text; a shape's text ends its run, so
+        // what comes after it is drawn over its text.
         for (var start = 0; start < placed.Count;)
         {
             if (placed[start].Item1 is SheetChart chart)
@@ -909,7 +954,11 @@ internal sealed class SheetPageRenderer
             }
             var end = start;
             while (end < placed.Count && placed[end].Item1 is not SheetChart)
+            {
                 end++;
+                if (placed[end - 1].Item1 is SheetShape { Text: not null })
+                    break;
+            }
             var run = placed.GetRange(start, end - start);
             page.Draw(canvas =>
             {
@@ -917,7 +966,81 @@ internal sealed class SheetPageRenderer
                 foreach (var (drawing, image, rect) in run)
                     Draw(canvas, drawing, image, rect, s);
             });
+            if (run[^1] is (SheetShape { Text: { } text } shape, _, var box))
+                DrawShapeText(page, shape, text, box, area, s);
             start = end;
+        }
+    }
+
+    /// <summary>
+    /// A shape's text inside its box (or its outline's text area) less the insets, turned with the shape: each
+    /// paragraph aligned on its own, lines broken at the width when the text wraps, the block placed by its anchor.
+    /// </summary>
+    private void DrawShapeText(PageContent page, SheetShape shape, ShapeText text, SKRect anchor, SKRect area, float s)
+    {
+        var (w, h) = (anchor.Width, anchor.Height);
+        if (shape.Part is null && AnchoredTurned(shape, w, h))
+            (w, h) = (h, w);
+        var inner = new SKRect(0, 0, w, h);
+        if (shape.Geometry is { } outline && w > 0 && h > 0)
+        {
+            var geometry = outline(w / s, h / s);
+            foreach (var path in geometry.Paths)
+                path.Path.Dispose();
+            if (geometry.TextRect is { Width: > 0, Height: > 0 } textArea)
+                inner = new SKRect(textArea.Left * s, textArea.Top * s, textArea.Right * s, textArea.Bottom * s);
+        }
+        var (insetLeft, insetTop, insetRight, insetBottom) = text.Insets;
+        inner = new SKRect(inner.Left + (float)insetLeft * s, inner.Top + (float)insetTop * s, inner.Right - (float)insetRight * s, inner.Bottom - (float)insetBottom * s);
+        var width = Math.Max(1, inner.Width / s);
+        var laid = new List<(StyledText Text, int Start, int End, float Width, float Ascent, float Height, CellAlign Align)>();
+        foreach (var paragraph in text.Paragraphs.Take(1000))
+        {
+            var content = string.Concat(paragraph.Runs.Select(r => r.Text));
+            var styled = CellText.Build(_fonts, _book, new SheetCell(content, text.Font) { Runs = paragraph.Runs.Count > 0 ? paragraph.Runs : null }, text.Font,
+                SheetColors.Parse(text.Font.Color, SKColors.Black), wrap: true);
+            if (styled.IsEmpty)
+            {
+                // An empty paragraph keeps its line.
+                var metrics = _fonts.Pixels(text.Font.FontName ?? _book.DefaultFontName, text.Font.FontSize ?? _book.DefaultFontSize);
+                laid.Add((styled, 0, 0, 0, 0, metrics.LineHeight * 0.75f, paragraph.Align));
+                continue;
+            }
+            foreach (var (start, end) in styled.Lines(text.Wrap ? width : float.MaxValue, wrap: true))
+            {
+                var (ascent, _, lineHeight) = styled.LineMetrics(start, end);
+                laid.Add((styled, start, end, styled.Width(start, end), ascent, lineHeight, paragraph.Align));
+            }
+        }
+        var total = laid.Sum(l => l.Height) * s;
+        var y = text.Anchor switch
+        {
+            CellVerticalAlign.Top => inner.Top,
+            CellVerticalAlign.Bottom => inner.Bottom - total,
+            _ => (inner.Top + inner.Bottom - total) / 2,
+        };
+        // The box's own coordinates, turned about its centre as the shape is (mirroring leaves text readable).
+        var matrix = SKMatrix.CreateTranslation(anchor.MidX, anchor.MidY).PreConcat(SKMatrix.CreateRotationDegrees((float)shape.Rotation))
+            .PreConcat(SKMatrix.CreateTranslation(-w / 2, -h / 2));
+        var clip = shape.Rotation == 0 ? SKRect.Intersect(area, anchor) : area;
+        if (clip.IsEmpty)
+            return;
+        foreach (var (styled, start, end, lineWidth, ascent, lineHeight, align) in laid)
+        {
+            if (end > start)
+            {
+                var x = align switch
+                {
+                    CellAlign.Right => inner.Right - lineWidth * s,
+                    CellAlign.Center => (inner.Left + inner.Right - lineWidth * s) / 2,
+                    _ => inner.Left,
+                };
+                if (shape.Rotation == 0)
+                    styled.Draw(page, start, end, anchor.Left + x, anchor.Top + y + (0.75f + ascent) * s, s, null, 0, clip);
+                else
+                    styled.Draw(page, start, end, x, y + (0.75f + ascent) * s, s, matrix, 0, clip);
+            }
+            y += lineHeight * s;
         }
     }
 
@@ -983,19 +1106,40 @@ internal sealed class SheetPageRenderer
         canvas.DrawImage(image, shown, target, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear), paint);
     }
 
-    /// <summary>A preset shape in <paramref name="box"/> (page points), filled and outlined.</summary>
+    /// <summary>A preset or freeform shape in <paramref name="box"/> (page points), filled and outlined.</summary>
     private static void DrawShape(SKCanvas canvas, SheetShape shape, SKRect box, float scale)
     {
-        if (PresetShapes.Find(shape.Preset) is not { } definition || shape.Fill is null && shape.Line is null)
+        if (shape.Fill is null && shape.Line is null)
             return;
-        // The definitions' formulas work in EMU.
-        const double EmuPerPoint = 12700;
-        var geometry = ShapeGeometry.Evaluate(definition, box.Width / scale * EmuPerPoint, box.Height / scale * EmuPerPoint, shape.Adjust,
-            scale / EmuPerPoint);
+        GeometryResult geometry;
+        if (shape.Geometry is { } outline)
+        {
+            // The outline at the shape's size in points, then scaled with the page.
+            geometry = outline(box.Width / scale, box.Height / scale);
+            foreach (var path in geometry.Paths)
+                path.Path.Transform(SKMatrix.CreateScale(scale, scale));
+        }
+        else if (PresetShapes.Find(shape.Preset) is { } definition)
+        {
+            // The definitions' formulas work in EMU.
+            const double EmuPerPoint = 12700;
+            geometry = ShapeGeometry.Evaluate(definition, box.Width / scale * EmuPerPoint, box.Height / scale * EmuPerPoint, shape.Adjust,
+                scale / EmuPerPoint);
+        }
+        else
+        {
+            return;
+        }
         try
         {
             canvas.Translate(box.Left, box.Top);
-            if (shape.Fill is { } color)
+            if (shape.Gradient is { } gradient)
+            {
+                using var images = new SlideImages();
+                foreach (var path in geometry.Paths.Where(p => p.Fill != PathFill.None))
+                    SlidePaint.Fill(canvas, path.Path, gradient, new SKRect(0, 0, box.Width, box.Height), images);
+            }
+            else if (shape.Fill is { } color)
             {
                 using var fill = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
                 foreach (var path in geometry.Paths.Where(p => p.Fill != PathFill.None))
@@ -1082,6 +1226,21 @@ internal sealed class SheetPageRenderer
         for (var c = column + 1; c > 0; c = (c - 1) / 26)
             name = (char)('A' + (c - 1) % 26) + name;
         return name;
+    }
+
+    // ───────────────────────── Notes at the end ─────────────────────────
+
+    /// <summary>A page of the list of notes printed after the sheet: its lines at their places, with the header and footer.</summary>
+    public PageContent DrawCommentPage(IReadOnlyList<SheetCommentList.Line> lines, PageFields fields)
+    {
+        var (width, height) = Sheet.PageSetup.PageSize;
+        var content = new PageContent((float)width, (float)height);
+        DrawHeaderFooter(content, fields, (float)width, (float)height, header: true);
+        var area = new SKRect(0, 0, (float)width, (float)height);
+        foreach (var line in lines)
+            line.Text.Draw(content, line.Start, line.End, line.X, line.Baseline, 1, null, 0, area);
+        DrawHeaderFooter(content, fields, (float)width, (float)height, header: false);
+        return content;
     }
 
     // ───────────────────────── Header and footer ─────────────────────────

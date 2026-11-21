@@ -6,7 +6,10 @@
 // scale, page order, centring, grid and headings, headers and footers with their fields), print ranges, repeated
 // rows and columns, manual page breaks, rotation, indent and shrink to fit, charts (embedded chart objects in
 // frames anchored to a cell or the sheet, read by OdfChartReader once every sheet is read, so their ranges into the
-// sheets take the cells' values), and pictures and shapes (OdsDrawing) for the printer. Other objects, comments and
+// sheets take the cells' values; they keep their place among the other drawings), pictures and shapes (OdsDrawing),
+// and the notes on cells (office:annotation: their text, and the box of a shown one) with the page style's print
+// option, for the printer: "annotations" lists them after the sheet, else the shown ones print in their boxes with the
+// drawings (as Calc prints a shown note with the drawing layer; not checked against Calc). Other objects and
 // conditional formats are not read.
 //
 // A small file can stand for a huge sheet (repeats of rows, cells and spaces): the cells the repeats expand to, the
@@ -84,7 +87,10 @@ internal sealed class OdsReader
     private readonly Charts.ChartBudget _charts = new();
 
     /// <summary>Chart frames found while reading the sheets, read once all of them are (their ranges look into any).</summary>
-    private readonly List<(XElement Frame, int Row, int Column, Worksheet Sheet)> _chartFrames = [];
+    private readonly List<(XElement Frame, int Row, int Column, Worksheet Sheet, int Position)> _chartFrames = [];
+
+    /// <summary>The gradients of the styles (draw:gradient) by draw:name.</summary>
+    private readonly Dictionary<string, XElement> _gradients = new(StringComparer.Ordinal);
     private Workbook? _book;
     private long _merges;
 
@@ -130,8 +136,14 @@ internal sealed class OdsReader
             book.Sheets.Add(sheet);
         }
         reader._book = book;
-        foreach (var (frame, row, column, sheet) in reader._chartFrames)
-            reader.PlaceChart(frame, row, column, sheet);
+        // Each chart goes where it was among the sheet's drawings (the charts placed before it moved that place on).
+        var placed = new Dictionary<Worksheet, int>();
+        foreach (var (frame, row, column, sheet, position) in reader._chartFrames)
+        {
+            var before = placed.GetValueOrDefault(sheet);
+            if (reader.PlaceChart(frame, row, column, sheet, Math.Min(position + before, sheet.Drawings.Count)))
+                placed[sheet] = before + 1;
+        }
         return book;
     }
 
@@ -183,6 +195,8 @@ internal sealed class OdsReader
                 _styles[((string?)element.Attribute(Style + "family") ?? "", name)] = element;
             else if (element.Name.Namespace == Number && name is not null)
                 _dataStyles[name] = element;
+            else if (element.Name == Draw + "gradient" && (string?)element.Attribute(Draw + "name") is { } gradientName)
+                _gradients[gradientName] = element;
         }
     }
 
@@ -267,6 +281,7 @@ internal sealed class OdsReader
             FitWidth = across >= 0 ? across : pages > 0 ? pages : 1,
             FitHeight = down >= 0 ? down : pages > 0 ? pages : 1,
             FirstPageNumber = int.TryParse((string?)page?.Attribute(Style + "first-page-number"), out var first) && first is > 0 and < 32768 ? first : null,
+            Comments = print.Contains("annotations") ? SheetCommentsPrint.AtEnd : print.Contains("drawings") ? SheetCommentsPrint.AsDisplayed : SheetCommentsPrint.None,
         };
         // A width and height of 0 both with scale-to-pages: Calc's "fit width / height" with 0 = as many as needed.
         if (setup.FitToPage && pages > 0 && across < 0 && down < 0)
@@ -586,7 +601,8 @@ internal sealed class OdsReader
     {
         var name = (string?)table.Attribute(Table + "name") ?? "Sheet";
         var sheet = new Worksheet(name) { WidthsInPoints = true };
-        var drawings = new OdsDrawing(_zip!, read: true, styleName => Find("graphic", styleName), _defaultGraphicStyle);
+        var drawings = new OdsDrawing(_zip!, read: true, styleName => Find("graphic", styleName), _defaultGraphicStyle,
+            (family, styleName) => Find(family, styleName), gradientName => _gradients.GetValueOrDefault(gradientName));
         // Frames and shapes anchored to the sheet (table:shapes) sit from its top-left corner.
         foreach (var element in table.Element(Table + "shapes")?.Elements() ?? [])
             Drawing(element, 0, 0, sheet, drawings);
@@ -641,6 +657,7 @@ internal sealed class OdsReader
 
             var cells = Cells(row, columns);
             Drawings(row, r, sheet, drawings);
+            Notes(row, r, sheet, drawings);
             var hasText = cells.Any(run => run.Cell is { Text.Length: > 0 } || run.ColumnSpan > 1 || run.RowSpan > 1);
             var copies = hasText ? count : cells.Any(run => run.Cell is not null) && count <= MaxStyledRepeat ? count : 0;
             // Repeats multiply: a row of text repeated a million times across every column is billions of cells.
@@ -745,25 +762,64 @@ internal sealed class OdsReader
         }
     }
 
-    /// <summary>A frame or shape of a cell or the sheet: a frame that may hold a chart is read when all sheets are.</summary>
+    /// <summary>
+    /// A frame or shape of a cell or the sheet: a frame that may hold a chart is read when all sheets are, at its place
+    /// among the drawings read so far.
+    /// </summary>
     private void Drawing(XElement element, int row, int column, Worksheet sheet, OdsDrawing drawings)
     {
         if (OdsDrawing.IsObjectFrame(element))
-            _chartFrames.Add((element, row, column, sheet));
+            _chartFrames.Add((element, row, column, sheet, drawings.Drawings.Count));
         else if (element.Name.Namespace == Draw)
             drawings.Read(element, row, column);
     }
 
-    /// <summary>A frame holding a chart object OdfChartReader draws, as a chart on the sheet; other frames are left out.</summary>
-    private void PlaceChart(XElement frame, int row, int column, Worksheet sheet)
+    /// <summary>The notes of the cells of row <paramref name="row"/> (a repeated row's first copy), with the box of a shown one.</summary>
+    private void Notes(XElement element, int row, Worksheet sheet, OdsDrawing drawings)
+    {
+        var column = 0;
+        foreach (var cell in element.Elements())
+        {
+            if (cell.Name != Table + "table-cell" && cell.Name != Table + "covered-table-cell")
+                continue;
+            if (cell.Element(Office + "annotation") is { } note && sheet.Comments.Count < SheetComments.MaxComments)
+            {
+                var text = string.Join('\n', note.Elements(Text + "p").Select(p =>
+                {
+                    var sb = new StringBuilder();
+                    _counted = 0;
+                    Inline(p, sb);
+                    Characters(sb.Length - _counted);
+                    return sb.ToString();
+                }));
+                var shown = (string?)note.Attribute(Office + "display") == "true";
+                var author = note.Elements().FirstOrDefault(e => e.Name.LocalName == "creator")?.Value;
+                if (text.Length > 0)
+                {
+                    SheetComments.Add(sheet, row, column, text, null, new(), author is { Length: > 0 } ? author : null);
+                    if (shown && sheet.Comments[^1] is { Row: var r, Column: var c } added && r == row && c == column)
+                        sheet.Comments[^1] = added with { Shown = true, Box = drawings.Note(note) };
+                }
+            }
+            column += Math.Min(Repeat(cell, "number-columns-repeated"), MaxColumns);
+            if (column >= MaxColumns)
+                break;
+        }
+    }
+
+    /// <summary>
+    /// A frame holding a chart object OdfChartReader draws, as a chart on the sheet at <paramref name="position"/> among
+    /// its drawings; other frames are left out. True when the chart was placed.
+    /// </summary>
+    private bool PlaceChart(XElement frame, int row, int column, Worksheet sheet, int position)
     {
         if (sheet.Drawings.Count(d => d is SheetChart) >= MaxCharts || frame.Element(Draw + "object") is not { } embedded
             || ChartObject(embedded) is not { } chart)
-            return;
+            return false;
         var width = Points((string?)frame.Attribute(Svg + "width")) ?? 0;
         var height = Points((string?)frame.Attribute(Svg + "height")) ?? 0;
         if (!(width > 0 && height > 0 && width < 100_000 && height < 100_000))
-            return;
+            return false;
         _charts.Charge(chart);
         var x = Math.Clamp(Points((string?)frame.Attribute(Svg + "x")) ?? 0, 0, 100_000);
         var y = Math.Clamp(Points((string?)frame.Attribute(Svg + "y")) ?? 0, 0, 100_000);
@@ -774,7 +830,8 @@ internal sealed class OdsReader
             to = (end.Top, end.Left, Math.Clamp(Points((string?)frame.Attribute(Table + "end-x")) ?? 0, 0, 100_000),
                 Math.Clamp(Points((string?)frame.Attribute(Table + "end-y")) ?? 0, 0, 100_000));
         }
-        sheet.Drawings.Add(new SheetChart(chart, row, column, x, y, width, height) { To = to });
+        sheet.Drawings.Insert(position, new SheetChart(chart, row, column, x, y, width, height) { To = to });
+        return true;
     }
 
     /// <summary>The cells of the sheet named <paramref name="name"/> as a chart's ranges see them, or null for a sheet not read.</summary>

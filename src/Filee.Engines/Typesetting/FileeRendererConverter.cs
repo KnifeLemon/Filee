@@ -11,7 +11,8 @@
 // presentations or spreadsheets, the engine leaves those files to it (its edge would win on cost otherwise).
 //
 // Its edges are Checked: before a file is converted, FirstUnsupported looks through it for what the layout engine
-// doesn't draw yet (OLE objects, charts other than the DrawingML ones ChartReader draws, form controls it doesn't draw
+// doesn't draw yet (OLE objects other than an HWP / HWPX object with a picture or a DrawingML chart part ChartReader
+// draws, charts other than the DrawingML ones ChartReader draws, form controls it doesn't draw
 // (ActiveX controls, ODF form controls, 한글's list boxes and scroll bars), SmartArt without the drawing Word saves with
 // it), and such a file takes the route
 // it would take without the engine (JobQueue). An HWP is looked through as the HWPX package it becomes; a deck by
@@ -250,14 +251,18 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     }
 
     /// <summary>
-    /// Whether every object HwpxOle finds in HWPX part <paramref name="xml"/> is an hp:chart whose chart part ChartReader
-    /// draws; an OLE object in an hp:default branch (the fallback 한글 writes after a chart) doesn't count.
+    /// Whether every object HwpxOle finds in HWPX part <paramref name="xml"/> is one the renderer draws: an hp:chart whose
+    /// chart part ChartReader draws, or an hp:ole whose BinData object has a picture or a DrawingML chart part
+    /// ChartReader draws (Binary/OlePreview.cs; the HWPX reader draws it as that chart or picture). An OLE object in an
+    /// hp:default branch (the fallback 한글 writes after a chart) doesn't count.
     /// </summary>
     private static bool HwpxChartsOnly(DocumentPackage package, string xml)
     {
         var text = HwpxDefaultBranch().Replace(xml, "");
         var charts = HwpxChartRef().Matches(text);
-        if (charts.Count == 0 || charts.Count != HwpxOle().Count(text) || charts.Count > MaxOdtObjects)
+        var objects = HwpxOleRef().Matches(text);
+        var count = charts.Count + objects.Count;
+        if (count == 0 || count != HwpxOle().Count(text) || count > MaxOdtObjects)
             return false;
         foreach (Match match in charts)
         {
@@ -266,7 +271,80 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
                 || Charts.ChartReader.Read(Loaded(package, entry), Filee.Engines.Slides.DrawingColors.FromTheme(null)).Chart is null)
                 return false;
         }
+        if (objects.Count == 0)
+            return true;
+        var items = HwpxBinaryItems(package);
+        foreach (Match match in objects)
+        {
+            if (!HwpxObjectDrawn(package, items, System.Net.WebUtility.HtmlDecode(match.Groups[1].Value).Trim()))
+                return false;
+        }
         return true;
+    }
+
+    /// <summary>The BinData items of an HWPX's manifest (Contents/content.hpf opf:item id → href).</summary>
+    private static Dictionary<string, string> HwpxBinaryItems(DocumentPackage package)
+    {
+        var items = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (package.GetEntry("Contents/content.hpf") is not { } manifest || manifest.Length > MaxScannedBytes)
+            return items;
+        using var reader = new StreamReader(package.Open(manifest), Encoding.UTF8);
+        foreach (Match item in HwpxManifestItem().Matches(reader.ReadToEnd()))
+            items.TryAdd(System.Net.WebUtility.HtmlDecode(item.Groups[1].Value), System.Net.WebUtility.HtmlDecode(item.Groups[2].Value));
+        return items;
+    }
+
+    /// <summary>
+    /// Whether the renderer draws the OLE object of BinData item <paramref name="id"/>: its compound file holds a picture
+    /// or a DrawingML chart part ChartReader draws. A missing, too large or damaged object isn't drawn.
+    /// </summary>
+    private static bool HwpxObjectDrawn(DocumentPackage package, Dictionary<string, string> items, string id)
+    {
+        if (id.Length == 0)
+            return false;
+        // As the HWPX reader finds it: the manifest's path, else 한글's naming (BinData/<id>.<ext>).
+        var entry = items.TryGetValue(id, out var href) && !href.Contains("..", StringComparison.Ordinal) ? package.GetEntry(href.TrimStart('/')) : null;
+        entry ??= package.Entries.FirstOrDefault(e => e.FullName.StartsWith("BinData/", StringComparison.OrdinalIgnoreCase)
+                                                      && string.Equals(Path.GetFileNameWithoutExtension(e.Name), id, StringComparison.OrdinalIgnoreCase));
+        if (entry is null || package.ReadBytes(entry, DocumentLimits.Default.MaxPartBytes) is not { } bytes)
+            return false;
+        var folder = Path.Combine(Path.GetTempPath(), $"filee-check-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(folder);
+            var ole = Path.Combine(folder, "object.ole");
+            File.WriteAllBytes(ole, bytes);
+            var content = Hwp.Binary.OlePreview.Read(ole, Path.Combine(folder, "preview"));
+            if (content.ChartPart is { } chart)
+            {
+                try
+                {
+                    var root = Infrastructure.BoundedXml.Bytes(chart, "OOXMLChartContents", System.Xml.Linq.LoadOptions.None).Root;
+                    if (Charts.ChartReader.Read(root, Filee.Engines.Slides.DrawingColors.FromTheme(null)).Chart is not null)
+                        return true;
+                }
+                catch (Exception ex) when (ex is System.Xml.XmlException or InvalidDataException)
+                {
+                    // Not a chart part ChartReader reads: its picture stands in, as in the reader.
+                }
+            }
+            return content.Preview is not null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return false;
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A temporary file left behind is cleaned up with the rest of the temp folder.
+            }
+        }
     }
 
     /// <summary>
@@ -481,6 +559,14 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
 
     [GeneratedRegex(@"<\w+:(?:ole|chart)\b")]
     private static partial Regex HwpxOle();
+
+    /// <summary>An hp:ole with its binaryItemIDRef (its BinData item).</summary>
+    [GeneratedRegex(@"<\w+:ole\b[^>]*?\sbinaryItemIDRef=""([^""]*)""")]
+    private static partial Regex HwpxOleRef();
+
+    /// <summary>An opf:item of an HWPX manifest with its id and href (in either order).</summary>
+    [GeneratedRegex(@"<\w+:item\b(?=[^>]*?\sid=""([^""]*)"")(?=[^>]*?\shref=""([^""]*)"")[^>]*>")]
+    private static partial Regex HwpxManifestItem();
 
     /// <summary>A DrawingML chart part: its root element is c:chartSpace.</summary>
     [GeneratedRegex(@"^\s*(?:<\?xml[^>]*\?>\s*)?<(?:\w+:)?chartSpace\b")]

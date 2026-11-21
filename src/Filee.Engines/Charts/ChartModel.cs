@@ -278,6 +278,12 @@ internal sealed class ChartSeries
     /// <summary>The series' marker, or null for the plot's automatic one.</summary>
     public ChartMarker? Marker { get; init; }
 
+    /// <summary>
+    /// The key the legend shows for the series when it isn't drawn as a line or box of its own (an ODF stock chart's
+    /// entry: its candlestick, or its range line with the close tick); null for the series' own look.
+    /// </summary>
+    public ChartShapeStyle? LegendKey { get; set; }
+
     public ChartLabels? Labels { get; init; }
 
     /// <summary>Labels of single points (c:dLbl), by index, over <see cref="Labels"/>.</summary>

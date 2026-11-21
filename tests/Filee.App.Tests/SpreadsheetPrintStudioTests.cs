@@ -424,6 +424,11 @@ public class SpreadsheetPrintStudioTests
             await vm.Initialization;
             await WaitUntilAsync(() => vm.Pages.Count > 0, TimeSpan.FromSeconds(20));
             Assert.False(vm.HasNotice);
+            // The caption names the printer that drew it: the built-in one for an XLSB, whichever engine is chosen.
+            Assert.Equal(loc["sheet_studio.drawn_by_builtin"], vm.PreviewEngine);
+            var none = new SpreadsheetPrintService([]);
+            Assert.Null(none.Engine);
+            Assert.Equal(SpreadsheetPrintEngine.BuiltIn, none.EngineFor(workbook));
 
             var output = Path.Combine(folder, "book.pdf");
             await vm.ExportAsync(output);
