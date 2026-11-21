@@ -8,6 +8,9 @@
 //   an equation array each with their own number ("a&=b#(1)" in every line) keep them in the equation. On this route
 //   each number goes to the right end of its equation's line, its ink centred on the math axis: of the whole equation
 //   (a fraction's bar, the middle of an equation array) or of its own line of the array, as Word places it.
+// - Word's and TeX's inline equations break across lines of text as Word breaks them: the paragraph's text holds one
+//   object per piece of the equation (MathLayout.Pieces, split before its top-level binary and relation operators),
+//   and a line may break between pieces. Side by side on one line they are the equation laid out whole.
 
 using System.Runtime.CompilerServices;
 using Filee.Engines.Hwp.Hwpx;
@@ -46,8 +49,44 @@ internal sealed partial class ParagraphLayouter
     /// <summary>An equation laid out at its size (its own, else its text's) in its colour.</summary>
     private EquationBox Equation(HEquation equation) => Laid(equation).Box;
 
+    /// <summary>The pieces of Word's and TeX's inline equations (null for one that stays whole), and each piece's box.</summary>
+    private readonly Dictionary<HEquation, HEquation[]?> _pieces = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<HEquation, EquationBox> _pieceBoxes = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// An inline equation of Word or TeX in the pieces a line may break between, each an equation drawn as its part of
+    /// the whole; null for one that stays whole (a display equation, one with numbers, one without a place to break).
+    /// </summary>
+    private IReadOnlyList<HEquation>? EquationPieces(HEquation equation)
+    {
+        if (equation.Display || equation is { Width: not null, Height: not null } || _numbers.TryGetValue(equation, out _))
+            return null;
+        if (_pieces.TryGetValue(equation, out var known))
+            return known;
+        if (_pieces.Count > 10_000)
+        {
+            _pieces.Clear();
+            _pieceBoxes.Clear();
+        }
+        var size = (equation.Size ?? equation.Format.Size ?? 1000) / 100f;
+        var color = ParagraphText.Color(equation.Color ?? equation.Format.Color) ?? SKColors.Black;
+        HEquation[]? pieces = null;
+        if (_math.Pieces(equation.Math, size, color, MathMode.Text) is { Count: > 1 } boxes)
+        {
+            pieces = new HEquation[boxes.Count];
+            for (var i = 0; i < boxes.Count; i++)
+            {
+                pieces[i] = new HEquation(equation.Math, equation.Format, equation.Text) { Tex = equation.Tex, Size = equation.Size, Color = equation.Color };
+                _pieceBoxes[pieces[i]] = boxes[i];
+            }
+        }
+        return _pieces[equation] = pieces;
+    }
+
     private LaidEquation Laid(HEquation equation)
     {
+        if (_pieceBoxes.TryGetValue(equation, out var piece))
+            return new LaidEquation(piece, [], _equationRoom);
         // Word's and TeX's equations (models of other formats) are set as display or inline formulas, 한글's at one size.
         var mode = !WordEquations ? MathMode.Fixed : equation.Display ? MathMode.Display : MathMode.Text;
         var room = _equationRoom;

@@ -7,7 +7,8 @@
 //   paragraph has a hanging indent (the text then starts at the indent, as in 한글 and Word) and a space otherwise.
 // - A picture laid out like a character (no anchor) is U+FFFC, which the layout gives the picture's size. Page number
 //   and total pages fields are the text the page composer gives them, and a note reference its number, raised. Both
-//   are text the model doesn't count (Insertions), so 한글's stored line starts are moved past them. A note's own
+//   are text the model doesn't count (Insertions), so 한글's stored line starts are moved past them. So are the U+FFFC
+//   of an inline equation's pieces after the first, when the layout splits one for breaking (Word's). A note's own
 //   number goes where its text has it (Word's w:footnoteRef), else the composer puts it in front as a marker.
 // - Floating objects, text boxes and shapes belong to a later layout milestone and are left out; an equation is drawn
 //   as its linear text.
@@ -134,8 +135,12 @@ internal sealed class ParagraphText
     /// <param name="fields">The text of a page number or total pages field; null leaves fields out.</param>
     /// <param name="notes">The number a note reference shows; null leaves note references out.</param>
     /// <param name="noteNumber">In a note's text, its number, put where the text has it (HNoteNumber); null leaves it out.</param>
+    /// <param name="pieces">
+    /// The pieces an inline equation's lines may break between (ParagraphLayout.Equations.cs), each its own U+FFFC; null
+    /// (or null for an equation) keeps it one object.
+    /// </param>
     public static ParagraphText From(HParagraph paragraph, string? marker = null, Func<HField, string>? fields = null, Func<HNote, string>? notes = null,
-        string? noteNumber = null)
+        string? noteNumber = null, Func<HEquation, IReadOnlyList<HEquation>?>? pieces = null)
     {
         var text = new StringBuilder();
         var spans = new List<TextSpan>();
@@ -191,6 +196,20 @@ internal sealed class ParagraphText
                         break;
                     case HBookmark bookmark:
                         bookmarks.Add((text.Length, bookmark.Name));
+                        break;
+                    case HEquation equation when pieces?.Invoke(equation) is { Count: > 1 } parts:
+                        // The pieces after the first are characters the model doesn't count. They stay in their order
+                        // left to right in right-to-left text too (a left-to-right override around them).
+                        Insert("\u202D", paragraph.MarkFormat, link); // LRO
+                        for (var i = 0; i < parts.Count; i++)
+                        {
+                            pictures[text.Length] = parts[i];
+                            if (i == 0)
+                                Add(ObjectReplacement.ToString(), paragraph.MarkFormat, link);
+                            else
+                                Insert(ObjectReplacement.ToString(), paragraph.MarkFormat, link);
+                        }
+                        Insert("\u202C", paragraph.MarkFormat, link); // PDF
                         break;
                     case HImage { Anchor: null } or HShape { Anchor: null } or HTextBox { Anchor: null } or HEquation:
                         pictures[text.Length] = inline;

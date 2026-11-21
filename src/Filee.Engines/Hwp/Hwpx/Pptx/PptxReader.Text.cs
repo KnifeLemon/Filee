@@ -37,7 +37,8 @@ internal sealed partial class PptxReader
         XElement? masterPh, string? defaultColor)
     {
         var blocks = new List<HBlock>();
-        if (body is null || !body.Descendants(A + "t").Any(t => t.Value.Trim().Length > 0))
+        // (An equation alone, a14:m, is visible text too.)
+        if (body is null || !body.Descendants(A + "t").Any(t => t.Value.Trim().Length > 0) && !body.Descendants().Any(IsMath))
             return blocks;
 
         // "Shrink text on overflow" stores the scale PowerPoint applied.

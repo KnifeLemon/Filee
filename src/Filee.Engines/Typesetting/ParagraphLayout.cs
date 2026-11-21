@@ -295,7 +295,7 @@ internal sealed partial class ParagraphLayouter
         string? noteNumber)
     {
         var format = paragraph.Format;
-        var source = ParagraphText.From(paragraph, marker, fields, notes, noteNumber);
+        var source = ParagraphText.From(paragraph, marker, fields, notes, noteNumber, WordEquations ? EquationPieces : null);
         var text = source.Text;
         var language = FontSubstitution.Language(text);
         var rightToLeft = format.RightToLeft ?? BidiAlgorithm.IsRightToLeft(text);

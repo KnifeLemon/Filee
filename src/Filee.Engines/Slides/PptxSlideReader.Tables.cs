@@ -171,7 +171,7 @@ internal sealed partial class PptxSlideReader
 
     private SlideTextFrame? TableText(SlideContext context, string part, XElement body, List<XElement> bodies, XElement? fontRef)
     {
-        if (!body.Elements(A + "p").Any(p => p.Elements().Any(e => e.Name.LocalName is "r" or "fld" or "br")))
+        if (!body.Elements(A + "p").Any(p => p.Elements().Any(e => e.Name.LocalName is "r" or "fld" or "br" || e.Name == A14 + "m")))
             return null;
         var frame = new SlideTextFrame();
         var counters = new int[10];

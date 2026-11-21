@@ -716,6 +716,9 @@ internal sealed class HEquation(MathNode math, HCharFormat format, string? sourc
     /// <summary>The TeX of an equation read from TeX math (without its $ or \( delimiters); null for others.</summary>
     public string? Tex { get; init; }
 
+    /// <summary>The StarMath source of an equation read from an OpenDocument formula object that kept one; null for others.</summary>
+    public string? StarMath { get; init; }
+
     /// <summary>
     /// A display equation (TeX's $$ … $$ and \[ … \], Word's m:oMathPara), on a line of its own; inline ones are false.
     /// </summary>

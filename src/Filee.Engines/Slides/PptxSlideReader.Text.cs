@@ -73,7 +73,7 @@ internal sealed partial class PptxSlideReader
     private SlideTextFrame? TextFrame(SlideContext context, string part, XElement body, XElement? ph, XElement? layoutPh, XElement? masterPh,
         XElement? fontRef)
     {
-        if (!body.Elements(A + "p").Any(p => p.Elements().Any(e => e.Name.LocalName is "r" or "fld" or "br")))
+        if (!body.Elements(A + "p").Any(p => p.Elements().Any(e => e.Name.LocalName is "r" or "fld" or "br" || e.Name == A14 + "m")))
             return null;
         var bodies = new[] { body, Body(layoutPh), Body(masterPh) }.OfType<XElement>().ToList();
         var properties = bodies.Select(b => b.Element(A + "bodyPr")).OfType<XElement>().ToList();
@@ -165,8 +165,8 @@ internal sealed partial class PptxSlideReader
         string? Attribute(string name) => chain.Select(e => (string?)e.Attribute(name)).FirstOrDefault(v => v is not null);
         XElement? Child(params string[] names) => chain.Select(e => e.Elements().FirstOrDefault(c => names.Contains(c.Name.LocalName))).FirstOrDefault(c => c is not null);
 
-        var runs = p.Elements().Where(e => e.Name.LocalName is "r" or "br" or "fld").ToList();
-        var firstRun = runs.FirstOrDefault(r => r.Name.LocalName != "br");
+        var runs = p.Elements().Where(e => e.Name.LocalName is "r" or "br" or "fld" || e.Name == A14 + "m").ToList();
+        var firstRun = runs.FirstOrDefault(r => r.Name.LocalName is not ("br" or "m"));
         var markFormat = Format(context, p.Element(A + "endParaRPr") is { } end && firstRun is null ? end : firstRun?.Element(A + "rPr") ?? p.Element(A + "endParaRPr"),
             pPr, styles, fontRef, fontScale, "");
         var size = markFormat.Size ?? DefaultSize;
@@ -218,12 +218,17 @@ internal sealed partial class PptxSlideReader
             MarkFormat = markFormat,
         };
 
-        var hasText = runs.Any(r => (r.Element(A + "t")?.Value.Length ?? 0) > 0);
+        var hasText = runs.Any(r => (r.Element(A + "t")?.Value.Length ?? 0) > 0 || r.Name == A14 + "m");
         Bullet(context, paragraph, Child("buNone", "buChar", "buAutoNum", "buBlip"), Child("buClr", "buClrTx"), Child("buSzPct", "buSzPts", "buSzTx"),
             Child("buFont", "buFontTx"), markFormat, hasText, level, indent, counters, numbered);
 
         foreach (var run in runs)
         {
+            if (run.Name == A14 + "m")
+            {
+                Equations(context, run, pPr, styles, fontRef, fontScale, paragraph);
+                continue;
+            }
             var rPr = run.Element(A + "rPr");
             var text = run.Name.LocalName switch
             {
@@ -251,6 +256,25 @@ internal sealed partial class PptxSlideReader
             paragraph.Inlines.Add(link);
         }
         return paragraph;
+    }
+
+    /// <summary>
+    /// PowerPoint's equations (a14:m): each m:oMath an equation (those of an m:oMathPara display ones), in the format of
+    /// the run properties inside it, drawn by the layout's MathLayout.
+    /// </summary>
+    private void Equations(SlideContext context, XElement math, XElement? pPr, LevelStyles styles, XElement? fontRef, double fontScale, HParagraph paragraph)
+    {
+        var format = Format(context, math.Descendants(A + "rPr").FirstOrDefault(), pPr, styles, fontRef, fontScale, "");
+        foreach (var content in math.Elements())
+        {
+            var display = content.Name.LocalName == "oMathPara";
+            foreach (var line in display ? content.Elements(content.Name.Namespace + "oMath") : content.Name.LocalName == "oMath" ? [content] : [])
+            {
+                _budget.Object();
+                if (Filee.Engines.Hwp.Hwpx.Docx.OmmlReader.Read(line) is var equation and not MathRow { Items.Count: 0 })
+                    paragraph.Inlines.Add(new HEquation(equation, format with { Italic = true }) { Display = display });
+            }
+        }
     }
 
     /// <summary>EMU → HWPUNIT (1/100 pt).</summary>

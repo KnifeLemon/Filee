@@ -35,7 +35,8 @@ internal sealed class SlideRenderer : IDisposable
     public SlideRenderer(FontResolver fonts, Shaper shaper, CancellationToken cancellationToken = default)
     {
         _shaper = shaper;
-        _layouter = new ParagraphLayouter(fonts, shaper, storedLines: false);
+        // Slides' equations are PowerPoint's (Office Math): set as Word sets them, breaking across lines when inline.
+        _layouter = new ParagraphLayouter(fonts, shaper, storedLines: false) { WordEquations = true };
         _charts = new ChartFonts(fonts, shaper);
         _cancellationToken = cancellationToken;
     }

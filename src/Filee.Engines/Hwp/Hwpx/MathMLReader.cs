@@ -1,7 +1,9 @@
 // MathML (presentation markup, MathML 3 and Core) → the equation tree (MathNode), the other way from MathMLWriter: the
 // formula objects of OpenDocument files (LibreOffice Math's content.xml, Filee's own) become equations again.
 //
-// A TeX annotation (what MathMLWriter keeps of an equation read from TeX) is read as TeX. Otherwise the elements: tokens
+// A TeX annotation (what MathMLWriter keeps of an equation read from TeX) is read as TeX. A StarMath annotation (what
+// LibreOffice and Filee's ODT writer keep as the formula's source) is kept with the formula, and read as StarMath when
+// the markup shows nothing. Otherwise the elements: tokens
 // (mi italic when one letter, mn, mo, mtext, ms, mspace) through OmmlReader's tokens, so symbols, large operators,
 // function names and lim come out as they do from Word; mrow, mstyle (bold and upright variants), mpadded, mphantom,
 // menclose, semantics (its first child); mfrac, msqrt, mroot, scripts (a large operator's are its limits), under and
@@ -26,8 +28,14 @@ internal static class MathMLReader
 
     private readonly record struct Style(bool Upright, bool Bold, bool Explicit = false);
 
-    /// <summary>A formula read from MathML: its tree, its TeX source when it kept one, and whether it is a display formula.</summary>
-    internal sealed record Formula(MathNode Math, string? Tex, bool Display);
+    /// <summary>
+    /// A formula read from MathML: its tree, its TeX source and its StarMath source when it kept them, and whether it is a
+    /// display formula.
+    /// </summary>
+    internal sealed record Formula(MathNode Math, string? Tex, bool Display)
+    {
+        public string? StarMath { get; init; }
+    }
 
     /// <summary>The formula of a &lt;math&gt; element; null when it shows nothing.</summary>
     public static Formula? Read(XElement math)
@@ -36,8 +44,10 @@ internal static class MathMLReader
                       || string.Equals(Attr(math, "mode"), "display", StringComparison.OrdinalIgnoreCase);
         var tex = math.Descendants().FirstOrDefault(e => e.Name.LocalName == "annotation"
                                                         && Attr(e, "encoding") is "application/x-tex" or "TeX" or "LaTeX")?.Value.Trim();
+        var starMath = math.Descendants().FirstOrDefault(e => e.Name.LocalName == "annotation"
+                                                             && Attr(e, "encoding")?.Trim() == Hwpx.StarMath.Encoding)?.Value.Trim() is { Length: > 0 } source ? source : null;
         if (tex is { Length: > 0 } && LatexMath.Parse(tex) is { } parsed && !IsEmpty(parsed))
-            return new Formula(parsed, tex, display);
+            return new Formula(parsed, tex, display) { StarMath = starMath };
 
         MathNode node;
         if (Nesting.Deeper(math, MaxDepth))
@@ -50,7 +60,10 @@ internal static class MathMLReader
         {
             node = Row(math.Elements(), default);
         }
-        return IsEmpty(node) ? null : new Formula(node, null, display);
+        // Markup that shows nothing (only the annotation): the formula from its StarMath source.
+        if (IsEmpty(node) && starMath is not null && Hwpx.StarMath.Read(starMath) is { } fromSource)
+            node = fromSource;
+        return IsEmpty(node) ? null : new Formula(node, null, display) { StarMath = starMath };
     }
 
     // ───────────────────────── Rows ─────────────────────────

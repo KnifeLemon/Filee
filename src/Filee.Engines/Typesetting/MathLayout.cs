@@ -24,7 +24,8 @@
 // brackets too wide for a line as well, each bracket as tall as all it holds), the lines
 // after the first indented (Word's defaults: m:brkBin "before", m:wrapIndent 1 inch), the whole centred as a group; a
 // Word document's own m:mathPr settings (operators after the break or on both lines, the signs of a repeated minus, the
-// indent, continuation lines to the right) are followed.
+// indent, continuation lines to the right) are followed. An inline formula comes in pieces split before the same
+// top-level operators (Pieces), which the paragraph's lines break between as Word breaks inline math across lines.
 //
 // Brackets and radical signs come from a math font when one is installed (Cambria Math on Windows, STIX Two Math on
 // macOS, Latin Modern Math, DejaVu Math TeX Gyre ... on Linux: a font with an OpenType MATH table, see MathTable): the
@@ -660,6 +661,59 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
             placed.Add((left, y, drawn[i]));
         }
         return Place(total, drawn[0].Ascent, y + drawn[^1].Descent, [.. placed]);
+    }
+
+    /// <summary>
+    /// An inline formula in the pieces a line of text may break it into (Word breaks inline math across lines before
+    /// its top-level binary and relation operators, see <see cref="BreaksBefore"/>): side by side they are the formula
+    /// laid out whole. Each piece after the first starts at its operator; the room before the operator ends the piece
+    /// before it. Null when the formula has no such place (or is too deep for <see cref="MaxDepth"/>).
+    /// </summary>
+    public IReadOnlyList<EquationBox>? Pieces(MathNode node, float size, SKColor color, MathMode mode)
+    {
+        var inner = Unwrapped(node);
+        if (inner is not MathRow { Items.Count: > 1 } row || row.Items.Any(i => i is MathAlign))
+            return null;
+        var items = row.Items;
+        var cuts = new List<int>();
+        for (var i = 1; i < items.Count; i++)
+        {
+            if (BreaksBefore(items[i], items[i - 1]))
+                cuts.Add(i);
+        }
+        if (cuts.Count == 0)
+            return null;
+        cuts.Add(items.Count);
+
+        // Laid out as Row lays out the whole formula: where each item's box starts and where the row ends.
+        var style = new Style(size, color, false, false, mode);
+        var boxes = new EquationBox[items.Count];
+        var at = new float[items.Count + 1];
+        float x = 0;
+        MathNode? previous = null;
+        for (var i = 0; i < items.Count; i++)
+        {
+            boxes[i] = Lay(items[i], style);
+            var (before, after) = Spacing(items[i], previous, style);
+            x += before;
+            at[i] = x;
+            x += boxes[i].Width + after;
+            previous = items[i];
+        }
+        at[items.Count] = x;
+
+        var pieces = new List<EquationBox>(cuts.Count);
+        var from = 0;
+        foreach (var to in cuts)
+        {
+            var start = from == 0 ? 0 : at[from];
+            var parts = new List<(float X, EquationBox Box)>(to - from);
+            for (var i = from; i < to; i++)
+                parts.Add((at[i] - start, boxes[i]));
+            pieces.Add(Combine(parts, at[to] - start));
+            from = to;
+        }
+        return pieces;
     }
 
     /// <summary>A node inside rows of one item each.</summary>

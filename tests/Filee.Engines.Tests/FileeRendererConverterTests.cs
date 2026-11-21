@@ -421,12 +421,17 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
         Assert.Equal(["libreoffice"], Engines(WithLibreOffice(documents: true).Plan("docx", "pdf", shaping: true)));
         Assert.Equal(["libreoffice"], Engines(planner.Plan("docx", "pdf", shaping: true, withoutChecked: true)));
 
+        // The conversion with the switches as they are by default (WithLibreOffice above turned one on), so it is the
+        // renderer's whether this PC has LibreOffice or not. Without LibreOffice, before, the file was refused ("needs
+        // LibreOffice") rather than drawn unshaped by rhwp.
+        EngineEnvironment.LibreOfficeForSlides = false;
+        EngineEnvironment.LibreOfficeForDocuments = false;
+        EngineEnvironment.LibreOfficeForSheets = false;
         Use(true);
         var builder = new DocxBuilder();
         builder.Paragraph(DocxBuilder.P(DocxBuilder.R("Report: مرحبا بالعالم"), "<w:bidi/>"));
         var source = builder.Save(Path.Combine(fx.NewFolder(), "arabic.docx"));
 
-        // No LibreOffice here: before, the file was refused ("needs LibreOffice") rather than drawn unshaped by rhwp.
         var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "pdf" });
 
         Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));

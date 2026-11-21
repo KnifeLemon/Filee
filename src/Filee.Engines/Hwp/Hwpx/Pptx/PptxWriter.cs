@@ -258,13 +258,11 @@ internal sealed partial class PptxWriter
                 TitleSlide(shapes);
                 break;
             case SlideKind.Section:
-                shapes.Append(TextShape("Title", "<p:ph type=\"title\"/>", 831850, 1709738, 10515600, 2852737,
-                    TitleBody(page.Title!, 10515600, 2852737, 6000, "b")));
+                shapes.Append(Title(page.Title!, 831850, 1709738, 10515600, 2852737, 6000, "b"));
                 break;
             default:
                 if (page.Title is { } title)
-                    shapes.Append(TextShape("Title", "<p:ph type=\"title\"/>", TitleX, TitleY, TitleWidth, TitleHeight,
-                        TitleBody(title, TitleWidth, TitleHeight, TitleSize, "ctr")));
+                    shapes.Append(Title(title, TitleX, TitleY, TitleWidth, TitleHeight, TitleSize, "ctr"));
                 var single = page.Items is [{ Item: TextItem }];
                 foreach (var placed in page.Items)
                     shapes.Append(Shape(page, placed, single));
@@ -301,11 +299,19 @@ internal sealed partial class PptxWriter
                 "<p:txBody><a:bodyPr/><a:lstStyle/>" + Paragraph(new Para { Runs = [new Run(_document.Date.Trim(), default)], Size = 1200, Before = 0 }) + "</p:txBody>"));
     }
 
+    /// <summary>A slide's title placeholder; with equations, in a14:m with a fallback that has their linear text.</summary>
+    private string Title(List<Run> runs, long x, long y, long width, long height, int size, string anchor)
+    {
+        string Write(bool math) => TextShape("Title", "<p:ph type=\"title\"/>", x, y, width, height, TitleBody(runs, width, height, size, anchor, math: math));
+        return runs.Any(r => r.Equation is not null) ? WithMath(Write) : Write(false);
+    }
+
     /// <summary>
     /// A title's text body: one paragraph without bullet. A title of more than two lines is shrunk to fit its box
     /// (normAutofit with the scale written out, as PowerPoint stores it).
     /// </summary>
-    private string TitleBody(List<Run> runs, long width, long height, int size, string anchor, bool center = false)
+    /// <param name="math">Equations as Office Math (a14:m, in a shape that has a fallback for them); else their linear text.</param>
+    private string TitleBody(List<Run> runs, long width, long height, int size, string anchor, bool center = false, bool math = false)
     {
         var scale = 100;
         var para = new Para { Runs = runs, Size = size, Before = 0 };
@@ -316,7 +322,7 @@ internal sealed partial class PptxWriter
         if (center)
             sb.Append("<a:pPr algn=\"ctr\"/>");
         foreach (var run in runs)
-            sb.Append(RunXml(run, 0, null));
+            sb.Append(math && run.Equation is { } equation ? MathXml(run, equation, size, center ? HAlign.Center : null, null) : RunXml(run, 0, null));
         return sb.Append("</a:p></p:txBody>").ToString();
     }
 
@@ -368,7 +374,11 @@ internal sealed partial class PptxWriter
             case PictureItem picture:
                 return Picture(picture, placed);
             case TableItem table:
-                return TableXml(table, placed, page.RowHeights.GetValueOrDefault(table) ?? RowHeights(table));
+                {
+                    var heights = page.RowHeights.GetValueOrDefault(table) ?? RowHeights(table);
+                    var math = table.Rows.Any(row => row.Any(cell => cell.Paragraphs?.Any(p => !p.Code && p.Runs.Any(r => r.Equation is not null)) == true));
+                    return math ? WithMath(m => TableXml(table, placed, heights, m)) : TableXml(table, placed, heights);
+                }
         }
         return "";
     }
@@ -496,7 +506,8 @@ internal sealed partial class PptxWriter
     /// A table in PowerPoint's default look (Medium Style 2, accent 1) written cell by cell: a blue header row with
     /// white bold text, banded rows, white lines. A cell's own fill wins.
     /// </summary>
-    private string TableXml(TableItem table, Placed placed, long[] heights)
+    /// <param name="math">Equations as Office Math (a14:m, in a frame that has a fallback for them); else their linear text.</param>
+    private string TableXml(TableItem table, Placed placed, long[] heights, bool math = false)
     {
         var id = ++_shapeId;
         var sb = new StringBuilder($"<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"{id}\" name=\"Table {id - 1}\"/>")
@@ -538,7 +549,11 @@ internal sealed partial class PptxWriter
                         sb.Append(" algn=\"r\"");
                     sb.Append("><a:buNone/></a:pPr>");
                     foreach (var run in paragraph.Runs)
-                        sb.Append(RunXml(run, table.Size, textColor, bold: header || paragraph.Bold, code: paragraph.Code));
+                    {
+                        sb.Append(math && run.Equation is { } equation && !paragraph.Code
+                            ? MathXml(run, equation, table.Size, paragraph.Align, textColor)
+                            : RunXml(run, table.Size, textColor, bold: header || paragraph.Bold, code: paragraph.Code));
+                    }
                     sb.Append($"<a:endParaRPr sz=\"{N(table.Size)}\" dirty=\"0\"/></a:p>");
                 }
                 sb.Append("</a:txBody><a:tcPr");
