@@ -31,6 +31,10 @@ en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't 
   so the server can only hand out the real installer. The log says where each file came from.
   It helps from the update after this version on: on such a network, this version itself still comes from
   [filee.sh](https://filee.sh/).
+- **Zstandard archives open: `.tar.zst` / `.tzst` and `.zst`** (#1646). Extract unpacks a `.tar.zst` straight into
+  its files (no `.tar` left to open again), and it converts to ZIP, 7Z, TAR and the other archive formats like a
+  `.tar.xz`. A single `.zst` unpacks to the file inside, or becomes a `.gz`, `.bz2` or `.xz`. Filee reads Zstandard
+  but doesn't write it. The formats are in the Developer field, which is on by default.
 
 ## 2.5.0
 
