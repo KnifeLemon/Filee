@@ -6,10 +6,11 @@
 // is a shape with its paragraphs in {\shptxt ...} inside \shpinst: it becomes an HTextBox with the shape's size,
 // place, fill (fillColor), outline (lineColor, lineWidth, lineDashing), padding (dxTextLeft ...) and vertical
 // alignment (anchorText). A shape without text that is a rectangle (shapeType 1, 2 rounded, 202 an empty text box), an
-// ellipse (3) or a line (20, 32 a straight connector) becomes an HShape with the shape's size, place, fill and outline.
-// Either way the \shprslt copy is skipped. Other shapes (block arrows, freeforms, lines with arrowheads, which the model
-// can't draw) are still read from their \shprslt; a line with arrowheads without one becomes a plain line. A picture's
-// own properties (\*\picprop, as Word writes for pictures in the text) give its rotation and mirroring.
+// ellipse (3) or a line (20, 32 a straight connector, with its arrowheads: lineStartArrowhead / lineEndArrowhead and
+// their widths and lengths) becomes an HShape with the shape's size, place, fill and outline. Either way the \shprslt
+// copy is skipped. Other shapes (block arrows, bent connectors, freeforms, which the model can't draw) are still read
+// from their \shprslt. A picture's own properties (\*\picprop, as Word writes for pictures in the text) give its
+// rotation and mirroring.
 
 using System.Globalization;
 using System.Text;
@@ -194,8 +195,7 @@ internal sealed partial class RtfReader
 
     /// <summary>
     /// The kind of drawing a shape without text or picture is, when the model draws it as the shape is: rectangles,
-    /// rounded ones, empty text boxes, ellipses and lines; null for others. A line with arrowheads keeps its \shprslt
-    /// copy, which has them; without one it is drawn as a plain line.
+    /// rounded ones, empty text boxes, ellipses and lines (with their arrowheads); null for others.
     /// </summary>
     private static HShapeKind? DrawnKind(ShapeContext shape)
     {
@@ -205,7 +205,7 @@ internal sealed partial class RtfReader
         {
             1 or 2 or 202 => HShapeKind.Rectangle,
             3 => HShapeKind.Ellipse,
-            20 or 32 when (shape.Number("lineStartArrowhead") ?? 0) == 0 && (shape.Number("lineEndArrowhead") ?? 0) == 0 || !shape.Result => HShapeKind.Line,
+            20 or 32 => HShapeKind.Line,
             _ => null,
         };
     }
@@ -231,6 +231,8 @@ internal sealed partial class RtfReader
             drawing.FlipVertical = shape.Flag("fFlipV");
             var rotation = new HTransform((shape.Number("rotation") ?? 0) / 65536.0 % 360, false, false);
             drawing.Transform = rotation.IsIdentity ? null : rotation;
+            drawing.Head = Arrowhead(shape, "lineStart");
+            drawing.Tail = Arrowhead(shape, "lineEnd");
         }
         else
         {
@@ -246,6 +248,30 @@ internal sealed partial class RtfReader
                 drawing.ZOrder = z;
         }
         return drawing;
+    }
+
+    /// <summary>
+    /// A line's arrowhead: lineStartArrowhead / lineEndArrowhead (1 arrow, 2 stealth, 3 diamond, 4 oval, 5 open; 0
+    /// none) with …ArrowWidth (0 narrow, 1 medium, 2 wide) and …ArrowLength (0 short, 1 medium, 2 long).
+    /// </summary>
+    private static HArrow? Arrowhead(ShapeContext shape, string end)
+    {
+        HArrowKind? kind = shape.Number(end + "Arrowhead") switch
+        {
+            1 => HArrowKind.Triangle,
+            2 => HArrowKind.Stealth,
+            3 => HArrowKind.Diamond,
+            4 => HArrowKind.Oval,
+            5 => HArrowKind.Open,
+            _ => null,
+        };
+        static HArrowSize Size(int? value) => value switch
+        {
+            0 => HArrowSize.Small,
+            2 => HArrowSize.Large,
+            _ => HArrowSize.Medium,
+        };
+        return kind is { } k ? new HArrow(k, Size(shape.Number(end + "ArrowWidth")), Size(shape.Number(end + "ArrowLength"))) : null;
     }
 
     /// <summary>

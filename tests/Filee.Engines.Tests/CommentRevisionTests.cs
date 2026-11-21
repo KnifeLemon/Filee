@@ -229,7 +229,7 @@ public class CommentRevisionTests(EngineFixture fx) : IClassFixture<EngineFixtur
                   Shape(Property("shapeType", "1") + Property("fillColor", "255"), "{\\shprslt{\\*\\do\\dobxcolumn}}") +
                   Shape(Property("shapeType", "3")) +
                   Shape(Property("shapeType", "20") + Property("fFlipV", "1")) +
-                  // A line with an arrowhead keeps the copy for programs without shapes (here a text), which has the arrowhead.
+                  // A line with an arrowhead is drawn with it: the copy for programs without shapes (here a text) is skipped.
                   Shape(Property("shapeType", "20") + Property("lineEndArrowhead", "1"), "{\\shprslt arrow}") +
                   "\\par\\pard\\plain\\ls1\\ilvl0 item\\par" +
                   "\\trowd\\trkeep\\cellx2000\\pard\\plain\\intbl cell\\cell\\row}";
@@ -238,13 +238,15 @@ public class CommentRevisionTests(EngineFixture fx) : IClassFixture<EngineFixtur
 
         var blocks = document.Sections[0].Blocks;
         var shapes = ((HParagraph)blocks[0]).Inlines.OfType<HShape>().ToList();
-        Assert.Equal([HShapeKind.Rectangle, HShapeKind.Ellipse, HShapeKind.Line], shapes.Select(s => s.Kind));
+        Assert.Equal([HShapeKind.Rectangle, HShapeKind.Ellipse, HShapeKind.Line, HShapeKind.Line], shapes.Select(s => s.Kind));
         Assert.Equal(("#FF0000", 7200, 3600), (shapes[0].Fill, shapes[0].Width, shapes[0].Height));
         Assert.Equal("#FFFFFF", shapes[1].Fill);
         Assert.True(shapes[2].FlipVertical);
         Assert.Null(shapes[2].Fill);
         Assert.Equal("COLUMN", shapes[0].Anchor?.HorizontalRelativeTo);
-        Assert.Contains("arrow", HDocumentWalker.Text(((HParagraph)blocks[0]).Inlines), StringComparison.Ordinal);
+        Assert.Null(shapes[2].Tail);
+        Assert.Equal(new HArrow(HArrowKind.Triangle), shapes[3].Tail);
+        Assert.DoesNotContain("arrow", HDocumentWalker.Text(((HParagraph)blocks[0]).Inlines), StringComparison.Ordinal);
 
         // \leveljcn wins over \leveljc; the Symbol font's bullet is its character, its code kept for the layout.
         var item = (HParagraph)blocks[1];
@@ -355,6 +357,86 @@ public class CommentRevisionTests(EngineFixture fx) : IClassFixture<EngineFixtur
         entry.Delete();
         using var writer = new StreamWriter(zip.CreateEntry(name).Open(), new UTF8Encoding(false));
         writer.Write(changed);
+    }
+
+    // ───────────────────────── ODT and HWPX writers ─────────────────────────
+
+    /// <summary>
+    /// The comments and tracked changes of <see cref="Model"/> with a comment on a point added after "Kept", as read
+    /// back (character styles aside, which these writers don't write; initials only where the format has them).
+    /// </summary>
+    private static void AssertRevisions(HDocument read, bool initials)
+    {
+        var inlines = read.Sections.SelectMany(s => s.Blocks).OfType<HParagraph>().SelectMany(p => p.Inlines).ToList();
+        Assert.Equal("Kept styled commented inserted", HDocumentWalker.Text(inlines).Trim());
+
+        var comments = inlines.OfType<HComment>().ToList();
+        Assert.Equal(2, comments.Count);
+        var point = comments[0];
+        Assert.DoesNotContain(inlines.OfType<HCommentStart>(), s => s.Comment == point);
+        Assert.Equal(("Choi", Written, "A point."), (point.Author, point.Date, HDocumentWalker.Text(((HParagraph)point.Blocks[0]).Inlines)));
+
+        var comment = comments[1];
+        var start = Assert.Single(inlines.OfType<HCommentStart>());
+        Assert.Same(start.Comment, comment);
+        var commented = inlines.FindIndex(i => i is HText t && t.Text.Contains("commented", StringComparison.Ordinal));
+        Assert.True(inlines.IndexOf(start) < commented && inlines.IndexOf(comment) > commented);
+        Assert.Equal(("Kim Minsu", initials ? "KM" : null, Written), (comment.Author, comment.Initials, comment.Date));
+        Assert.Equal("Check this.", HDocumentWalker.Text(((HParagraph)comment.Blocks[0]).Inlines).Trim());
+
+        var inserted = Assert.Single(inlines.OfType<HText>(), t => t.Text.Contains("inserted", StringComparison.Ordinal));
+        Assert.Equal(new HRevision("Park", Written), inserted.Format.Layout?.Inserted);
+        Assert.All(inlines.OfType<HText>().Where(t => t != inserted), t => Assert.Null(t.Format.Layout?.Inserted));
+        var deletion = Assert.Single(inlines.OfType<HDeletion>());
+        Assert.Equal(("Lee", "old"), (deletion.Revision.Author, HDocumentWalker.Text(deletion.Content)));
+    }
+
+    /// <summary><see cref="Model"/> with a comment on the point after "Kept" (no HCommentStart).</summary>
+    private static HDocument ModelWithPointComment()
+    {
+        var document = Model();
+        var point = new HComment { Author = "Choi", Date = Written };
+        var note = new HParagraph { MarkFormat = Plain };
+        note.Inlines.Add(new HText("A point.", Plain));
+        point.Blocks.Add(note);
+        document.Sections[0].Blocks.OfType<HParagraph>().First().Inlines.Insert(1, point);
+        return document;
+    }
+
+    [Fact]
+    public void Odt_writer_writes_annotations_and_tracked_changes_and_reads_them_back()
+    {
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "revisions.odt");
+        OdtWriter.Write(ModelWithPointComment(), path, TestContext.Current.CancellationToken);
+
+        using (var zip = ZipFile.OpenRead(path))
+        {
+            using var stream = zip.GetEntry("content.xml")!.Open();
+            var text = System.Xml.Linq.XDocument.Load(stream).Descendants(Filee.Engines.Hwp.Hwpx.Odt.Odf.Office + "text").Single();
+            // The list of changes comes first in the text.
+            var changes = text.Elements().First();
+            Assert.Equal(Filee.Engines.Hwp.Hwpx.Odt.Odf.Text + "tracked-changes", changes.Name);
+            Assert.Equal(["insertion", "deletion"], changes.Elements().Select(r => r.Elements().First().Name.LocalName));
+        }
+        AssertRevisions(OdtReader.Read(path, Path.Combine(folder, "media")), initials: true);
+    }
+
+    [Fact]
+    public void Hwpx_writer_writes_memos_and_tracked_changes_and_the_hwp_writer_leaves_them_out()
+    {
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "revisions.hwpx");
+        HwpxWriter.Write(ModelWithPointComment(), path, cancellationToken: TestContext.Current.CancellationToken);
+
+        AssertRevisions(HwpxReader.Read(path, Path.Combine(folder, "a")), initials: false);
+
+        // HWP keeps memo text where Filee doesn't write it: the memos go, the deleted text with them; the text reads the same.
+        var hwp = Path.ChangeExtension(path, ".hwp");
+        Filee.Engines.Hwp.Binary.HwpxToHwp.Write(path, hwp);
+        var inlines = Filee.Engines.Hwp.Binary.HwpReader.Read(hwp, Path.Combine(folder, "b")).Sections[0].Blocks.OfType<HParagraph>().SelectMany(p => p.Inlines).ToList();
+        Assert.Equal("Kept styled commented inserted", HDocumentWalker.Text(inlines).Trim());
+        Assert.DoesNotContain(inlines, i => i is HComment or HCommentStart or HDeletion);
     }
 
     // ───────────────────────── Other writers, layout ─────────────────────────

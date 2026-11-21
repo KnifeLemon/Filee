@@ -15,6 +15,16 @@ namespace Filee.Engines.Hwp.Binary;
 
 internal sealed partial class HwpxToHwp
 {
+    /// <summary>
+    /// The ids of the MEMO fields left out (their fieldBegin), so their fieldEnd goes too. HWP keeps a memo's text in a
+    /// memo list after the last section's text (HWPTAG_MEMO_LIST), whose records the format description doesn't lay
+    /// out: a memo field without it is not written.
+    /// </summary>
+    private readonly HashSet<string> _memoFields = new(StringComparer.Ordinal);
+
+    /// <summary>FIELD_MEMO's control id, '%%me' (HWP 5.0 format, table 128); '%mem' as earlier Filee versions wrote it.</summary>
+    private static bool IsMemoField(uint id) => id == ControlId("%%me") || id == ControlId("%mem");
+
     /// <summary>A record of a stream being built, at its level.</summary>
     private readonly record struct Rec(int Tag, int Level, byte[] Data)
     {
@@ -412,6 +422,14 @@ internal sealed partial class HwpxToHwp
                         writer.ListHeader(Child(control, "subList"), level + 2, records, data => data.Zeros(8));
                     });
                     break;
+                case "fieldBegin" when Attr(control, "type") == "MEMO" || IsMemoField(UInt(control, "fieldid")):
+                    if (Attr(control, "id") is { } memo)
+                        writer._memoFields.Add(memo);
+                    Shift(8, 0);
+                    break;
+                case "fieldEnd" when Attr(control, "beginIDRef") is { } begin && writer._memoFields.Contains(begin) || IsMemoField(UInt(control, "fieldid")):
+                    Shift(8, 0);
+                    break;
                 case "fieldBegin":
                     {
                         var id = FieldId(control);
@@ -493,7 +511,7 @@ internal sealed partial class HwpxToHwp
                 "MAILMERGE" => "%mmg",
                 "SUMMERY" or "SUMMARY" => "%smr",
                 "USER_INFO" => "%usr",
-                "MEMO" => "%mem",
+                "MEMO" => "%%me",
                 "PRIVATE_INFO_SECURITY" => "%cpr",
                 "TABLE_OF_CONTENTS" => "%toc",
                 _ => "%unk",

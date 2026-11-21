@@ -142,7 +142,7 @@ internal sealed partial class HwpxWriter
             _ => "BOTH",
         };
         return $"<hp:ctrl><hp:{kind} id=\"{id}\" applyPageType=\"{pages}\">" +
-               SubList(item.Blocks, verticalAlign, textWidth, textHeight) +
+               WithoutMemos(() => SubList(item.Blocks, verticalAlign, textWidth, textHeight)) +
                $"</hp:{kind}></hp:ctrl>";
     }
 
@@ -273,16 +273,25 @@ internal sealed partial class HwpxWriter
                     _plainText.Append(equation.Text);
                     break;
                 case HText text:
-                    runs.Text(CharPr(charPrBase, text.Format, link), Escape(text.Text));
+                    runs.Text(CharPr(charPrBase, text.Format, link), Insertion(text.Format, Escape(text.Text)));
                     _plainText.Append(text.Text);
                     break;
                 case HLineBreak lineBreak:
-                    runs.Text(CharPr(charPrBase, lineBreak.Format, link), "<hp:lineBreak/>");
+                    runs.Text(CharPr(charPrBase, lineBreak.Format, link), Insertion(lineBreak.Format, "<hp:lineBreak/>"));
                     _plainText.AppendLine();
                     break;
                 case HTab tab:
-                    runs.Text(CharPr(charPrBase, tab.Format, link), tabs.Count > 0 ? tabs.Dequeue() : "<hp:tab width=\"4000\" leader=\"0\" type=\"1\"/>");
+                    runs.Text(CharPr(charPrBase, tab.Format, link), Insertion(tab.Format, tabs.Count > 0 ? tabs.Dequeue() : "<hp:tab width=\"4000\" leader=\"0\" type=\"1\"/>"));
                     _plainText.Append('\t');
+                    break;
+                case HDeletion deletion:
+                    Deletion(deletion, runs, charPrBase, link);
+                    break;
+                case HCommentStart start:
+                    CommentStart(start, runs, charPrBase);
+                    break;
+                case HComment comment:
+                    CommentEnd(comment, runs, charPrBase);
                     break;
                 case HLink hyperlink:
                     {

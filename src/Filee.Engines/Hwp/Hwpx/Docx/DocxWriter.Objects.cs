@@ -199,7 +199,8 @@ internal sealed partial class DocxWriter
         var line = shape.Kind == HShapeKind.Line;
         var xml =
             "<wps:wsp><wps:cNvSpPr/>" +
-            ShapeProperties(w, h, geometry, shape.CornerRatio, line ? null : shape.Fill, line ? null : shape.Gradient, shape.Line, shape.FlipHorizontal, shape.FlipVertical) +
+            ShapeProperties(w, h, geometry, shape.CornerRatio, line ? null : shape.Fill, line ? null : shape.Gradient, shape.Line, shape.FlipHorizontal, shape.FlipVertical,
+                line ? shape.Head : null, line ? shape.Tail : null) +
             "<wps:bodyPr/></wps:wsp>";
         return DrawingRun(shape.Anchor, w, h, "Shape", xml);
     }
@@ -212,8 +213,9 @@ internal sealed partial class DocxWriter
         return $"<w:r><mc:AlternateContent><mc:Choice Requires=\"wps\"><w:drawing>{Frame(anchor, width, height, id, $"{kind} {id}", graphic)}</w:drawing></mc:Choice></mc:AlternateContent></w:r>";
     }
 
-    /// <summary>wps:spPr: xfrm, preset geometry, fill (solid, linear gradient or none) and outline.</summary>
-    private static string ShapeProperties(int width, int height, string geometry, int cornerRatio, string? fill, HGradient? gradient, HBorder line, bool flipH, bool flipV)
+    /// <summary>wps:spPr: xfrm, preset geometry, fill (solid, linear gradient or none) and outline with a line's arrowheads.</summary>
+    private static string ShapeProperties(int width, int height, string geometry, int cornerRatio, string? fill, HGradient? gradient, HBorder line, bool flipH, bool flipV,
+        HArrow? head = null, HArrow? tail = null)
     {
         var sb = new StringBuilder("<wps:spPr>");
         sb.Append($"<a:xfrm{(flipH ? " flipH=\"1\"" : "")}{(flipV ? " flipV=\"1\"" : "")}><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{Number(Emu(width))}\" cy=\"{Number(Emu(height))}\"/></a:xfrm>");
@@ -254,9 +256,35 @@ internal sealed partial class DocxWriter
                 _ => "",
             };
             var widthEmu = Math.Max(3175, (long)Math.Round(line.WidthMm * 36000));
-            sb.Append($"<a:ln w=\"{Number(widthEmu)}\"{(line.Style == HBorderStyle.Double ? " cmpd=\"dbl\"" : "")}><a:solidFill><a:srgbClr val=\"{Hex(line.Color) ?? "000000"}\"/></a:solidFill>{dash}</a:ln>");
+            sb.Append($"<a:ln w=\"{Number(widthEmu)}\"{(line.Style == HBorderStyle.Double ? " cmpd=\"dbl\"" : "")}><a:solidFill><a:srgbClr val=\"{Hex(line.Color) ?? "000000"}\"/></a:solidFill>{dash}")
+              .Append(LineEnd("a:headEnd", head)).Append(LineEnd("a:tailEnd", tail)).Append("</a:ln>");
         }
         return sb.Append("</wps:spPr>").ToString();
+    }
+
+    /// <summary>
+    /// a:headEnd / a:tailEnd of an arrowhead; empty for none. DrawingML has no spear or square: they are written as a
+    /// triangle and a diamond, and hollow marks filled.
+    /// </summary>
+    private static string LineEnd(string element, HArrow? arrow)
+    {
+        if (arrow is null)
+            return "";
+        var type = arrow.Kind switch
+        {
+            HArrowKind.Stealth => "stealth",
+            HArrowKind.Diamond or HArrowKind.Square => "diamond",
+            HArrowKind.Oval => "oval",
+            HArrowKind.Open => "arrow",
+            _ => "triangle",
+        };
+        static string Size(HArrowSize size) => size switch
+        {
+            HArrowSize.Small => "sm",
+            HArrowSize.Large => "lg",
+            _ => "med",
+        };
+        return $"<{element} type=\"{type}\" w=\"{Size(arrow.Width)}\" len=\"{Size(arrow.Length)}\"/>";
     }
 
     // ───────────────────────── Links and bookmarks ─────────────────────────

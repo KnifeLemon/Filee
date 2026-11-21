@@ -3,8 +3,8 @@
 // The header lists the changes (hh:trackChange: its type, date and author id) and their authors
 // (hh:trackChangeAuthor). In the text, hp:insertBegin / hp:insertEnd and hp:deleteBegin / hp:deleteEnd mark where a
 // change starts and ends, naming it by TcId. Inserted text is read as it is, marked as inserted (HCharLayout.Inserted);
-// deleted text, which the printed document doesn't show, goes into an HDeletion, which only the DOCX and RTF writers
-// write. A memo is a MEMO field: its text (the field's hp:subList) is a comment on the text up to the field's end,
+// deleted text, which the printed document doesn't show, goes into an HDeletion, which the DOCX, RTF, ODT and HWPX
+// writers write. A memo is a MEMO field: its text (the field's hp:subList) is a comment on the text up to the field's end,
 // its author and date from the field's parameters where they are given.
 
 using System.Xml.Linq;

@@ -597,7 +597,8 @@ internal sealed partial class HwpToHwpx
             "%mmg" => "MAILMERGE",
             "%smr" => "SUMMERY",
             "%usr" => "USER_INFO",
-            "%mem" => "MEMO",
+            // FIELD_MEMO is '%%me' (HWP 5.0 format, table 128); '%mem' as earlier Filee versions read and wrote it.
+            "%%me" or "%mem" => "MEMO",
             "%cpr" => "PRIVATE_INFO_SECURITY",
             "%toc" => "TABLE_OF_CONTENTS",
             _ => "UNKNOWN",

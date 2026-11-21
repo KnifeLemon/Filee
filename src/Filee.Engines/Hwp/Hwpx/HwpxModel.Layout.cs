@@ -4,7 +4,7 @@
 // height instead of becoming a 한글 percentage, 한글's seven language slots stay seven, Word's four run fonts stay
 // four. The writers keep using the members of HCharFormat / HParaFormat that hold the 한글 approximations, so
 // nothing here changes a written file, but for a run's character style and tracked insertion (HCharLayout.Style and
-// Inserted), which only the DOCX and RTF writers write. Lengths are HWPUNIT, sizes 1/100 pt, like the rest of the model.
+// Inserted), which the DOCX and RTF writers write (and Inserted the ODT and HWPX writers). Lengths are HWPUNIT, sizes 1/100 pt, like the rest of the model.
 
 namespace Filee.Engines.Hwp.Hwpx;
 
@@ -50,7 +50,7 @@ namespace Filee.Engines.Hwp.Hwpx;
 /// </param>
 /// <param name="Inserted">
 /// The run was inserted while changes were tracked, by whom and when (Word w:ins, RTF \revised, ODF text:insertion,
-/// 한글 hp:insertBegin): the DOCX and RTF writers write it as an insertion; the others write the text as it is. Only the
+/// 한글 hp:insertBegin): the DOCX, RTF, ODT and HWPX writers write it as an insertion; the others write the text as it is. Only the
 /// run itself has it. Deleted text is an <see cref="HDeletion"/>.
 /// </param>
 internal sealed record HCharLayout(

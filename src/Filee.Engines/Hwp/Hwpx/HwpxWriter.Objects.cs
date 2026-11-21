@@ -240,7 +240,7 @@ internal sealed partial class HwpxWriter
         sb.Append("<hp:flip horizontal=\"0\" vertical=\"0\"/>");
         sb.Append($"<hp:rotationInfo angle=\"0\" centerX=\"{w / 2}\" centerY=\"{h / 2}\" rotateimage=\"1\"/>");
         sb.Append(IdentityRendering);
-        sb.Append(LineShape(shape.Line));
+        sb.Append(shape.Kind == HShapeKind.Line ? LineShape(shape.Line, shape.Head, shape.Tail) : LineShape(shape.Line));
         if (shape.Kind != HShapeKind.Line)
             sb.Append(FillBrush(shape.Fill, shape.Gradient));
         sb.Append("<hp:shadow type=\"NONE\" color=\"#B2B2B2\" offsetX=\"0\" offsetY=\"0\" alpha=\"0\"/>");
@@ -268,12 +268,35 @@ internal sealed partial class HwpxWriter
         return sb.ToString();
     }
 
-    /// <summary>Outline of a drawing object; the width is in HWPUNIT here (33 ≈ 0.12 mm), not a named width.</summary>
-    private static string LineShape(HBorder line)
+    /// <summary>
+    /// Outline of a drawing object with a line's arrowheads; the width is in HWPUNIT here (33 ≈ 0.12 mm), not a named
+    /// width. An open arrowhead (two strokes), which 한글 has none of, is written as an arrow.
+    /// </summary>
+    private static string LineShape(HBorder line, HArrow? head = null, HArrow? tail = null)
     {
         var none = line.Style == HBorderStyle.None;
         var width = none ? 0 : Math.Max(1, (int)Math.Round(line.WidthMm * HwpxUnits.PerMm));
-        return $"<hp:lineShape color=\"{line.Color}\" width=\"{width}\" style=\"{(none ? "NONE" : LineType(line.Style))}\" endCap=\"FLAT\" headStyle=\"NORMAL\" tailStyle=\"NORMAL\" headfill=\"1\" tailfill=\"1\" headSz=\"MEDIUM_MEDIUM\" tailSz=\"MEDIUM_MEDIUM\" outlineStyle=\"NORMAL\" alpha=\"0\"/>";
+        static string Style(HArrow? arrow) => arrow switch
+        {
+            null => "NORMAL",
+            { Kind: HArrowKind.Spear } => "SPEAR",
+            { Kind: HArrowKind.Stealth } => "CONCAVE_ARROW",
+            { Kind: HArrowKind.Diamond } => arrow.Hollow ? "EMPTY_DIAMOND" : "FILLED_DIAMOND",
+            { Kind: HArrowKind.Oval } => arrow.Hollow ? "EMPTY_CIRCLE" : "FILLED_CIRCLE",
+            { Kind: HArrowKind.Square } => arrow.Hollow ? "EMPTY_BOX" : "FILLED_BOX",
+            _ => "ARROW",
+        };
+        static string Size(HArrow? arrow) => arrow is null ? "MEDIUM_MEDIUM" : $"{Name(arrow.Width)}_{Name(arrow.Length)}";
+        static string Name(HArrowSize size) => size switch
+        {
+            HArrowSize.Small => "SMALL",
+            HArrowSize.Large => "LARGE",
+            _ => "MEDIUM",
+        };
+        static string Fill(HArrow? arrow) => arrow is { Hollow: true } ? "0" : "1";
+        return $"<hp:lineShape color=\"{line.Color}\" width=\"{width}\" style=\"{(none ? "NONE" : LineType(line.Style))}\" endCap=\"FLAT\" " +
+               $"headStyle=\"{Style(head)}\" tailStyle=\"{Style(tail)}\" headfill=\"{Fill(head)}\" tailfill=\"{Fill(tail)}\" " +
+               $"headSz=\"{Size(head)}\" tailSz=\"{Size(tail)}\" outlineStyle=\"NORMAL\" alpha=\"0\"/>";
     }
 
     /// <summary>hc:fillBrush holds exactly one of winBrush (solid) or gradation; no brush = transparent.</summary>
@@ -300,7 +323,7 @@ internal sealed partial class HwpxWriter
         var numberRun = $"<hp:run charPrIDRef=\"{_base.CharPrId}\">" +
                         AutoNumber(note.Endnote ? "ENDNOTE" : "FOOTNOTE", number, ")") +
                         "<hp:t> </hp:t></hp:run>";
-        var content = SubList(note.Blocks, "TOP", leadingRun: numberRun);
+        var content = WithoutMemos(() => SubList(note.Blocks, "TOP", leadingRun: numberRun));
         _base = previousBase;
         return $"<hp:ctrl><hp:{kind} number=\"{number}\" suffixChar=\"41\" instId=\"{NextId()}\">{content}</hp:{kind}></hp:ctrl>";
     }

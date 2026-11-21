@@ -138,6 +138,16 @@ internal sealed partial class HwpxReader
                 _model++;
         }
 
+        /// <summary>A memo's comment where its field ends; a memo on nothing (its start just before) is on this point.</summary>
+        public void AddComment(HComment comment)
+        {
+            Settle();
+            var sink = Sink;
+            if (sink.Count > 0 && sink[^1] is HCommentStart start && ReferenceEquals(start.Comment, comment))
+                sink.RemoveAt(sink.Count - 1);
+            sink.Add(comment);
+        }
+
         /// <summary>
         /// Counts the next thing of the paragraph: <paramref name="units"/> of 한글's text positions; <paramref name="text"/>
         /// when they are characters the model keeps one to one.
@@ -707,7 +717,7 @@ internal sealed partial class HwpxReader
         if (field.Target is not null)
             builder.CloseLink();
         if (field.Comment is { } memo)
-            builder.Add(memo);
+            builder.AddComment(memo);
     }
 
     /// <summary>
