@@ -17,6 +17,9 @@ internal static class OmmlWriter
     /// <summary>The math font of every run, as Word writes it.</summary>
     private const string MathFont = "<w:rFonts w:ascii=\"Cambria Math\" w:hAnsi=\"Cambria Math\"/>";
 
+    /// <summary>The math font of a DrawingML run, as PowerPoint writes it.</summary>
+    private const string DrawingMathFont = "<a:latin typeface=\"Cambria Math\" panose=\"02040503050406030204\" pitchFamily=\"18\" charset=\"0\"/>";
+
     private static readonly HashSet<string> Relations =
     [
         "=", "<", ">", "≤", "≥", "≠", "≈", "≡", "≅", "∼", "≃", "∝", "≪", "≫", "∈", "∉", "∋", "⊂", "⊃", "⊆", "⊇", "→", "←",
@@ -24,14 +27,29 @@ internal static class OmmlWriter
     ];
 
     /// <summary>How the text of a run is styled.</summary>
-    private readonly record struct Style(bool Upright, bool Bold, string RunProperties);
+    /// <param name="Drawing">
+    /// For DrawingML text (PowerPoint's a14:m): the attributes of each run's a:rPr (size) and its content before the
+    /// font (fill); null for Word's w:rPr.
+    /// </param>
+    private readonly record struct Style(bool Upright, bool Bold, string RunProperties, (string Attributes, string Fill)? Drawing = null);
 
     /// <summary>
     /// One equation: an m:oMath, or for a display equation an m:oMathPara (a paragraph of its own, centred).
     /// <paramref name="runProperties"/> is the content of each run's w:rPr after its font (size, colour);
     /// <paramref name="align"/> places a display equation (left, right, else centred).
     /// </summary>
-    public static string Write(MathNode node, bool display, string runProperties = "", HAlign? align = null)
+    public static string Write(MathNode node, bool display, string runProperties = "", HAlign? align = null) =>
+        Write(node, display, new Style(false, false, runProperties), align);
+
+    /// <summary>
+    /// One equation for DrawingML text, as PowerPoint keeps it inside a14:m: the same Office Math with a:rPr run
+    /// properties (<paramref name="attributes"/> such as sz="2800", <paramref name="fill"/> such as an a:solidFill)
+    /// and the math font as a:latin.
+    /// </summary>
+    public static string WriteDrawing(MathNode node, bool display, string attributes = "", string fill = "", HAlign? align = null) =>
+        Write(node, display, new Style(false, false, "", (attributes, fill)), align);
+
+    private static string Write(MathNode node, bool display, Style style, HAlign? align)
     {
         var sb = new StringBuilder();
         if (display)
@@ -45,7 +63,7 @@ internal static class OmmlWriter
             sb.Append("<m:oMathPara><m:oMathParaPr><m:jc m:val=\"").Append(jc).Append("\"/></m:oMathParaPr>");
         }
         sb.Append("<m:oMath>");
-        Node(node, sb, new Style(false, false, runProperties));
+        Node(node, sb, style);
         sb.Append("</m:oMath>");
         if (display)
             sb.Append("</m:oMathPara>");
@@ -426,7 +444,11 @@ internal static class OmmlWriter
             sb.Append(style.Bold ? "<m:rPr><m:nor/><m:sty m:val=\"b\"/></m:rPr>" : "<m:rPr><m:nor/></m:rPr>");
         else if (sty is not null)
             sb.Append("<m:rPr><m:sty m:val=\"").Append(sty).Append("\"/></m:rPr>");
-        sb.Append("<w:rPr>").Append(MathFont).Append(style.RunProperties).Append("</w:rPr>");
+        if (style.Drawing is var (attributes, fill))
+            sb.Append("<a:rPr lang=\"en-US\"").Append(style.Bold ? " b=\"1\"" : " b=\"0\"").Append(italic ? " i=\"1\"" : " i=\"0\"").Append(attributes).Append('>')
+              .Append(fill).Append(DrawingMathFont).Append("</a:rPr>");
+        else
+            sb.Append("<w:rPr>").Append(MathFont).Append(style.RunProperties).Append("</w:rPr>");
         sb.Append(text.Length > 0 && (char.IsWhiteSpace(text[0]) || char.IsWhiteSpace(text[^1])) ? "<m:t xml:space=\"preserve\">" : "<m:t>");
         sb.Append(clean).Append("</m:t></m:r>");
     }

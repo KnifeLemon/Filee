@@ -12,6 +12,9 @@ internal static class Odf
     public const string TemplateMimeType = "application/vnd.oasis.opendocument.text-template";
     public const string Version = "1.3";
 
+    /// <summary>An embedded formula (a Math object's folder in a package).</summary>
+    public const string FormulaMimeType = "application/vnd.oasis.opendocument.formula";
+
     /// <summary>Presentations (Impress) and drawings (Draw), and their templates: draw:page documents (Odf/Draw).</summary>
     public const string PresentationMimeType = "application/vnd.oasis.opendocument.presentation";
     public const string PresentationTemplateMimeType = "application/vnd.oasis.opendocument.presentation-template";

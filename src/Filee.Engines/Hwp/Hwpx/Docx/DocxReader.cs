@@ -256,6 +256,7 @@ internal sealed partial class DocxReader
         _bordersAroundFooter = !(settings?.Element(W + "bordersDoNotSurroundFooter") is { } noFooter && Val(noFooter) is not ("0" or "false"));
         _collapseSpacing = !(settings?.Element(W + "compat")?.Element(W + "doNotUseHTMLParagraphAutoSpacing") is { } sum && Val(sum) is not ("0" or "false"));
         _compatibilityMode = CompatibilityMode(settings);
+        _mathWrap = MathWrap(settings?.Element(M + "mathPr"));
         _body = main;
         _gridInTables = settings?.Element(W + "compat")?.Element(W + "adjustLineHeightInTable") is { } inTables && Val(inTables) is not ("0" or "false");
         _footnotesPart = RelatedPart(main, "/footnotes");
@@ -1298,8 +1299,36 @@ internal sealed partial class DocxReader
         }
     }
 
-    /// <summary>The installed fonts long equations are measured in for Filee's own drawing; found on first need.</summary>
-    private FontResolver? _equationFonts;
+    /// <summary>How the document's display equations break into lines (m:mathPr); null for Word's defaults.</summary>
+    private HMathWrap? _mathWrap;
+
+    /// <summary>
+    /// Word's line breaking of display equations from the settings' m:mathPr: m:brkBin (before, after, repeat),
+    /// m:brkBinSub (--, -+, +-), m:wrapIndent (twips) and m:wrapRight; null when the settings say nothing of them.
+    /// </summary>
+    internal static HMathWrap? MathWrap(XElement? mathPr)
+    {
+        if (mathPr is null)
+            return null;
+        string? Of(string name) => (string?)mathPr.Element(M + name)?.Attribute(M + "val");
+        var (breaking, subtraction, indent, right) = (Of("brkBin"), Of("brkBinSub"), Of("wrapIndent"), mathPr.Element(M + "wrapRight"));
+        if (breaking is null && subtraction is null && indent is null && right is null)
+            return null;
+        var wrap = new HMathWrap
+        {
+            Break = breaking switch
+            {
+                "after" => HMathBreak.After,
+                "repeat" => HMathBreak.Repeat,
+                _ => HMathBreak.Before,
+            },
+            Subtraction = subtraction is "--" or "-+" or "+-" ? subtraction : "--",
+            Right = right is not null && (string?)right.Attribute(M + "val") is null or "1" or "on" or "true",
+        };
+        if (int.TryParse(indent, NumberStyles.Integer, CultureInfo.InvariantCulture, out var twips) && twips >= 0)
+            wrap = wrap with { Indent = HwpxUnits.FromTwips(Math.Min(twips, 31_680)) };
+        return wrap;
+    }
 
     /// <summary>
     /// Word math (m:oMath, or m:oMathPara with one or more lines) as equations in the size of its runs. A display
@@ -1343,7 +1372,7 @@ internal sealed partial class DocxReader
             if (number is not null)
             {
                 var text = new HText(EquationScript.Linear(number), format with { Italic = false });
-                var numbered = new HEquation(body, format) { Display = display };
+                var numbered = new HEquation(body, format) { Display = display, Wrap = display ? _mathWrap : null };
                 if (width > 0)
                 {
                     builder.Add(NumberBox(numbered, text, width));
@@ -1358,26 +1387,9 @@ internal sealed partial class DocxReader
                 continue;
             }
 
-            var size = format.Size ?? 1000;
-            IReadOnlyList<MathNode> rows;
-            if (width > 0 && EquationScript.Measure(body, size).Width > width / 2)
-            {
-                // Lines that fit Filee's own drawing too, which is wider than rhwp's estimate (#355).
-                using var shaper = new Shaper();
-                var drawn = new MathLayout(_equationFonts ??= new FontResolver(), shaper);
-                rows = EquationScript.BreakLines(body, width, size, node => drawn.ItemWidth(node, size / 100f) * 100);
-            }
-            else
-            {
-                rows = EquationScript.BreakLines(body, width, size);
-            }
-            for (var i = 0; i < rows.Count; i++)
-            {
-                // Paragraphs of their own: rhwp draws the first equation of a paragraph split by a page again on the next page.
-                if (i > 0)
-                    builder.NextRow();
-                builder.Add(new HEquation(rows[i], format) { Display = display });
-            }
+            // Whole: the layout breaks a display equation too wide for its column the way Word does (with the
+            // document's m:mathPr), and the HWPX writer breaks it into paragraphs for 한글, which doesn't.
+            builder.Add(new HEquation(body, format) { Display = display, Wrap = display ? _mathWrap : null });
         }
     }
 

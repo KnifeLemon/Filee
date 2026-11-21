@@ -170,10 +170,12 @@ internal sealed partial class HwpxWriter
 
     private string Paragraph(HParagraph paragraph, string? leadingRun, HParagraph? next = null)
     {
-        _plainText.AppendLine();
         var (styleId, paraPrBase, charPrBase) = paragraph.HeadingLevel > 0 && _headings.TryGetValue(paragraph.HeadingLevel, out var heading)
             ? heading
             : _base;
+        if (EquationLines(paragraph, paragraph.MarkFormat.Size ?? BaseSize(charPrBase)) is { } lines)
+            return string.Concat(lines.Select((line, i) => Paragraph(line, i == 0 ? leadingRun : null, i + 1 < lines.Count ? lines[i + 1] : next)));
+        _plainText.AppendLine();
         var format = _collapseSpacing && next is not null ? paragraph.Format with { After = HDocument.CollapsedAfter(paragraph.Format, next) } : paragraph.Format;
         var paraPrId = ParaPr(paraPrBase, format, paragraph.List);
 

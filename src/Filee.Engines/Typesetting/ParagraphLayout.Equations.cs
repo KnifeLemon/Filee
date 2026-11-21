@@ -61,7 +61,7 @@ internal sealed partial class ParagraphLayouter
             _equations.Clear();
         if (_numbers.TryGetValue(equation, out var number))
         {
-            laid = new LaidEquation(_math.Layout(equation.Math, size, color, mode, room), [Placed(number, -axis)], room);
+            laid = new LaidEquation(_math.Layout(equation.Math, size, color, mode, room, equation.Wrap), [Placed(number, -axis)], room);
         }
         else if (WordEquations && LineNumbers(equation.Math) is var (pile, numbers))
         {
@@ -78,7 +78,7 @@ internal sealed partial class ParagraphLayouter
         }
         else
         {
-            laid = new LaidEquation(_math.Layout(equation.Math, size, color, mode, room), [], room);
+            laid = new LaidEquation(_math.Layout(equation.Math, size, color, mode, room, equation.Wrap), [], room);
         }
         return _equations[equation] = laid;
     }
