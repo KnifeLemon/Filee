@@ -1,4 +1,4 @@
-// Smooth wheel and touchpad scrolling (SmoothScroll): which wheel deltas count as notches, how far a spin carries, and
+// Smooth mouse-wheel scrolling (SmoothScroll): which wheel deltas count as notches, how far a spin carries, and
 // how the page follows its target. The wheel handling itself needs a pointer device, so what is tested here is the
 // arithmetic.
 
@@ -22,21 +22,6 @@ public class SmoothScrollTests
     [InlineData(0.5)]
     [InlineData(1.4)]
     public void A_touchpad_or_smooth_wheel_step_is_not(double delta) => Assert.False(SmoothScroll.IsWholeNotch(delta));
-
-    [Theory]
-    [InlineData(1.0)]
-    [InlineData(-3.0)]
-    [InlineData(0.2)]
-    [InlineData(-0.5)]
-    public void Off_a_mac_every_delta_is_smoothed(double delta) => Assert.True(SmoothScroll.Takes(delta, onMac: false));
-
-    [Theory]
-    [InlineData(1.0, true)]
-    [InlineData(-2.0, true)]
-    [InlineData(0.2, false)]
-    [InlineData(-0.5, false)]
-    public void On_a_mac_only_whole_notches_are_smoothed(double delta, bool smoothed) =>
-        Assert.Equal(smoothed, SmoothScroll.Takes(delta, onMac: true));
 
     [Fact]
     public void A_spin_scrolls_further_per_notch_up_to_a_limit()

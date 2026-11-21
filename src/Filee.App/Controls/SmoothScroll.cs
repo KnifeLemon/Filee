@@ -1,6 +1,6 @@
-// Smooth wheel and touchpad scrolling for every ScrollViewer. Styles/Controls.axaml turns it on for all of them;
-// SmoothScroll.IsEnabled="False" on one ScrollViewer turns it off there. Avalonia moves the page by the wheel's delta
-// at once, in steps. Here every delta adds to a target and the page follows it like a weight on a critically damped
+// Smooth mouse-wheel scrolling for every ScrollViewer. Styles/Controls.axaml turns it on for all of them;
+// SmoothScroll.IsEnabled="False" on one ScrollViewer turns it off there. Avalonia moves the page by a whole wheel
+// notch at once. Here every notch adds to a target and the page follows it like a weight on a critically damped
 // spring: it starts gently, speeds up, and settles without a bounce, and a continued spin carries it on (its speed is
 // never reset between notches). A mouse wheel turned quickly also scrolls further per notch, as on a Mac. It is done
 // in code, one step per rendered frame (TopLevel.RequestAnimationFrame, so every step lands on a screen refresh; a
@@ -8,9 +8,10 @@
 // also animate the scrollbar and the keyboard.
 //
 // Left alone (Avalonia's own scrolling runs): "Reduce animations" on (Motion.Enabled is false), any key held (Ctrl is
-// the window zoom, Shift sideways scrolling), mostly sideways movement, on a Mac anything but whole mouse-wheel notches
-// (its trackpad and smooth wheels have the system's own momentum), and a wheel over a control that uses the wheel
-// itself (a slider, a number box, a closed ComboBox, the donut and the crop canvases).
+// the window zoom, Shift sideways scrolling), mostly sideways movement, anything but whole wheel notches on every system
+// (a touchpad and a smooth wheel send small steps, and their inertia too, which already move the page smoothly:
+// smoothing those again makes the page lag), and a wheel over a control that uses the wheel itself (a slider, a number
+// box, a closed ComboBox, the donut and the crop canvases).
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -99,18 +100,12 @@ public static class SmoothScroll
     }
 
     /// <summary>
-    /// A wheel notch: a whole number, one or more. A touchpad and a smooth wheel send fractions of one: those follow the
-    /// fingers as they are, with no extra distance for a quick spin.
+    /// A wheel notch: a whole number, one or more. A touchpad (a Windows precision touchpad's inertia, libinput's smooth
+    /// scrolling on Linux, a Mac's trackpad) and a smooth wheel send fractions of one: those are left to Avalonia, since
+    /// the system already makes them smooth.
     /// </summary>
     public static bool IsWholeNotch(double delta) =>
         Math.Abs(delta) >= 1 - 1e-6 && Math.Abs(delta - Math.Round(delta)) < 1e-3;
-
-    /// <summary>
-    /// Whether a wheel delta is smoothed here. On a Mac only whole notches (a mouse wheel) are: the system already
-    /// smooths a trackpad and a smooth wheel with its own momentum, and smoothing that again makes the page lag. Elsewhere
-    /// every delta is, trackpads included.
-    /// </summary>
-    public static bool Takes(double delta, bool onMac) => !onMac || IsWholeNotch(delta);
 
     /// <summary>
     /// How far one notch scrolls as the spin goes on: <paramref name="streak"/> notches in a row, 0 for the first.
@@ -136,9 +131,8 @@ public static class SmoothScroll
     {
         if (sender is not ScrollViewer viewer || e.Handled || !Motion.Enabled || e.KeyModifiers != KeyModifiers.None)
             return;
-        // A touchpad's two-finger scroll is rarely perfectly vertical: a little sideways drift is ignored, mostly
-        // sideways movement is left to Avalonia.
-        if (e.Delta.Y == 0 || Math.Abs(e.Delta.X) > Math.Abs(e.Delta.Y) || !Takes(e.Delta.Y, OperatingSystem.IsMacOS()))
+        // Only whole notches (see IsWholeNotch); a sideways wheel is left to Avalonia.
+        if (!IsWholeNotch(e.Delta.Y) || Math.Abs(e.Delta.X) > Math.Abs(e.Delta.Y))
             return;
         // The ScrollViewers outside this one see the wheel first (tunnelling), so each works out who should scroll: the
         // nearest one that can still move that way. A list at its end hands the wheel on to the page around it, as
@@ -189,23 +183,15 @@ public static class SmoothScroll
     {
         var state = States.GetOrCreateValue(viewer);
 
-        // A quick spin of a mouse wheel scrolls further per notch. Small deltas (touchpads) don't count as notches.
-        var boost = 1.0;
-        if (IsWholeNotch(delta))
-        {
-            // The same way as the page is going (wheel up is toward offset 0).
-            var continued = state.Active && timestamp - state.NotchAt <= SpinGap
-                && Math.Sign(state.Target - viewer.Offset.Y) == -Math.Sign(delta);
-            state.Streak = continued ? state.Streak + 1 : 0;
-            state.NotchAt = timestamp;
-            boost = Boost(state.Streak);
-        }
-        else
-        {
-            state.Streak = 0;
-        }
+        // A quick spin of the wheel scrolls further per notch: notches in the same direction, close together.
+        // The same way as the page is going (wheel up is toward offset 0).
+        var continued = state.Active && timestamp - state.NotchAt <= SpinGap
+            && Math.Sign(state.Target - viewer.Offset.Y) == -Math.Sign(delta);
+        state.Streak = continued ? state.Streak + 1 : 0;
+        state.NotchAt = timestamp;
+        var boost = Boost(state.Streak);
 
-        // Another delta while the page still moves adds to where it is going, and its speed carries on.
+        // Another notch while the page still moves adds to where it is going, and its speed carries on.
         state.Target = ClampTarget(CurrentTarget(viewer) - delta * PixelsPerNotch * boost, MaxOffset(viewer));
         if (state.Active)
             return;
@@ -213,7 +199,7 @@ public static class SmoothScroll
         // Without a window to draw frames for (not shown yet) the page just goes to its target.
         if (TopLevel.GetTopLevel(viewer) is not { } top)
         {
-            viewer.Offset = new Vector(viewer.Offset.X, state.Target);
+            viewer.Offset = new Vector(viewer.Offset.X, Math.Clamp(state.Target, 0, MaxOffset(viewer)));
             return;
         }
         if (!state.Hooked)
