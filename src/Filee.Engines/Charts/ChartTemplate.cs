@@ -3,9 +3,9 @@
 // in a theme override part next to it. It stores how a chart looks; the values are whatever the chart held when it was
 // saved, often none. Series without cached values get sample values (and categories), and a plot without series gets
 // sample series, the way Excel's template preview shows a template: four categories, three series (one for a pie or
-// doughnut). 3D bar, line, area and pie plots are drawn flat. The chart is drawn by ChartDrawer on a page of Excel's
-// default chart size (5 × 3 inches); radar, bubble, stock, surface, bar-of-pie and chartex templates (waterfall,
-// treemap, ...) are refused with error.chart_template_unsupported.
+// doughnut). The chart is drawn by ChartDrawer on a page of Excel's default chart size (5 × 3 inches), 3D plots in 3D;
+// Office 2016 templates (chartex: waterfall, treemap, ...) are drawn when they hold values, and refused with
+// error.chart_template_unsupported when ChartReader doesn't read them (no values, region maps).
 //
 // Hostile input: the package is read within DocumentLimits (part and package sizes, inflate ratio, XML depth and
 // elements); ChartReader bounds series, points and texts, the samples add at most four points to a series it already
@@ -36,20 +36,15 @@ internal sealed class ChartTemplate : IFixedPages
     private static readonly XNamespace ContentTypes = "http://schemas.openxmlformats.org/package/2006/content-types";
     private const string ChartEx = "http://schemas.microsoft.com/office/drawing/2014/chartex";
 
-    /// <summary>3D plots drawn as their flat kind.</summary>
-    private static readonly Dictionary<string, string> Flat = new(StringComparer.Ordinal)
-    {
-        ["bar3DChart"] = "barChart",
-        ["line3DChart"] = "lineChart",
-        ["area3DChart"] = "areaChart",
-        ["pie3DChart"] = "pieChart",
-    };
-
     /// <summary>The plots given sample series when they have none.</summary>
     private static readonly HashSet<string> Plots = new(StringComparer.Ordinal)
     {
-        "barChart", "lineChart", "areaChart", "pieChart", "doughnutChart", "scatterChart",
+        "barChart", "bar3DChart", "lineChart", "line3DChart", "areaChart", "area3DChart", "pieChart", "pie3DChart", "doughnutChart",
+        "ofPieChart", "scatterChart", "bubbleChart", "radarChart", "stockChart", "surfaceChart", "surface3DChart",
     };
+
+    /// <summary>Plots of one series of slices.</summary>
+    private static readonly HashSet<string> Round = new(StringComparer.Ordinal) { "pieChart", "pie3DChart", "doughnutChart", "ofPieChart" };
 
     /// <summary>Office's sample values of a new chart, one row per series.</summary>
     private static readonly double[][] SampleValues = [[4.3, 2.5, 3.5, 4.5], [2.4, 4.4, 1.8, 2.8], [2, 2, 3, 5]];
@@ -87,7 +82,12 @@ internal sealed class ChartTemplate : IFixedPages
         var part = ChartPart(package) ?? throw new InvalidDataException("The file is not a chart template (no chart part).");
         var root = package.Part(part)?.Root ?? throw new InvalidDataException("The file is not a chart template (no chart part).");
         if (root.Name.NamespaceName == ChartEx)
-            throw new ConversionRefusedException(UnsupportedKey, "chartex");
+        {
+            var themeEx = Theme(package, part);
+            return ChartReader.Read(root, DrawingColors.FromTheme(themeEx), ChartReader.ThemeFont(themeEx)).Chart is { } drawn && drawn.PointCount > 0
+                ? drawn
+                : throw new ConversionRefusedException(UnsupportedKey, "chartex");
+        }
         if (root.Name != C + "chartSpace")
             throw new InvalidDataException("The file is not a chart template (its main part isn't a chart).");
         var theme = Theme(package, part);
@@ -127,10 +127,7 @@ internal sealed class ChartTemplate : IFixedPages
         return target is null ? null : package.Part(target)?.Root;
     }
 
-    /// <summary>
-    /// Fills the plots of chart part <paramref name="chartSpace"/> with sample values where they have none, and turns
-    /// 3D plots into their flat kind.
-    /// </summary>
+    /// <summary>Fills the plots of chart part <paramref name="chartSpace"/> with sample values where they have none.</summary>
     internal static void WithSamples(XElement chartSpace)
     {
         if (chartSpace.Element(C + "chart")?.Element(C + "plotArea") is not { } plotArea)
@@ -139,20 +136,18 @@ internal sealed class ChartTemplate : IFixedPages
         {
             if (plot.Name.Namespace != C)
                 continue;
-            if (Flat.TryGetValue(plot.Name.LocalName, out var flat))
-                plot.Name = C + flat;
             if (!Plots.Contains(plot.Name.LocalName))
                 continue;
             var kind = plot.Name.LocalName;
             var series = plot.Elements(C + "ser").ToList();
             if (series.Count == 0)
             {
-                var count = kind is "pieChart" or "doughnutChart" ? 1 : SampleValues.Length;
+                var count = Round.Contains(kind) ? 1 : SampleValues.Length;
                 for (var i = 0; i < count; i++)
                 {
                     var ser = new XElement(C + "ser", Value("idx", i), Value("order", i));
                     // Series come after the plot's own settings (c:barDir, c:grouping, c:varyColors, c:scatterStyle).
-                    if (plot.Elements().LastOrDefault(e => e.Name.LocalName is "barDir" or "grouping" or "varyColors" or "scatterStyle") is { } before)
+                    if (plot.Elements().LastOrDefault(e => e.Name.LocalName is "barDir" or "grouping" or "varyColors" or "scatterStyle" or "radarStyle" or "ofPieType" or "wireframe") is { } before)
                         before.AddAfterSelf(ser);
                     else
                         plot.AddFirst(ser);
@@ -169,11 +164,11 @@ internal sealed class ChartTemplate : IFixedPages
     /// <summary>Sample name, categories and values for a series that holds none.</summary>
     private static void Sample(XElement ser, string kind, int position)
     {
-        var scatter = kind == "scatterChart";
+        var scatter = kind is "scatterChart" or "bubbleChart";
         var values = ser.Element(C + (scatter ? "yVal" : "val"));
         if (values?.Descendants(C + "pt").Any() == true)
             return;
-        var row = kind is "pieChart" or "doughnutChart" ? SampleSlices : SampleValues[position % SampleValues.Length];
+        var row = Round.Contains(kind) ? SampleSlices : SampleValues[position % SampleValues.Length];
         if (ser.Element(C + "tx") is null)
         {
             var name = new XElement(C + "tx", new XElement(C + "v", $"Series {position + 1}"));
@@ -192,6 +187,11 @@ internal sealed class ChartTemplate : IFixedPages
                 : new XElement(C + "cat", Literal("strLit", [.. row.Select((_, i) => $"Category {i + 1}")])));
         }
         ser.Add(new XElement(C + (scatter ? "yVal" : "val"), Literal("numLit", [.. row.Select(v => v.ToString(CultureInfo.InvariantCulture))])));
+        if (kind == "bubbleChart" && ser.Element(C + "bubbleSize")?.Descendants(C + "pt").Any() != true)
+        {
+            ser.Element(C + "bubbleSize")?.Remove();
+            ser.Add(new XElement(C + "bubbleSize", Literal("numLit", [.. row.Select((_, i) => (i + 1 + position).ToString(CultureInfo.InvariantCulture))])));
+        }
     }
 
     private static XElement Literal(string name, string[] points) =>

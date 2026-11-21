@@ -118,7 +118,8 @@ internal static class SlideCapabilities
 
     /// <summary>
     /// The elements under <paramref name="root"/> in document order, without what a fallback replaces: the choice of an
-    /// mc:AlternateContent that has a fallback is not drawn, so it isn't looked at.
+    /// mc:AlternateContent that has a fallback is not drawn, so it isn't looked at; but an Office 2016 chart's frame in
+    /// it is (the slide renderer draws it when ChartReader reads its part).
     /// </summary>
     private static IEnumerable<XElement> Drawn(XElement root)
     {
@@ -137,7 +138,15 @@ internal static class SlideCapabilities
             yield return element;
             var below = element.Elements();
             if (element.Name.LocalName == "AlternateContent" && below.Any(e => e.Name.LocalName == "Fallback"))
+            {
+                // An Office 2016 chart in the choice is looked at: it is drawn from its part, or else from the fallback.
+                if (Charts.ChartReader.ChartExChoice(element) is { Choice: var choice })
+                {
+                    foreach (var data in choice.Descendants().Where(d => d.Name.LocalName == "graphicData").Take(1))
+                        yield return data;
+                }
                 below = below.Where(e => e.Name.LocalName != "Choice");
+            }
             open.Push(below.GetEnumerator());
         }
     }
@@ -202,7 +211,15 @@ internal static class SlideCapabilities
             return pictured ? new Finding(null, "charts_pictured") : new Finding(chart, "charts");
         }
         if (uri.EndsWith("/chartex", StringComparison.Ordinal))
+        {
+            // Drawn from its part when ChartReader reads it, else from the picture saved as the fallback.
+            var target = package.Target(part, (string?)data.Element(Charts.ChartReader.Cx + "chart")?.Attribute(R + "id"));
+            if (Charts.ChartReader.Read(target is null ? null : package.Part(target), DrawingColors.FromTheme(null)).Chart is not null)
+                return default;
+            pictured |= data.Ancestors().FirstOrDefault(a => a.Name.LocalName == "AlternateContent")?.Elements()
+                .Any(e => e.Name.LocalName == "Fallback" && e.Descendants(P + "pic").Any()) == true;
             return pictured ? new Finding(null, "charts_pictured") : new Finding("charts", "charts");
+        }
         // SmartArt is drawn from the drawing PowerPoint keeps with it, never from a picture.
         if (uri.EndsWith("/diagram", StringComparison.Ordinal))
             return package.Part(package.DiagramDrawing(part, data)) is not null ? default : new Finding(pictured ? null : "SmartArt", "smartart");

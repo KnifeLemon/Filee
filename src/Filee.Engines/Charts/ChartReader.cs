@@ -2,16 +2,19 @@
 // from what the part caches (c:strCache, c:numCache, c:multiLvlStrCache, literals), so no formula is evaluated and no
 // workbook is opened: what Excel, Word and PowerPoint saved is what is drawn.
 //
-// Read: bar and column (clustered, stacked, 100 %), line (with markers, stacked), area, pie, doughnut and scatter plots,
-// several in one plot area (a column and line combination on two value axes); the title (rich text with each run's
+// Read: bar and column (clustered, stacked, 100 %), line (with markers, stacked), area, pie, doughnut, scatter, radar,
+// bubble, stock (high-low lines, up and down bars, drop lines), surface (contour, wireframe, band fills) and bar or pie
+// of pie plots, several in one plot area (a column and line combination on two value axes); 3D bar, line, area, pie
+// and surface plots with the view (c:view3D), floor and walls and the series axis; the title (rich text with each run's
 // look, or a cell's text, or the series name Office shows for a lone series), axis titles, category (also several
 // levels), date and value axes with their scaling, number format, gridlines, tick marks, label position and crossing;
 // the legend with deleted entries; data labels and single points' own labels (c:dLbl: text, what they show, format,
 // position, separator); trendlines (c:trendline) and error bars (c:errBars); fills and outlines of the chart area,
 // plot area, series and single points (c:spPr: solid, gradient, pattern, none) and the automatic colours the chart
-// style (c:style) picks from the theme's accents for the rest; manual layouts of the plot area and legend.
-// 3D charts, radar, bubble, stock, surface and bar-of-pie charts are named instead (LeftOut), and their documents say
-// "charts" were left out, or take LibreOffice where the capability checks send them.
+// style (c:style) picks from the theme's accents for the rest; manual layouts of the plot area and legend, and of
+// moved data and trendline labels. Office 2016 charts (cx:chartSpace) are read by ChartReader.ChartEx.cs. A 3D plot
+// mixed with flat ones is named instead (LeftOut), and its document says "charts" were left out, or takes LibreOffice
+// where the capability checks send it.
 //
 // Hostile input: the part comes through the package's XML limits; series per chart and points per chart (a cache's
 // ptCount or highest c:idx, not only the points it holds) are bounded and a part beyond is refused with
@@ -32,7 +35,7 @@ namespace Filee.Engines.Charts;
 /// <summary>A chart part read: the chart when it can be drawn, else what is left out ("charts").</summary>
 internal readonly record struct ChartRead(Chart? Chart, string? LeftOut);
 
-internal sealed class ChartReader
+internal sealed partial class ChartReader
 {
     public static readonly XNamespace C = "http://schemas.openxmlformats.org/drawingml/2006/chart";
     private static readonly XNamespace A = DrawingColors.A;
@@ -52,22 +55,25 @@ internal sealed class ChartReader
     /// <summary>The largest value magnitude kept; larger ones are clamped (Excel's largest number is about 1e308).</summary>
     internal const double MaxValue = 1e100;
 
-    /// <summary>The plots ChartDrawer draws, by element name.</summary>
-    private static readonly Dictionary<string, ChartKind> Kinds = new(StringComparer.Ordinal)
+    /// <summary>The plots ChartDrawer draws, by element name, and whether they are drawn in 3D.</summary>
+    private static readonly Dictionary<string, (ChartKind Kind, bool ThreeD)> Kinds = new(StringComparer.Ordinal)
     {
-        ["barChart"] = ChartKind.Bar,
-        ["lineChart"] = ChartKind.Line,
-        ["areaChart"] = ChartKind.Area,
-        ["pieChart"] = ChartKind.Pie,
-        ["doughnutChart"] = ChartKind.Doughnut,
-        ["scatterChart"] = ChartKind.Scatter,
-    };
-
-    /// <summary>Plots that are named instead of drawn.</summary>
-    private static readonly HashSet<string> Unsupported = new(StringComparer.Ordinal)
-    {
-        "bar3DChart", "line3DChart", "area3DChart", "pie3DChart", "radarChart", "bubbleChart", "stockChart", "surfaceChart",
-        "surface3DChart", "ofPieChart",
+        ["barChart"] = (ChartKind.Bar, false),
+        ["bar3DChart"] = (ChartKind.Bar, true),
+        ["lineChart"] = (ChartKind.Line, false),
+        ["line3DChart"] = (ChartKind.Line, true),
+        ["stockChart"] = (ChartKind.Line, false),
+        ["areaChart"] = (ChartKind.Area, false),
+        ["area3DChart"] = (ChartKind.Area, true),
+        ["pieChart"] = (ChartKind.Pie, false),
+        ["pie3DChart"] = (ChartKind.Pie, true),
+        ["doughnutChart"] = (ChartKind.Doughnut, false),
+        ["scatterChart"] = (ChartKind.Scatter, false),
+        ["radarChart"] = (ChartKind.Radar, false),
+        ["bubbleChart"] = (ChartKind.Bubble, false),
+        ["surfaceChart"] = (ChartKind.Surface, false),
+        ["surface3DChart"] = (ChartKind.Surface, true),
+        ["ofPieChart"] = (ChartKind.OfPie, false),
     };
 
     private readonly DrawingColors _colors;
@@ -92,6 +98,8 @@ internal sealed class ChartReader
     /// <exception cref="Core.Conversion.ConversionRefusedException">The chart has more series or points than Filee draws.</exception>
     public static ChartRead Read(XElement? root, DrawingColors colors, string? themeFont = null)
     {
+        if (root is not null && root.Name == Cx + "chartSpace")
+            return new ChartReader(root.Element(Cx + "clrMapOvr") is { } exMap ? colors.WithMap(exMap) : colors, themeFont, false).ReadChartEx(root);
         if (root is null || root.Name != C + "chartSpace" || root.Element(C + "chart") is not { } chart)
             return new(null, "charts");
         var date1904 = Bool(root.Element(C + "date1904"), false);
@@ -112,12 +120,14 @@ internal sealed class ChartReader
             var name = element.Name.LocalName;
             if (element.Name.Namespace != C)
                 continue;
-            if (Unsupported.Contains(name))
-                return new(null, "charts");
             if (Kinds.TryGetValue(name, out var kind))
-                plots.Add(Plot(element, kind, text));
+                plots.Add(Plot(element, kind.Kind, kind.ThreeD, name == "stockChart", text));
         }
         if (plots.Count == 0 || plots.All(p => p.Series.Count == 0))
+            return new(null, "charts");
+        // A 3D chart is drawn as such when all its plots are (Office doesn't mix flat and 3D plots either).
+        var threeD = plots.All(p => p.ThreeD);
+        if (!threeD && plots.Any(p => p.ThreeD))
             return new(null, "charts");
 
         var series = plots.SelectMany(p => p.Series).ToList();
@@ -134,14 +144,31 @@ internal sealed class ChartReader
             Text = text,
             Palette = Palette(root, plots),
             ThemeFont = _themeFont,
+            View3D = threeD ? View3D(chart.Element(C + "view3D"), plots[0].Kind) : null,
+            Floor = Shape(chart.Element(C + "floor")?.Element(C + "spPr")),
+            SideWall = Shape(chart.Element(C + "sideWall")?.Element(C + "spPr")),
+            BackWall = Shape(chart.Element(C + "backWall")?.Element(C + "spPr")),
         };
         result.Plots.AddRange(plots);
         foreach (var axis in plotArea.Elements())
         {
-            if (axis.Name.Namespace == C && axis.Name.LocalName is "catAx" or "valAx" or "dateAx")
+            if (axis.Name.Namespace == C && axis.Name.LocalName is "catAx" or "valAx" or "dateAx" or "serAx")
                 result.Axes.Add(Axis(axis, text));
         }
         return new(result, null);
+    }
+
+    /// <summary>c:view3D, with Office's defaults for a new 3D chart where it says nothing (a pie is seen from higher up).</summary>
+    private static ChartView3D View3D(XElement? view, ChartKind kind)
+    {
+        var pie = kind == ChartKind.Pie;
+        return new ChartView3D(
+            Math.Clamp(Number(view?.Element(C + "rotX")) ?? (pie ? 30 : 15), -90, 90),
+            Math.Clamp(Number(view?.Element(C + "rotY")) ?? (pie ? 0 : 20), 0, 360),
+            (int)Math.Clamp(Number(view?.Element(C + "depthPercent")) ?? 100, 20, 2000),
+            (int)Math.Clamp(Number(view?.Element(C + "hPercent")) ?? 100, 5, 500),
+            Bool(view?.Element(C + "rAngAx"), !pie),
+            (int)Math.Clamp(Number(view?.Element(C + "perspective")) ?? 30, 0, 240));
     }
 
     private static readonly XNamespace Mc = "http://schemas.openxmlformats.org/markup-compatibility/2006";
@@ -177,31 +204,58 @@ internal sealed class ChartReader
 
     // ───────────────────────── Plots and series ─────────────────────────
 
-    private ChartPlot Plot(XElement element, ChartKind kind, ChartTextStyle text)
+    private ChartPlot Plot(XElement element, ChartKind kind, bool threeD, bool stock, ChartTextStyle text)
     {
-        var grouping = Val(element.Element(C + "grouping")) switch
+        var groupingName = Val(element.Element(C + "grouping"));
+        var grouping = groupingName switch
         {
             "stacked" => ChartGrouping.Stacked,
             "percentStacked" => ChartGrouping.PercentStacked,
             _ => ChartGrouping.Standard,
         };
         var scatterStyle = Val(element.Element(C + "scatterStyle")) ?? "marker";
+        var radarStyle = Val(element.Element(C + "radarStyle")) ?? "marker";
+        var round = kind is ChartKind.Pie or ChartKind.Doughnut or ChartKind.OfPie;
+        var free = round || kind is ChartKind.Scatter or ChartKind.Bubble or ChartKind.Radar or ChartKind.Surface;
+        var upDown = element.Element(C + "upDownBars");
         var plot = new ChartPlot
         {
             Kind = kind,
-            Grouping = kind is ChartKind.Pie or ChartKind.Doughnut or ChartKind.Scatter ? ChartGrouping.Standard : grouping,
+            Grouping = free ? ChartGrouping.Standard : grouping,
             Horizontal = Val(element.Element(C + "barDir")) == "bar",
             // Pies and doughnuts colour their slices unless the file says not to.
-            VaryColors = Bool(element.Element(C + "varyColors"), kind is ChartKind.Pie or ChartKind.Doughnut ? element.Element(C + "varyColors") is null : false),
+            VaryColors = Bool(element.Element(C + "varyColors"), round && element.Element(C + "varyColors") is null),
             GapWidth = (int)Math.Clamp(Number(element.Element(C + "gapWidth")) ?? 150, 0, 500),
             Overlap = (int)Math.Clamp(Number(element.Element(C + "overlap")) ?? (grouping == ChartGrouping.Standard ? 0 : 100), -100, 100),
             HoleSize = (int)Math.Clamp(Number(element.Element(C + "holeSize")) ?? 50, 1, 90),
             FirstSliceAngle = Math.Clamp(Number(element.Element(C + "firstSliceAng")) ?? 0, 0, 360),
-            Lines = kind != ChartKind.Scatter || scatterStyle is "lineMarker" or "line" or "smooth" or "smoothMarker",
-            Markers = kind == ChartKind.Line ? Bool(element.Element(C + "marker"), true)
+            Lines = kind == ChartKind.Radar ? radarStyle != "filled" : kind != ChartKind.Scatter || scatterStyle is "lineMarker" or "line" or "smooth" or "smoothMarker",
+            Markers = kind == ChartKind.Line ? !stock && Bool(element.Element(C + "marker"), true)
+                : kind == ChartKind.Radar ? radarStyle == "marker"
                 : kind == ChartKind.Scatter && scatterStyle is "lineMarker" or "marker" or "smoothMarker",
             Labels = Labels(element.Element(C + "dLbls"), text),
             AxisIds = [.. element.Elements(C + "axId").Select(a => (uint)Math.Clamp(Number(a) ?? 0, 0, uint.MaxValue))],
+            ThreeD = threeD,
+            // 3D lines and surfaces put each series in a row of its own; 3D bars and areas when they are "standard".
+            SeriesInDepth = threeD && (kind is ChartKind.Line or ChartKind.Surface || groupingName == "standard"),
+            GapDepth = (int)Math.Clamp(Number(element.Element(C + "gapDepth")) ?? 150, 0, 500),
+            Filled = kind == ChartKind.Radar && radarStyle == "filled",
+            BubbleScale = (int)Math.Clamp(Number(element.Element(C + "bubbleScale")) ?? 100, 0, 300),
+            NegativeBubbles = Bool(element.Element(C + "showNegBubbles"), false),
+            BubbleWidth = Val(element.Element(C + "sizeRepresents")) == "w",
+            HighLowLines = element.Element(C + "hiLowLines") is { } hiLow ? Line(hiLow.Element(C + "spPr")?.Element(A + "ln")) ?? new ChartLine() : null,
+            DropLines = element.Element(C + "dropLines") is { } drop ? Line(drop.Element(C + "spPr")?.Element(A + "ln")) ?? new ChartLine() : null,
+            UpDownBars = upDown is null ? null : new ChartUpDownBars((int)Math.Clamp(Number(upDown.Element(C + "gapWidth")) ?? 150, 0, 500),
+                Shape(upDown.Element(C + "upBars")?.Element(C + "spPr")), Shape(upDown.Element(C + "downBars")?.Element(C + "spPr"))),
+            Wireframe = Bool(element.Element(C + "wireframe"), false),
+            Bands = Bands(element.Element(C + "bandFmts")),
+            OfPieBar = Val(element.Element(C + "ofPieType")) == "bar",
+            SplitType = Val(element.Element(C + "splitType")) is ("pos" or "val" or "percent" or "cust") and var split ? split : "pos",
+            SplitPosition = Number(element.Element(C + "splitPos")) is { } at ? Math.Clamp(at, -MaxValue, MaxValue) : null,
+            CustomSplit = element.Element(C + "custSplit")?.Elements(C + "secondPiePt").Take(MaxPoints).Select(Number).OfType<double>()
+                .Where(i => i is >= 0 and < MaxPoints).Select(i => (int)i).ToHashSet() ?? [],
+            SecondPieSize = (int)Math.Clamp(Number(element.Element(C + "secondPieSize")) ?? 75, 5, 200),
+            SeriesLines = element.Element(C + "serLines") is { } serLines ? Line(serLines.Element(C + "spPr")?.Element(A + "ln")) ?? new ChartLine() : null,
         };
         foreach (var ser in element.Elements(C + "ser"))
         {
@@ -220,9 +274,21 @@ internal sealed class ChartReader
         return plot;
     }
 
+    /// <summary>The fills of a surface's bands (c:bandFmt: c:idx and c:spPr).</summary>
+    private Dictionary<int, ChartShapeStyle> Bands(XElement? formats)
+    {
+        var bands = new Dictionary<int, ChartShapeStyle>();
+        foreach (var band in formats?.Elements(C + "bandFmt").Take(256) ?? [])
+        {
+            if (Number(band.Element(C + "idx")) is { } index && index is >= 0 and < 256)
+                bands[(int)index] = Shape(band.Element(C + "spPr"));
+        }
+        return bands;
+    }
+
     private ChartSeries Series(XElement ser, ChartKind kind, ChartTextStyle text, int position)
     {
-        var scatter = kind == ChartKind.Scatter;
+        var scatter = kind is ChartKind.Scatter or ChartKind.Bubble;
         var values = Numbers(ser.Element(C + (scatter ? "yVal" : "val")), out var format);
         IReadOnlyList<string?>? categories = null;
         IReadOnlyList<IReadOnlyList<string?>>? levels = null;
@@ -265,6 +331,8 @@ internal sealed class ChartReader
             Smooth = Bool(ser.Element(C + "smooth"), false),
             Trendlines = [.. ser.Elements(C + "trendline").Take(MaxTrendlines).Select(t => Trendline(t, text))],
             ErrorBars = [.. ser.Elements(C + "errBars").Take(2).Select(e => ErrorBars(e, scatter))],
+            BubbleSizes = kind == ChartKind.Bubble ? Numbers(ser.Element(C + "bubbleSize"), out _) : null,
+            Bubble3D = kind == ChartKind.Bubble && Bool(ser.Element(C + "bubble3D"), false),
         };
     }
 
@@ -296,7 +364,22 @@ internal sealed class ChartReader
             Line = Line(trendline.Element(C + "spPr")?.Element(A + "ln")),
             Format = numberFormat is not null && !Bool(numberFormat.Attribute("sourceLinked"), false) ? (string?)numberFormat.Attribute("formatCode") : null,
             Style = Style(text, DefaultRun(label?.Element(C + "txPr"))),
+            LabelOffset = Offset(label?.Element(C + "layout")),
+            Name = trendline.Element(C + "name")?.Value is { Length: > 0 } name ? Cut(name) : null,
+            InLegend = true,
         };
+    }
+
+    /// <summary>
+    /// A label's c:layout: how far it is moved from its automatic place (c:manualLayout c:x and c:y, fractions of the
+    /// chart's size); null when it isn't (or is placed from the chart's edge, which labels don't take).
+    /// </summary>
+    private static (double X, double Y)? Offset(XElement? layout)
+    {
+        if (layout?.Element(C + "manualLayout") is not { } manual || Val(manual.Element(C + "xMode")) == "edge" || Val(manual.Element(C + "yMode")) == "edge")
+            return null;
+        var (x, y) = (Number(manual.Element(C + "x")) ?? 0, Number(manual.Element(C + "y")) ?? 0);
+        return x == 0 && y == 0 ? null : (Math.Clamp(x, -1, 1), Math.Clamp(y, -1, 1));
     }
 
     private ChartErrorBars ErrorBars(XElement bars, bool scatter)
@@ -423,6 +506,7 @@ internal sealed class ChartReader
         {
             Id = (uint)Math.Clamp(Number(axis.Element(C + "axId")) ?? 0, 0, uint.MaxValue),
             IsValue = value,
+            IsSeries = axis.Name.LocalName == "serAx",
             Position = Val(axis.Element(C + "axPos")) is ("l" or "r" or "t" or "b") and var position ? position : "b",
             Deleted = Bool(axis.Element(C + "delete"), false),
             Reversed = Val(scaling?.Element(C + "orientation")) == "maxMin",
@@ -570,6 +654,7 @@ internal sealed class ChartReader
             Style(text, DefaultRun(labels.Element(C + "txPr"))))
         {
             Separator = Separator(labels),
+            LeaderLines = Bool(labels.Element(C + "showLeaderLines"), false),
         };
     }
 
@@ -611,6 +696,8 @@ internal sealed class ChartReader
                 style)
             {
                 Separator = Separator(label) ?? inherited.Separator,
+                Offset = Offset(label.Element(C + "layout")),
+                LeaderLines = inherited.LeaderLines,
                 Text = label.Element(C + "tx")?.Element(C + "rich") is { } rich ? RichLines(rich, style).Runs
                     : label.Element(C + "tx")?.Element(C + "strRef")?.Element(C + "strCache")?.Elements(C + "pt").FirstOrDefault()?.Element(C + "v")?.Value is { } cell
                         ? [.. Cut(cell).Split('\n').Take(MaxLines).Select(l => (IReadOnlyList<ChartRun>)[new ChartRun(l, style)])]

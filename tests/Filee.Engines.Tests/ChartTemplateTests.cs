@@ -123,21 +123,29 @@ public sealed class ChartTemplateTests(EngineFixture fx) : IClassFixture<EngineF
     }
 
     [Fact]
-    public void Three_d_plots_are_drawn_flat()
+    public void Three_d_plots_are_drawn_in_3D()
     {
         var bar3D = Chart("<c:bar3DChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/><c:varyColors val=\"0\"/>" +
                           Series(0, "Deep", ["a", "b"], [3, 4], Solid("C00000")) + "<c:shape val=\"box\"/><c:axId val=\"1\"/><c:axId val=\"2\"/><c:axId val=\"3\"/></c:bar3DChart>",
             Axes() + "<c:serAx><c:axId val=\"3\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling><c:delete val=\"1\"/><c:axPos val=\"b\"/><c:crossAx val=\"2\"/></c:serAx>");
         var plot = Assert.Single(Read(Save(bar3D)).Plots);
         Assert.Equal(ChartKind.Bar, plot.Kind);
-        Assert.Equal(ChartKind.Pie, Assert.Single(Read(Save(Chart("<c:pie3DChart><c:varyColors val=\"1\"/></c:pie3DChart>"))).Plots).Kind);
+        Assert.True(plot.ThreeD);
+        var pie = Assert.Single(Read(Save(Chart("<c:pie3DChart><c:varyColors val=\"1\"/></c:pie3DChart>"))).Plots);
+        Assert.True(pie is { Kind: ChartKind.Pie, ThreeD: true });
+        Assert.Equal(4, Assert.Single(pie.Series).Values.Count);
     }
 
     [Fact]
     public void Charts_Filee_does_not_draw_and_files_that_are_not_templates_are_refused()
     {
-        var radar = Save(Chart($"<c:radarChart><c:radarStyle val=\"marker\"/>{Series(0, "S", ["a"], [1])}<c:axId val=\"1\"/><c:axId val=\"2\"/></c:radarChart>", Axes()));
-        Assert.Equal(ChartTemplate.UnsupportedKey, Assert.Throws<ConversionRefusedException>(() => Read(radar)).ErrorKey);
+        Assert.Equal(ChartTemplate.UnsupportedKey, Assert.Throws<ConversionRefusedException>(() => Read(Save(Undrawn()))).ErrorKey);
+        // Radar, bubble and the other kinds get samples like the rest.
+        var radar = Read(Save(Chart("<c:radarChart><c:radarStyle val=\"marker\"/><c:varyColors val=\"0\"/><c:axId val=\"1\"/><c:axId val=\"2\"/></c:radarChart>", Axes())));
+        Assert.Equal(3, Assert.Single(radar.Plots).Series.Count);
+        var bubbles = Read(Save(Chart("<c:bubbleChart><c:varyColors val=\"0\"/><c:axId val=\"1\"/><c:axId val=\"2\"/></c:bubbleChart>", Axes(scatter: true))));
+        Assert.All(Assert.Single(bubbles.Plots).Series, s => Assert.Equal(4, s.BubbleSizes?.Count));
+        Assert.NotNull(Read(Save(ChartSamples.Waterfall())));
 
         var chartEx = Save("<cx:chartSpace xmlns:cx=\"http://schemas.microsoft.com/office/drawing/2014/chartex\"><cx:chart/></cx:chartSpace>");
         Assert.Equal(ChartTemplate.UnsupportedKey, Assert.Throws<ConversionRefusedException>(() => Read(chartEx)).ErrorKey);

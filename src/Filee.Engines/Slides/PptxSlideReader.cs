@@ -13,7 +13,8 @@
 // - Shapes (preset and custom geometry), connectors, pictures (crop, fill rectangle, tiles, recolouring), groups, tables
 //   (with tableStyles.xml styles), SmartArt from the drawing PowerPoint keeps with it, charts from their chart part
 //   (ChartReader; drawn by ChartDrawer, a picture of them for what takes pictures), OLE objects and other charts as the
-//   picture stored for them, mc:AlternateContent through its fallback.
+//   picture stored for them, mc:AlternateContent through its fallback (an Office 2016 chart through its choice when
+//   ChartReader reads its part).
 // - Fills: solid, gradient (linear, circle, rectangle; group fill), picture, pattern. Lines: width, dash, cap, join,
 //   compound, arrowheads.
 // Shadows, glow, reflection, 3D and WordArt warps are left out; the capability check (SlideCapabilities) names them,
@@ -271,7 +272,7 @@ internal sealed partial class PptxSlideReader
     /// <param name="groupFill">The fill of the group the elements are in (a:grpFill).</param>
     private void Elements(SlideContext context, string part, XElement? tree, List<SlideElement> output, bool templates, SlideFill? groupFill)
     {
-        foreach (var item in Unwrapped(tree))
+        foreach (var item in Unwrapped(part, tree))
         {
             _cancellationToken.ThrowIfCancellationRequested();
             if (++_visits > _maxVisits)
@@ -300,7 +301,7 @@ internal sealed partial class PptxSlideReader
     /// kinds of content come with one older readers understand), else of its choice. Unwrapped in a loop, so fallbacks
     /// nested to the XML depth limit take no stack.
     /// </summary>
-    private static IEnumerable<XElement> Unwrapped(XElement? tree)
+    private IEnumerable<XElement> Unwrapped(string part, XElement? tree)
     {
         if (tree is null)
             yield break;
@@ -321,11 +322,19 @@ internal sealed partial class PptxSlideReader
                 yield return element;
                 continue;
             }
-            var chosen = element.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback")
-                         ?? element.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice");
+            // An Office 2016 chart (chartex) is drawn from its part when ChartReader reads it, else from the fallback picture.
+            var chosen = ChartReader.ChartExChoice(element) is { } chartEx && ChartExDrawn(part, chartEx.RelationshipId) ? chartEx.Choice
+                : element.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback") ?? element.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice");
             if (chosen is not null)
                 open.Push(chosen.Elements().GetEnumerator());
         }
+    }
+
+    /// <summary>Whether the Office 2016 chart part <paramref name="id"/> of <paramref name="part"/> is one ChartReader reads.</summary>
+    private bool ChartExDrawn(string part, string? id)
+    {
+        var target = _package.Target(part, id);
+        return target is not null && ChartReader.Read(_package.Part(target), DrawingColors.FromTheme(null)).Chart is not null;
     }
 
     private SlideGroup? Group(SlideContext context, string part, XElement group, bool templates, SlideFill? outerFill)
@@ -520,7 +529,7 @@ internal sealed partial class PptxSlideReader
             return Table(context, part, table, xfrm);
         if (uri.EndsWith("/diagram", StringComparison.Ordinal))
             return SmartArt(context, part, data, xfrm);
-        if (uri.EndsWith("/chart", StringComparison.Ordinal) && Chart(context, part, data, xfrm) is { } chart)
+        if ((uri.EndsWith("/chart", StringComparison.Ordinal) || uri.EndsWith("/chartex", StringComparison.Ordinal)) && Chart(context, part, data, xfrm) is { } chart)
             return chart;
         // An OLE object, chart or other content with a picture of it (p:oleObj/p:pic, or a fallback picture).
         if (data.Descendants(P + "pic").FirstOrDefault() is { } picture)
@@ -535,7 +544,7 @@ internal sealed partial class PptxSlideReader
     /// <summary>A chart drawn from its chart part, as a picture-filled shape that carries the chart; null when ChartReader doesn't draw it.</summary>
     private SlideShape? Chart(SlideContext context, string part, XElement data, XElement xfrm)
     {
-        var target = _package.Target(part, (string?)data.Element(ChartReader.C + "chart")?.Attribute(R + "id"));
+        var target = _package.Target(part, (string?)(data.Element(ChartReader.C + "chart") ?? data.Element(ChartReader.Cx + "chart"))?.Attribute(R + "id"));
         if (ChartReader.Read(target is null ? null : _package.Part(target), context.Colors, context.Fonts.Minor.Latin).Chart is not { } chart)
             return null;
         _charts.Charge(chart);

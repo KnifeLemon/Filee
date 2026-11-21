@@ -14,7 +14,9 @@
 // (draw:hatch) fills; pie offsets, the pie's start angle (chart:angle-offset) and direction (anticlockwise unless the
 // angle axis is reversed), trendlines (chart:regression-curve, with the equation and R²), error bars
 // (chart:error-indicator, or the series' own error properties) and text properties. Series without a fill take
-// LibreOffice's default palette. 3D charts, radar, bubble, stock, surface and Gantt charts are left out ("charts").
+// LibreOffice's default palette. Radar charts (lines or filled) and 3D bar, line, area and pie charts are drawn too
+// (chart:three-dimensional, chart:deep; seen as Office sees a new 3D chart, dr3d:transform isn't read); bubble,
+// stock, surface and Gantt charts are left out ("charts").
 //
 // Hostile input: the object comes through its package's XML limits; series per chart and points per chart are bounded
 // as in ChartReader (refused with error.document_too_complex), the local table's cells (repeats counted before they
@@ -55,6 +57,8 @@ internal sealed class OdfChartReader
         ["chart:circle"] = ChartKind.Pie,
         ["chart:ring"] = ChartKind.Doughnut,
         ["chart:scatter"] = ChartKind.Scatter,
+        ["chart:radar"] = ChartKind.Radar,
+        ["chart:filled-radar"] = ChartKind.Radar,
     };
 
     private readonly Dictionary<string, XElement> _styles = new(StringComparer.Ordinal);
@@ -123,8 +127,11 @@ internal sealed class OdfChartReader
         if (plotArea is null || !Kinds.TryGetValue((string?)chart.Attribute(C + "class") ?? "", out var kind))
             return new(null, "charts");
         var plotProps = Props(plotArea, "chart-properties");
-        if (On(plotProps, "three-dimensional"))
+        // 3D bars, lines, areas and pies are drawn in 3D.
+        var threeD = On(plotProps, "three-dimensional");
+        if (threeD && kind is not (ChartKind.Bar or ChartKind.Line or ChartKind.Area or ChartKind.Pie))
             return new(null, "charts");
+        var filled = (string?)chart.Attribute(C + "class") == "chart:filled-radar";
 
         var text = TextStyle(Props(chart, "text-properties"), new ChartTextStyle(null, 10, false, false, SKColors.Black));
         var axes = plotArea.Elements(C + "axis").ToList();
@@ -142,15 +149,15 @@ internal sealed class OdfChartReader
         {
             var seriesKind = Kinds.TryGetValue((string?)element.Attribute(C + "class") ?? "", out var own) ? own
                 : element.Attribute(C + "class") is null ? kind : (ChartKind?)null;
-            if (seriesKind is null)
-                return new(null, "charts"); // a series of a kind not drawn (stock, bubble, ...)
+            if (seriesKind is null || threeD && seriesKind != kind)
+                return new(null, "charts"); // a series of a kind not drawn (stock, bubble, ...), or flat in a 3D chart
             if (position >= ChartReader.MaxSeries)
                 throw DocumentLimits.Exceeded($"A chart has more than {DocumentLimits.Count(ChartReader.MaxSeries)} series.");
             var secondary = (string?)element.Attribute(C + "attached-axis") == "secondary-y" && seriesKind is not (ChartKind.Pie or ChartKind.Doughnut);
             var entry = plots.FirstOrDefault(p => p.Kind == seriesKind && p.Secondary == secondary);
             if (entry.Plot is null)
             {
-                entry = (seriesKind.Value, secondary, Plot(seriesKind.Value, plotProps, horizontal, secondary, text, xAxis));
+                entry = (seriesKind.Value, secondary, Plot(seriesKind.Value, plotProps, horizontal, secondary, text, xAxis, threeD, filled));
                 plots.Add(entry);
             }
             entry.Plot.Series.Add(Series(element, seriesKind.Value, categories, position, seriesSource, text));
@@ -169,6 +176,7 @@ internal sealed class OdfChartReader
             RoundedCorners = false,
             Text = text,
             Palette = Palette,
+            View3D = threeD ? kind == ChartKind.Pie ? new ChartView3D(30, 0, RightAngleAxes: false) : new ChartView3D() : null,
         };
         result.Plots.AddRange(plots.Select(p => p.Plot));
         if (plots.Any(p => p.Kind is not (ChartKind.Pie or ChartKind.Doughnut)))
@@ -178,9 +186,13 @@ internal sealed class OdfChartReader
 
     // ───────────────────────── Plots and series ─────────────────────────
 
-    private ChartPlot Plot(ChartKind kind, XElement? props, bool horizontal, bool secondary, ChartTextStyle text, XElement? xAxis) => new()
+    private ChartPlot Plot(ChartKind kind, XElement? props, bool horizontal, bool secondary, ChartTextStyle text, XElement? xAxis, bool threeD = false, bool filled = false) => new()
     {
         Kind = kind,
+        ThreeD = threeD,
+        // chart:deep puts the series one behind the other; 3D lines always stand so.
+        SeriesInDepth = threeD && (kind == ChartKind.Line || On(props, "deep")),
+        Filled = kind == ChartKind.Radar && filled,
         // chart:angle-offset: where the first slice starts, anticlockwise from three o'clock (90 = the top); the
         // slices follow anticlockwise unless the angle (X) axis is reversed.
         FirstSliceAngle = ((90 - (Number(Attr(props, C + "angle-offset")) ?? 90)) % 360 + 360) % 360,
@@ -192,8 +204,8 @@ internal sealed class OdfChartReader
         GapWidth = (int)Math.Clamp(Number(Attr(props, C + "gap-width")) ?? 100, 0, 500),
         Overlap = (int)Math.Clamp(Number(Attr(props, C + "overlap")) ?? (On(props, "stacked") || On(props, "percentage") ? 100 : 0), -100, 100),
         HoleSize = 50,
-        Lines = kind != ChartKind.Scatter || Attr(props, C + "lines") is not "false",
-        Markers = Attr(props, C + "symbol-type") is { } symbols && symbols != "none" && kind is ChartKind.Line or ChartKind.Scatter
+        Lines = kind == ChartKind.Radar ? !filled : kind != ChartKind.Scatter || Attr(props, C + "lines") is not "false",
+        Markers = Attr(props, C + "symbol-type") is { } symbols && symbols != "none" && kind is ChartKind.Line or ChartKind.Scatter or ChartKind.Radar && !filled
             || kind == ChartKind.Scatter && Attr(props, C + "lines") == "false",
         Labels = Labels(props, text),
         AxisIds = secondary ? [3u, 4u] : [1u, 2u],
