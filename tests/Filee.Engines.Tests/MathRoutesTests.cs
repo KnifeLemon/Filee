@@ -243,6 +243,29 @@ public sealed class MathRoutesTests(EngineFixture fx) : IClassFixture<EngineFixt
     }
 
     [Fact]
+    public void A_piece_alone_on_its_line_starts_with_the_second_sign_and_ends_with_the_first()
+    {
+        // m:brkBin repeat, m:brkBinSub "-+": a subtraction broken across lines ends one as − and starts the next as +,
+        // also on a line that holds one piece only (it showed − at both ends).
+        var fonts = RepositoryFonts.Load();
+        Assert.SkipUnless(fonts.Has(RepositoryFonts.Latin), "Noto Sans is not in src/Filee.App/Assets/Fonts (build/fetch-fonts.ps1)");
+        var layouter = new ParagraphLayouter(new FontResolver(fonts), _shaper) { WordEquations = true };
+        var wrap = new HMathWrap(HMathBreak.Repeat, "-+");
+        const string Tex = "a - wwwwwwwwww - b - wwwwwwwwww - c";
+
+        // Columns narrow enough that a long piece takes a line by itself (the widths that do vary by font).
+        var alone = new List<List<(string Text, float Left, float Right)>>();
+        for (var width = 60; width <= 200; width += 5)
+        {
+            var lines = LineGlyphs(layouter.Layout(Inline(Tex, HAlign.Left, wrap), width));
+            alone.AddRange(lines.Skip(1).Take(lines.Count - 2).Where(l => l.Count > 1 && IsOperator(l[0].Text) && IsOperator(l[^1].Text)
+                && l.Count(g => IsOperator(g.Text)) == 2));
+        }
+        Assert.NotEmpty(alone);
+        Assert.All(alone, l => Assert.Equal(("+", "−"), (l[0].Text, l[^1].Text)));
+    }
+
+    [Fact]
     public void Word_reads_its_math_break_settings_for_inline_equations_too()
     {
         var dir = fx.NewFolder();

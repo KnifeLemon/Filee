@@ -211,7 +211,7 @@ internal sealed class MarkdownWriter
         foreach (var paragraph in cell.Blocks.OfType<HParagraph>())
         {
             var inlines = header
-                ? paragraph.Inlines.Select(i => i is HText t ? new HText(t.Text, t.Format with { Bold = null }) : i).ToList()
+                ? paragraph.Inlines.Select(i => i is HText t and not HEquation ? new HText(t.Text, t.Format with { Bold = null }) : i).ToList()
                 : paragraph.Inlines;
             var text = Inlines(inlines).Replace(HardBreak, "<br>", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal).Trim();
             var list = paragraph.List is { Numbered: true } item ? item : null;

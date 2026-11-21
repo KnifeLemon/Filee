@@ -18,14 +18,13 @@
 // - Numbers set across (縦中横, tate-chu-yoko): two or three ASCII digits on their own (not part of a longer number or
 //   a word) in East Asian vertical text stand across in one character's room, squeezed to an em where they are wider,
 //   as Japanese and Korean vertical typesetting sets dates and numbers; so does a run the document marks so (Word
-//   w:eastAsianLayout w:vert, GlyphRun.Across). In a section written vertically the layout gives them one em of the
-//   line, without auto-spacing beside them (ParagraphLayout.Vertical.cs); elsewhere the line keeps the room the layout
-//   across gave them.
+//   w:eastAsianLayout w:vert, GlyphRun.Across). The layout gives them one em of the line, without auto-spacing beside
+//   them (ParagraphLayout.Vertical.cs), in sections, table cells, text boxes, headers and notes written vertically;
+//   slides' shapes and cells keep the room their layout across gave them.
 //
 // Upright glyphs get their own GlyphRun with their own slice of the text, so PDF text extraction stays one-to-one.
 //
-// Not done: upright Latin advancing by its height rather than its width; numbers set across in an em in vertical cells
-// and text boxes (they keep their width across there).
+// Not done: upright Latin advancing by its height rather than its width.
 
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Rendering;

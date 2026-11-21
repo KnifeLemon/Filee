@@ -61,9 +61,10 @@ internal sealed class EquationBox(float width, float ascent, float descent, Acti
 /// A piece of an inline formula that a line of text may break after (MathLayout.Pieces): <paramref name="Box"/> as it
 /// sits beside the next piece, <paramref name="End"/> as it ends a line (without the room before the next piece, or
 /// with the operator Word repeats there), <paramref name="Start"/> as it starts a line when that differs (the second
-/// sign of a repeated subtraction), else null.
+/// sign of a repeated subtraction), else null; <paramref name="Both"/> as it starts and ends a line alone on it when
+/// that differs from <paramref name="End"/> (the second sign at its start, its end as <paramref name="End"/> has it).
 /// </summary>
-internal sealed record MathPiece(EquationBox Box, EquationBox End, EquationBox? Start = null);
+internal sealed record MathPiece(EquationBox Box, EquationBox End, EquationBox? Start = null, EquationBox? Both = null);
 
 /// <summary>How the parts of a formula are sized.</summary>
 internal enum MathMode
@@ -745,28 +746,27 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
             for (var i = from; i < to; i++)
                 parts.Add((at[i] - origin, boxes[i]));
             var box = Combine(parts, at[to] - origin);
-            // Ending a line: up to its last item's ink, then the repeated operator (with its room before it).
-            var ink = at[to - 1] + boxes[to - 1].Width - origin;
-            EquationBox end;
-            if (to < items.Count && repeated.Contains(to))
+            // Ending a line (not the formula): up to its last item's ink, then the repeated operator (with its room
+            // before it).
+            EquationBox Ending(List<(float X, EquationBox Box)> shown)
             {
+                if (!repeated.Contains(to))
+                    return Combine(shown, at[to - 1] + boxes[to - 1].Width - origin);
                 var sign = Sign(to, start: false);
-                var withSign = new List<(float X, EquationBox Box)>(parts) { (at[to] - origin, sign) };
-                end = Combine(withSign, at[to] - origin + sign.Width);
+                return Combine(new List<(float X, EquationBox Box)>(shown) { (at[to] - origin, sign) }, at[to] - origin + sign.Width);
             }
-            else
-            {
-                end = to < items.Count ? Combine(parts, ink) : box;
-            }
-            // Starting a line after a repeated subtraction: the operator in its second sign.
-            EquationBox? start = null;
+            var end = to < items.Count ? Ending(parts) : box;
+            // Starting a line after a repeated subtraction: the operator in its second sign; alone on its line, with
+            // its end too.
+            EquationBox? start = null, both = null;
             if (from > 0 && repeated.Contains(from) && Sign(from, start: true) is var startSign && !ReferenceEquals(startSign, boxes[from]))
             {
                 var swapped = new List<(float X, EquationBox Box)>(parts);
                 swapped[0] = (0, startSign);
                 start = Combine(swapped, box.Width);
+                both = to < items.Count ? Ending(swapped) : start;
             }
-            pieces.Add(new MathPiece(box, end, start));
+            pieces.Add(new MathPiece(box, end, start, both));
             from = to;
         }
         return pieces;

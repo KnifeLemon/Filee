@@ -146,6 +146,20 @@ public sealed partial class MarkdownMathTests(EngineFixture fx) : IClassFixture<
         Assert.Equal(["\\pi r^2", "\\sum_{i=1}^n i"], Equations(MarkdownReader.Read(markdown, fx.NewFolder())).Select(e => e.Tex));
     }
 
+    [Fact]
+    public void Math_in_a_table_header_cell_is_math_as_in_the_body_cells()
+    {
+        var document = MarkdownReader.Read("| Formula $x^2$ | Value |\n| --- | --- |\n| $y_1$ | 2 |", fx.NewFolder());
+
+        var table = document.Sections.Single().Blocks.OfType<HTable>().Single();
+        var header = table.Rows[0].Cells[0].Blocks.OfType<HParagraph>().Single();
+        Assert.Equal("x^2", Assert.Single(header.Inlines.OfType<HEquation>()).Tex);
+        Assert.True(header.Inlines.OfType<HText>().Where(t => t is not HEquation && t.Text.Trim().Length > 0).All(t => t.Format.Bold == true));
+        Assert.Equal(["x^2", "y_1"], Equations(document).Select(e => e.Tex));
+        // Written back, the header keeps its math.
+        Assert.Equal(["x^2", "y_1"], Equations(MarkdownReader.Read(MarkdownWriter.Write(document, _ => null), fx.NewFolder())).Select(e => e.Tex));
+    }
+
     // ───────────────────────── Writers ─────────────────────────
 
     private const string Formulas = """

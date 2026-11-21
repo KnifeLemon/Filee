@@ -28,7 +28,9 @@
 //   the space after its last paragraph too, as Word sizes rows.
 //   Content sits at the top, middle or bottom of the cell. A cell of vertical text (HCell.TextFlow) is laid out with
 //   lines as long as its rows are high (a Word row of an auto height grows to the text unwrapped) and turned into the
-//   cell by VerticalText, its alignment placing the lines across; its lines don't widen its column. Paragraph borders and backgrounds in a stack (a cell, a
+//   cell by VerticalText, its alignment placing the lines across; its lines don't widen its column. Its text is laid
+//   out in the cell's flow (numbers set across take one em, pictures stand upright: ParagraphLayout.Vertical.cs), and
+//   floating objects in a list of vertical text stand upright too (FloatingObjects.Pieces). Paragraph borders and backgrounds in a stack (a cell, a
 //   header) are drawn as in the body (BoxBorder), each line with its part of the box. Cells spaced apart (Word's
 //   w:tblCellSpacing) sit that far in from their grid columns and their row on every side (twice that between two
 //   cells), measured with it, and the table's outer border (HTable.Frame) is drawn around them.
@@ -185,6 +187,13 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
     /// <summary>Neighbouring paragraphs in a list keep the larger of their spaces between them (HDocument.CollapseParagraphSpacing).</summary>
     public bool CollapseSpacing { get; init; }
 
+    /// <summary>
+    /// The layouter the paragraph delegate lays out with, whose TextFlow says how the text being laid out runs: a cell
+    /// or text box written vertically sets it while its lines are laid out, and floating objects in vertical text stand
+    /// upright. Null: the text runs across.
+    /// </summary>
+    public ParagraphLayouter? Layouter { get; init; }
+
     // ───────────────────────── Stacks ─────────────────────────
 
     /// <summary>
@@ -195,6 +204,28 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
     public List<Piece> Stack(IReadOnlyList<HBlock> blocks, float width) => Stack(blocks, width, out _);
 
     /// <inheritdoc cref="Stack(IReadOnlyList{HBlock}, float)"/>
+    /// <param name="flow">How the list's text runs (a cell's or text box's own HTextFlow); null: as the text around it.</param>
+    public List<Piece> Stack(IReadOnlyList<HBlock> blocks, float width, HTextFlow? flow) => Stack(blocks, width, flow, out _);
+
+    /// <inheritdoc cref="Stack(IReadOnlyList{HBlock}, float, HTextFlow?)"/>
+    /// <param name="extent">How far the list goes down: its lines and tables with their spacing, without floating objects.</param>
+    private List<Piece> Stack(IReadOnlyList<HBlock> blocks, float width, HTextFlow? flow, out float extent)
+    {
+        if (flow is not { } own || Layouter is not { } layouter)
+            return Stack(blocks, width, out extent);
+        var around = layouter.TextFlow;
+        layouter.TextFlow = own;
+        try
+        {
+            return Stack(blocks, width, out extent);
+        }
+        finally
+        {
+            layouter.TextFlow = around;
+        }
+    }
+
+    /// <inheritdoc cref="Stack(IReadOnlyList{HBlock}, float)"/>
     /// <param name="extent">How far the list goes down: its lines and tables with their spacing, without floating objects.</param>
     public List<Piece> Stack(IReadOnlyList<HBlock> blocks, float width, out float extent)
     {
@@ -202,7 +233,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         var (behind, front) = (new List<(int, Piece)>(), new List<(int, Piece)>());
         void Objects(HParagraph p, float top)
         {
-            foreach (var (order, piece, under) in FloatingObjects.Pieces(p, top, width, frame?.Invoke(), Stack))
+            foreach (var (order, piece, under) in FloatingObjects.Pieces(p, top, width, frame?.Invoke(), Stack, Layouter?.TextFlow ?? HTextFlow.Horizontal))
                 (under ? behind : front).Add((order, piece));
         }
         float y = 0;
@@ -432,7 +463,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                 {
                     // Vertical text: lines as long as the cell is high, turned into the cell; its alignment places them across.
                     var length = VerticalLength(table, row, cell, padding, spacing);
-                    var lines = Stack(cell.Blocks, length, out _);
+                    var lines = Stack(cell.Blocks, length, cell.TextFlow, out _);
                     content = [VerticalText.Turned(lines, cell.TextFlow, contentWidth, length, cell.VerticalAlign)];
                     vertical = new VerticalCell(lines, cell.TextFlow, cell.VerticalAlign);
                     extent = length;

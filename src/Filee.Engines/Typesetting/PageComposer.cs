@@ -42,7 +42,7 @@
 //   written vertically itself is set vertically in its area); pictures and shapes laid out like characters stand
 //   upright in the line, with their sides swapped on it (ParagraphLayout.Vertical.cs); floating ones keep standing
 //   upright at the place their turned box takes, which text goes around with its sides swapped too (floating tables
-//   turn with the text).
+//   turn with the text), and so do those in table cells, headers and text boxes of vertical text (FloatingObjects.Pieces).
 // - Columns: a section's newspaper columns, with their gap and separator line; what doesn't fit in a column goes on in
 //   the next, and after the last on the next page. Columns change without a new page where the model says (Word's
 //   continuous section break, 한글's 다단 설정 나누기); the columns before are balanced then, so they end at about the
@@ -54,7 +54,9 @@
 //   it when the section says so. Footnotes and endnotes take 한글's numbers, else they are numbered on through the
 //   document. 한글 sets each note as high as its text, without the spacing below its last line, the last ending at the
 //   body's bottom; that is measured against 한글's own PDFs. Footnotes go across the page's text width, also in
-//   columns (한글 puts them under each column).
+//   columns (한글 puts them under each column). A note written vertically itself (HNote.TextFlow) in a section written
+//   across is set vertically in the note area, its lines as long as its longest paragraph (at most half the body's
+//   height), the first at the right; not compared with 한글.
 // - Floating objects (FloatingObjects): placed from where their paragraph starts (those against the paper or the page
 //   from the line that holds them) and drawn when the page is done. Lines laid out anew go around the ones text wraps
 //   around: each line gets its place and the stretches beside them at its height (Room), a row of text taking a part in
@@ -78,6 +80,9 @@ internal sealed record ComposedDocument(List<PageContent> Pages, List<OutlineEnt
 internal sealed class PageComposer
 {
     private const float Epsilon = 0.01f;
+
+    /// <summary>Room at the end of a vertical note's unwrapped lines, so its last glyph stays clear of the area's edge.</summary>
+    private const float NoteSlack = 3;
 
     /// <summary>Lines widow and orphan control keeps together at a page break.</summary>
     private const int MinimumLines = 2;
@@ -666,6 +671,7 @@ internal sealed class PageComposer
             {
                 WordCells = composer._styles is not null,
                 CollapseSpacing = composer._collapseSpacing,
+                Layouter = composer._layouter,
             };
             // Text boxes laid out like characters stack their content as cells do.
             composer._layouter.Stack = tables.Stack;
@@ -1626,7 +1632,7 @@ internal sealed class PageComposer
                 else
                 {
                     FloatingObjects.Draw(layer, item.Object, page.Turned is null ? item.Area : Upright(item.Area, Turn(page)),
-                        (blocks, width) => Tables.Stack(blocks, width));
+                        Tables.Stack);
                 }
                 page.Content.Add(layer, item.Behind);
             }
@@ -1692,28 +1698,61 @@ internal sealed class PageComposer
             if (_noteLayouts.TryGetValue(note, out var layout))
                 return layout;
             var marker = NoteText(note);
+            // A note written vertically in a section written across: its lines as long as its longest paragraph, turned
+            // into the note area, the first at its right (in a section written vertically notes run with the body).
+            var flow = composer._layouter.TextFlow;
+            var vertical = note.TextFlow != HTextFlow.Horizontal && flow == HTextFlow.Horizontal;
+            var width = vertical ? NoteLength(note, marker) : _geometry.TextWidth;
             var pieces = new List<Piece>();
             float y = 0, height = 0, after = 0;
             var first = true;
+            if (vertical)
+                composer._layouter.TextFlow = note.TextFlow;
+            try
+            {
+                foreach (var paragraph in note.Blocks.OfType<HParagraph>())
+                {
+                    // A Word note whose number is inside its text keeps it there ("(1) text" between the brackets); one
+                    // that starts with it, and 한글's notes, get it in front.
+                    var own = first && paragraph.Inlines.SkipWhile(i => i is HNoteNumber)
+                        .Any(i => i is HNoteNumber || i is HLink link && link.Content.Any(c => c is HNoteNumber));
+                    var box = Layout(composer.Resolve(paragraph), width, first && !own ? marker : null, noteNumber: own ? marker : null);
+                    // Word's paragraph spacing: the larger of the space after the paragraph before and this one's before.
+                    y += composer._collapseSpacing && !first ? Math.Max(0, box.SpaceBefore - after) : box.SpaceBefore;
+                    first = false;
+                    foreach (var line in box.Lines)
+                    {
+                        pieces.Add(new Piece(y, line.Height, line.Draw, line.Below));
+                        height = y + line.TextHeight;
+                        y += line.Height;
+                    }
+                    y += after = box.SpaceAfter;
+                }
+            }
+            finally
+            {
+                composer._layouter.TextFlow = flow;
+            }
+            if (vertical && pieces.Count > 0)
+                return _noteLayouts[note] = ([VerticalText.Turned(pieces, note.TextFlow, _geometry.TextWidth, width, HVerticalAlign.Top)], width);
+            return _noteLayouts[note] = (pieces, height);
+        }
+
+        /// <summary>
+        /// How long the lines of a note written vertically are: its longest paragraph unwrapped (the first with its
+        /// number) and a little room, at most half the body's height (longer notes wrap into more lines).
+        /// </summary>
+        private float NoteLength(HNote note, string marker)
+        {
+            var longest = 0f;
+            var first = true;
             foreach (var paragraph in note.Blocks.OfType<HParagraph>())
             {
-                // A Word note whose number is inside its text keeps it there ("(1) text" between the brackets); one that
-                // starts with it, and 한글's notes, get it in front.
-                var own = first && paragraph.Inlines.SkipWhile(i => i is HNoteNumber)
-                    .Any(i => i is HNoteNumber || i is HLink link && link.Content.Any(c => c is HNoteNumber));
-                var box = Layout(composer.Resolve(paragraph), _geometry.TextWidth, first && !own ? marker : null, noteNumber: own ? marker : null);
-                // Word's paragraph spacing: the larger of the space after the paragraph before and this one's before.
-                y += composer._collapseSpacing && !first ? Math.Max(0, box.SpaceBefore - after) : box.SpaceBefore;
+                longest = Math.Max(longest, composer._layouter.ContentWidths(composer.Resolve(paragraph), first ? marker : null, FieldText, NoteText).Max);
                 first = false;
-                foreach (var line in box.Lines)
-                {
-                    pieces.Add(new Piece(y, line.Height, line.Draw, line.Below));
-                    height = y + line.TextHeight;
-                    y += line.Height;
-                }
-                y += after = box.SpaceAfter;
             }
-            return _noteLayouts[note] = (pieces, height);
+            var most = Math.Max(1, (_geometry.BodyBottom - _geometry.BodyTop) / 2);
+            return Math.Clamp(longest + NoteSlack, 1, most);
         }
 
         /// <summary>The heights of this page's footnotes summed (each laid out on first use, in order).</summary>

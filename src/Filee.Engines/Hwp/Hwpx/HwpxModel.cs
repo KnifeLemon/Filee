@@ -829,6 +829,13 @@ internal sealed class HNote(bool endnote) : HInline
     public bool Endnote { get; } = endnote;
     public List<HBlock> Blocks { get; } = [];
 
+    /// <summary>
+    /// How the note's text runs (한글 subList textDirection): a note written vertically in a section written across is
+    /// set vertically in the note area (PageComposer); in a section written vertically notes run with its body. For
+    /// layout only; HwpxReader doesn't set it yet (it counts such a note as vertical text left out).
+    /// </summary>
+    public HTextFlow TextFlow { get; set; }
+
     /// <summary>The number 한글 gave the note (its numbering may restart by section or page); null = counted on.</summary>
     public int? Number { get; set; }
 
