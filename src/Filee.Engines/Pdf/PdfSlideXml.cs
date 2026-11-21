@@ -10,6 +10,7 @@
 // - Shapes have no style (p:style), so the theme adds no outline or effect: a rectangle has exactly its fill and line.
 //   Fills and lines carry the PDF's transparency (a:alpha); gradients are a:gradFill (lin at an angle, or a circle
 //   path from its focus); outlines of their own are a:custGeom in the shape's box (EMU).
+// - A tiling pattern's fill is a:blipFill with a:tile (its cell's PNG, 96 dpi, scaled with the page).
 // - Turned items have xfrm rot (60000ths of a degree, clockwise), mirrored pictures flipH / flipV; a picture's crop is
 //   its a:srcRect, its transparency a:alphaModFix, a clipping path other than a rectangle its custom geometry.
 // - Tables have no table style either; every cell writes its borders, fill, padding and vertical alignment, and the
@@ -67,7 +68,7 @@ internal static class PdfSlideXml
                     Line(sb, line, id, placement);
                     break;
                 case PdfSlideShape shape:
-                    Rectangle(sb, shape, id, placement);
+                    Rectangle(sb, shape, id, placement, picture);
                     break;
                 case PdfSlideTable table:
                     Table(sb, table, id, placement, link);
@@ -186,12 +187,24 @@ internal static class PdfSlideXml
             .Append(Geometry(picture.Geometry, picture.Bounds, placement)).Append("</p:spPr></p:pic>");
     }
 
-    private static void Rectangle(StringBuilder sb, PdfSlideShape shape, int id, Placement placement) =>
+    private static void Rectangle(StringBuilder sb, PdfSlideShape shape, int id, Placement placement, Func<string, string> picture) =>
         sb.Append($"<p:sp><p:nvSpPr><p:cNvPr id=\"{id}\" name=\"{(shape.Kind == PdfShapeKind.Custom ? "Freeform" : "Rectangle")} {id}\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>")
             .Append("<p:spPr>").Append(Transform(shape.Bounds, placement, rotation: shape.Rotation))
             .Append(Geometry(shape.Kind == PdfShapeKind.Custom ? shape.Geometry : null, shape.Bounds, placement))
-            .Append(shape.Gradient is { } gradient ? Gradient(gradient) : shape.Fill is { } fill ? Solid(fill, shape.FillAlpha) : "<a:noFill/>")
+            .Append(shape.Tile is { } tile ? Tiled(tile, placement, picture(tile.Path))
+                : shape.Gradient is { } gradient ? Gradient(gradient) : shape.Fill is { } fill ? Solid(fill, shape.FillAlpha) : "<a:noFill/>")
             .Append(Outline(shape, placement)).Append("</p:spPr></p:sp>");
+
+    /// <summary>A picture fill repeating a pattern cell (a:tile from the box's top-left corner), scaled with the page.</summary>
+    private static string Tiled(PdfSlideTile tile, Placement placement, string relationship)
+    {
+        var fit = placement.Scale / EmuPerPoint;
+        var alpha = Share(tile.Alpha);
+        return $"<a:blipFill rotWithShape=\"1\"><a:blip r:embed=\"{relationship}\"" +
+               (alpha < 100000 ? $"><a:alphaModFix amt=\"{N(alpha)}\"/></a:blip>" : "/>") +
+               $"<a:srcRect/><a:tile tx=\"{N(placement.Length(tile.Offset.X))}\" ty=\"{N(placement.Length(tile.Offset.Y))}\" " +
+               $"sx=\"{N((long)Math.Round(tile.ScaleX * fit * 100000))}\" sy=\"{N((long)Math.Round(tile.ScaleY * fit * 100000))}\" flip=\"none\" algn=\"tl\"/></a:blipFill>";
+    }
 
     private static void Line(StringBuilder sb, PdfSlideShape line, int id, Placement placement) =>
         sb.Append($"<p:cxnSp><p:nvCxnSpPr><p:cNvPr id=\"{id}\" name=\"Line {id}\"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr>")

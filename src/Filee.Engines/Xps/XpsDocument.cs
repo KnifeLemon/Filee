@@ -10,10 +10,11 @@
 // their resolution sets their size (96 dpi when they have none). A picture's own ICC profile, or the one a
 // ColorConvertedBitmap names, brings it into sRGB. Pictures that are damaged or claim more than MaxPicturePixels are
 // left out and counted: the converter names them too. ContextColor colours go through their ICC profile
-// (XpsColorProfile), or follow ECMA-388's rules when it isn't usable.
+// (XpsColorProfile: grey, RGB, CMYK, N-channel and Named Color profiles), or follow ECMA-388's rules when it isn't
+// usable.
 //
-// Not drawn: scRGB gradients interpolate in sRGB, sideways glyphs keep the horizontal metrics' bold and italic
-// simulation, and print tickets, signatures, document structure and story fragments are not read.
+// Not drawn: scRGB gradients interpolate in sRGB, and print tickets, signatures, document structure and story fragments
+// are not read.
 
 using System.Buffers.Binary;
 using System.Xml.Linq;

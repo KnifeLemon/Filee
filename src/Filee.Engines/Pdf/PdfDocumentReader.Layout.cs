@@ -349,15 +349,16 @@ internal sealed partial class PdfDocumentReader
     {
         var width = right - left;
         var narrow = items.Where(i => i.Width < width * 0.6).ToList();
-        if (narrow.Count < 2 || width < 100)
+        if (narrow.Count < 2 || width < 100 || !double.IsFinite(width))
             return [];
 
-        const double Bin = 2;
-        var bins = (int)Math.Ceiling(width / Bin);
+        // Strips of 2 points; wider ones on a page so wide (damaged positions) that they would be too many.
+        var bin = Math.Max(2, width / 100_000);
+        var bins = (int)Math.Ceiling(width / bin);
         var covered = new bool[bins];
         foreach (var item in narrow)
         {
-            for (var b = Math.Max(0, (int)((item.Left - left) / Bin)); b < Math.Min(bins, (int)Math.Ceiling((item.Right - left) / Bin)); b++)
+            for (var b = Math.Max(0, (int)((item.Left - left) / bin)); b < Math.Min(bins, (int)Math.Ceiling((item.Right - left) / bin)); b++)
                 covered[b] = true;
         }
 
@@ -372,7 +373,7 @@ internal sealed partial class PdfDocumentReader
             var start = b;
             while (b < bins && !covered[b])
                 b++;
-            var (gapLeft, gapRight) = (left + start * Bin, left + b * Bin);
+            var (gapLeft, gapRight) = (left + start * bin, left + b * bin);
             if (start == 0 || b >= bins || gapRight - gapLeft < 6)
                 continue;
 
