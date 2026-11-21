@@ -1,11 +1,14 @@
 // 3D models in managed code only (SharpGLTF for glTF, Filee's own readers and writers for the rest): GLB, glTF, STL,
 // OBJ, 3MF and PLY into each other through one in-memory model (Model3D), FBX and Source engine models (MDL, with their
 // textures; read only) into any of them, studiomdl data (SMD) to and from them (from an MDL with its bones and weights),
+// an MDL decompiled into the QC and SMDs studiomdl builds it from (SourceDecompiler),
 // and an isometric preview picture.
 // See docs/ENGINES.md, "3D models", for units, axes and what each format keeps.
 
 using Filee.Core.Conversion;
+using Filee.Core.Formats;
 using Filee.Core.Presets;
+using Filee.Engines.Archives;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using ImageMagick;
@@ -42,10 +45,12 @@ public sealed class ModelConverter(ILogger? logger = null) : IConverter, IImageT
         .. from source in InputFormats from target in Formats where source != target select new ConversionEdge(source, target),
         // SMD, the source studiomdl compiles: from an MDL with its skeleton, from the others as a static prop.
         .. from source in InputFormats where source != "smd" select new ConversionEdge(source, "smd"),
+        // A Source model decompiled into the folder studiomdl builds it from: a QC with its SMDs, physics and animations.
+        new ConversionEdge("mdl", FormatRegistry.Folder),
         .. from source in InputFormats from target in ImageEncoder.Writable select ImageEncoder.Edge(source, target),
     ];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("GLB, glTF, STL, OBJ, 3MF, PLY, SMD ↔ each other; FBX, MDL → each of them",
+    public EngineStatus GetStatus() => EngineStatus.Available("GLB, glTF, STL, OBJ, 3MF, PLY, SMD ↔ each other; FBX, MDL → each of them; MDL → QC and SMDs",
         $"{EngineVersions.BuiltIn} · {EngineVersions.Library("SharpGLTF", typeof(SharpGLTF.Schema2.ModelRoot))}");
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
@@ -54,6 +59,8 @@ public sealed class ModelConverter(ILogger? logger = null) : IConverter, IImageT
             // A Source model keeps its skeleton and weights in an SMD, which Filee's static model has no place for.
             if (step.From == "mdl" && step.To == "smd")
                 return WriteSkeletalSmd(step, cancellationToken);
+            if (step.From == "mdl" && step.To == FormatRegistry.Folder)
+                return Decompile(step, cancellationToken);
             var reading = progress is null ? null : new SubProgress(progress, 0, 0.6);
             var model = Read(step.InputPath, step.From, reading, cancellationToken);
             _logger.LogDebug("{File}: {Parts} parts, {Vertices} vertices, {Triangles} triangles, {Materials} materials",
@@ -149,6 +156,24 @@ public sealed class ModelConverter(ILogger? logger = null) : IConverter, IImageT
             throw;
         }
         return [path];
+    }
+
+    /// <summary>A Source model decompiled into a new folder (named as the output rule says): its QC and SMDs.</summary>
+    private static IReadOnlyList<string> Decompile(ConversionStep step, CancellationToken cancellationToken)
+    {
+        if (step.Output.Allocate("") is not { } folder)
+            return [];
+        Directory.CreateDirectory(folder);
+        try
+        {
+            SourceDecompiler.Decompile(step.InputPath, folder, cancellationToken);
+        }
+        catch
+        {
+            ArchiveFiles.TryDeleteFolder(folder);
+            throw;
+        }
+        return [folder];
     }
 
     /// <summary>The .obj, the .mtl next to it (when the model has materials) and the textures next to that.</summary>

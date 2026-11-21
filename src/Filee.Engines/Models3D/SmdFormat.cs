@@ -138,25 +138,17 @@ internal static class SmdFormat
     }
 
     /// <summary>A Source model as a reference SMD: its bones in their bind pose, its triangles with their weights.</summary>
-    public static void WriteSkeletal(SourceModel model, Stream stream, CancellationToken cancellationToken)
+    public static void WriteSkeletal(SourceModel model, Stream stream, CancellationToken cancellationToken) =>
+        WriteSkeletal(model, model.Meshes, stream, cancellationToken);
+
+    /// <summary>A reference SMD of <paramref name="meshes"/> (some of <paramref name="model"/>'s) with its bones and weights.</summary>
+    public static void WriteSkeletal(SourceModel model, IReadOnlyList<SourceModel.Mesh> meshes, Stream stream,
+        CancellationToken cancellationToken)
     {
         using var writer = new StreamWriter(stream, new UTF8Encoding(false), 1 << 16, leaveOpen: true) { NewLine = "\n" };
-        writer.WriteLine("version 1");
-        writer.WriteLine("nodes");
-        var bones = model.Bones.Count > 0 ? model.Bones : [new SourceModel.Bone("root", -1, Vector3.Zero, Vector3.Zero)];
-        for (var i = 0; i < bones.Count; i++)
-            writer.WriteLine($"{i} \"{bones[i].Name.Replace('"', '\'')}\" {bones[i].Parent}");
-        writer.WriteLine("end");
-        writer.WriteLine("skeleton");
-        writer.WriteLine("time 0");
-        for (var i = 0; i < bones.Count; i++)
-        {
-            var (p, r) = (bones[i].Position, bones[i].Rotation);
-            writer.WriteLine(string.Create(Invariant, $"{i} {p.X:F6} {p.Y:F6} {p.Z:F6} {r.X:F6} {r.Y:F6} {r.Z:F6}"));
-        }
-        writer.WriteLine("end");
+        var bones = WriteBindPose(writer, model.Bones);
         writer.WriteLine("triangles");
-        foreach (var mesh in model.Meshes)
+        foreach (var mesh in meshes)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var material = Clean(mesh.Material);
@@ -184,6 +176,80 @@ internal static class SmdFormat
         }
         writer.WriteLine("end");
     }
+
+    /// <summary>An animation SMD: the bones, then every frame's pose of every bone.</summary>
+    public static void WriteAnimation(IReadOnlyList<SourceModel.Bone> bones, IEnumerable<SourceAnimation.Pose[]> frames, Stream stream,
+        CancellationToken cancellationToken)
+    {
+        using var writer = new StreamWriter(stream, new UTF8Encoding(false), 1 << 16, leaveOpen: true) { NewLine = "\n" };
+        WriteNodes(writer, bones);
+        writer.WriteLine("skeleton");
+        var f = 0;
+        foreach (var frame in frames)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            writer.WriteLine(string.Create(Invariant, $"time {f++}"));
+            for (var i = 0; i < bones.Count; i++)
+                WriteBone(writer, i, frame[i].Position, frame[i].Rotation);
+        }
+        writer.WriteLine("end");
+    }
+
+    /// <summary>
+    /// A physics SMD: the bones in their bind pose, then each convex piece's triangles (material "phy"), every vertex
+    /// on its piece's bone, with the face's normal.
+    /// </summary>
+    public static void WritePhysics(IReadOnlyList<SourceModel.Bone> bones,
+        IEnumerable<(int Bone, IReadOnlyList<Vector3> Points, IReadOnlyList<int> Triangles)> pieces, Stream stream,
+        CancellationToken cancellationToken)
+    {
+        using var writer = new StreamWriter(stream, new UTF8Encoding(false), 1 << 16, leaveOpen: true) { NewLine = "\n" };
+        var skeleton = WriteBindPose(writer, bones);
+        writer.WriteLine("triangles");
+        foreach (var (pieceBone, points, triangles) in pieces)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var bone = Math.Clamp(pieceBone, 0, skeleton.Count - 1);
+            for (var t = 0; t + 2 < triangles.Count; t += 3)
+            {
+                var (a, b, c) = (points[triangles[t]], points[triangles[t + 1]], points[triangles[t + 2]]);
+                var normal = Vector3.Cross(b - a, c - a);
+                normal = normal.LengthSquared() > 0 ? Vector3.Normalize(normal) : Vector3.UnitZ;
+                writer.WriteLine("phy");
+                foreach (var p in new[] { a, b, c })
+                {
+                    WriteVertex(writer, bone, p, normal, Vector2.Zero);
+                    writer.WriteLine(string.Create(Invariant, $" 1 {bone} 1.000000"));
+                }
+            }
+        }
+        writer.WriteLine("end");
+    }
+
+    /// <summary>The nodes and the bind pose ("time 0"); a model without bones gets one root bone. Returns the bones written.</summary>
+    private static IReadOnlyList<SourceModel.Bone> WriteBindPose(StreamWriter writer, IReadOnlyList<SourceModel.Bone> modelBones)
+    {
+        IReadOnlyList<SourceModel.Bone> bones = modelBones.Count > 0 ? modelBones : [new SourceModel.Bone("root", -1, Vector3.Zero, Vector3.Zero)];
+        WriteNodes(writer, bones);
+        writer.WriteLine("skeleton");
+        writer.WriteLine("time 0");
+        for (var i = 0; i < bones.Count; i++)
+            WriteBone(writer, i, bones[i].Position, bones[i].Rotation);
+        writer.WriteLine("end");
+        return bones;
+    }
+
+    private static void WriteNodes(StreamWriter writer, IReadOnlyList<SourceModel.Bone> bones)
+    {
+        writer.WriteLine("version 1");
+        writer.WriteLine("nodes");
+        for (var i = 0; i < bones.Count; i++)
+            writer.WriteLine($"{i} \"{bones[i].Name.Replace('"', '\'')}\" {bones[i].Parent}");
+        writer.WriteLine("end");
+    }
+
+    private static void WriteBone(StreamWriter writer, int index, Vector3 p, Vector3 r) =>
+        writer.WriteLine(string.Create(Invariant, $"{index} {p.X:F6} {p.Y:F6} {p.Z:F6} {r.X:F6} {r.Y:F6} {r.Z:F6}"));
 
     private static void WriteVertex(StreamWriter writer, int bone, Vector3 p, Vector3 n, Vector2 uv) =>
         writer.Write(string.Create(Invariant, $"{bone} {p.X:F6} {p.Y:F6} {p.Z:F6} {n.X:F6} {n.Y:F6} {n.Z:F6} {uv.X:F6} {uv.Y:F6}"));

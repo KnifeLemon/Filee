@@ -1514,6 +1514,38 @@ every vertex weighted to it, the material's (or texture's) name as the material 
 has none. Reading takes the triangles of a reference SMD as a static model; an animation SMD (no triangles) is refused
 with "no triangles", a broken line with its number. The "SMD" preset is in the palette, after glTF.
 
+**Decompiling Source engine models** (#1526, `Models3D/SourceDecompiler.cs`, with `SourceModelDetails`,
+`SourceAnimation` and `SourcePhysics`): the "QC + SMD" preset (in the palette after "SMD", settings schema 101; only
+a `.mdl` takes it) turns a model into a folder named after it with what studiomdl builds it from:
+
+| File | Holds |
+|---|---|
+| `<model>.qc` | in the order and layout decompiled QCs commonly have: `$modelname`, `$staticprop`, `$bodygroup`s, `$lod`/`$shadowlod` blocks, `$surfaceprop`, `$contents`, `$illumposition` and `$eyeposition` (turned back the quarter turn studiomdl gives them), the other flags (`$opaque`, `$mostlyopaque` …), `$cdmaterials`, `$texturegroup` (the textures that differ between skins), `$attachment`s, `$cbox`, `$bbox`, a `$definebone` per bone, `$hboxset`/`$hbox`es (not when studiomdl made them), `$poseparameter`s, `$sectionframes`, a `$sequence` per sequence (its animations, activity and weight, fade times, fps, `loop`/`snap`/`delta`/… options, motion flags, blend parameters, events), `$includemodel`s (without the `models/` studiomdl adds), `$collisionmodel` or `$collisionjoints` with its settings, `$keyvalues` |
+| `<body model>.smd` | one reference SMD per body group model with triangles (blank models are `blank` in the QC) |
+| `<body model>_lod<n>.smd` | a model's triangles at LOD *n*, written only when they differ from the LOD before; a model a LOD drops is `removemodel` |
+| `<model>_physics.smd` | the convex pieces of the `.phy`, every vertex on its piece's bone (material `phy`) |
+| `<model>_anims/<animation>.smd` | every frame of every bone of each animation |
+
+LODs use the LOD 0 vertices with each LOD's own triangles from the `.vtx` (each mesh's vertex numbers count from the
+same start in every LOD; checked against the six LODs of a Garry's Mod vehicle). Animations are decoded from the `.mdl`,
+or the `.ani` file beside it when they are in animation blocks, section by section: each animated bone has a raw
+rotation (Quaternion64 or Quaternion48), run-length encoded rotation tracks, a raw position (three half floats) or
+position tracks, scaled by the bone's scales and added to its bind pose (not for delta animations); bones an animation
+doesn't touch keep their bind pose, and the linear motion studiomdl took out of the root bones (movements) is added back.
+Rotations are Source's Euler angles (rotation about X, then Y, then Z), as in the bones and SMDs. The `.phy`'s solids
+are walked through their IVP ledge trees; points are in metres in IVP's axes (Source x = x, y = z, z = −y), turned into
+inches. A solid named after a bone (`$collisionjoints`, a ragdoll) is in that bone's space and is moved into the model's
+with the bind pose; the joint limits (`ragdollconstraint`) become `$jointconstrain` lines. A `.phy` with another
+checksum than the `.mdl` is left out with a comment in the QC. Not written: flexes (`.vta`), eyeballs, IK rules and
+chains, bone controllers and procedural bones; a model that has them still compiles from the QC, without them.
+Compiling a QC back into an MDL needs Valve's studiomdl, which only the games and their SDKs ship.
+
+Every count in the `.mdl`, `.phy` and `.ani` is capped and every offset checked against the file before it is used or
+anything is allocated: frames (100,000 per animation), bone entries per frame, track runs, sequences and their blend
+grids (4,096 animations), events, LODs (8), attachments, hitboxes, solids (1,024), ledge tree nodes (65,536, walked
+without recursion so a looping tree stops), points per piece (65,536); a damaged file is refused and the half-written
+folder removed.
+
 **3D → pictures**: a small software rasteriser (`MeshRenderer`) draws an isometric view from the front right, above,
 with one light and flat shading per triangle, vertex colours or the texture interpolated across it, and a z-buffer,
 at 2048 px and scaled down to 1024 px for smooth edges, on a transparent background. The preset's image options
