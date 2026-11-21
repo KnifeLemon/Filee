@@ -4,6 +4,10 @@
 // - Windows matches localized family names ("맑은 고딕") and returns nothing for unknown ones. fontconfig (and
 //   CoreText) answer an unknown family with some installed font, so elsewhere only faces whose family name is the
 //   requested one count.
+// - macOS: a family is asked for only when CoreText lists it as installed. A request for one that isn't can start
+//   CoreText's activation of a font macOS offers for download (Nanum Gothic, which the Korean fallback list names),
+//   and while that waits every other font request of the process waits with it: on a computer nobody answers, the
+//   layout of a short document and unrelated chart reads stood still for minutes.
 // - Style, variable and CFF2 flags come from the font's own tables (OS/2, fvar, CFF2), not from what the font
 //   manager reports: DirectWrite lists the named instances of a variable font as faces of their own, but their data
 //   is the whole font, which shapes and draws at its default instance.
@@ -36,10 +40,41 @@ internal sealed class SystemFonts : IFontCollection
     {
         Instance._families.Clear();
         Instance._fallbacks.Clear();
+        _installed = null;
+    }
+
+    /// <summary>macOS: the installed families by name (see the top), made on first use.</summary>
+    private static volatile HashSet<string>? _installed;
+
+    /// <summary>
+    /// Whether <see cref="Family"/> asks the font manager for <paramref name="name"/>: always on Windows and Linux; on
+    /// macOS only for a family CoreText lists as installed, by its listed name or the name its fonts give.
+    /// </summary>
+    internal static bool Asks(string name) => !OperatingSystem.IsMacOS() || Installed().Contains(name);
+
+    private static HashSet<string> Installed()
+    {
+        if (_installed is { } known)
+            return known;
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var family in SKFontManager.Default.FontFamilies)
+        {
+            names.Add(family);
+            // The list may give a family its localized name; Family compares the fonts' own one.
+            if (!System.Text.Ascii.IsValid(family))
+            {
+                using var styles = SKFontManager.Default.GetFontStyles(family);
+                if (styles is { Count: > 0 } && styles.CreateTypeface(0) is { } typeface)
+                    names.Add(typeface.FamilyName);
+            }
+        }
+        return _installed = names;
     }
 
     public IReadOnlyList<FontFace> Family(string name) => _families.GetOrAdd(name, static name =>
     {
+        if (!Asks(name))
+            return [];
         using var styles = SKFontManager.Default.GetFontStyles(name);
         if (styles is null)
             return [];
