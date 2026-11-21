@@ -263,6 +263,8 @@
   "notice.renderer_left_out.videos_one": "1 vídeo deixado de fora",
   "notice.renderer_left_out.pictures": "{0} imagens deixadas de fora",
   "notice.renderer_left_out.pictures_one": "1 imagem deixada de fora",
+  "notice.renderer_left_out.fonts": "{0} fontes incorporadas substituídas",
+  "notice.renderer_left_out.fonts_one": "1 fonte incorporada substituída",
   "notice.renderer_left_out.objects_pictured": "{0} objetos incorporados desenhados a partir da imagem salva",
   "notice.renderer_left_out.objects_pictured_one": "1 objeto incorporado desenhado a partir da imagem salva",
   "notice.renderer_left_out.charts_pictured": "{0} gráficos desenhados a partir da imagem salva",

@@ -12,6 +12,14 @@ internal static class JpegXrBuilder
     /// <summary>GUID_WICPixelFormat64bppRGBAHalf: linear scRGB half floats, what Windows writes for HDR screenshots.</summary>
     public static readonly Guid RgbaHalf64 = new("6fddc324-4e03-4bfe-b185-3d77768dc93a");
 
+    public static readonly Guid Gray8 = new("6fddc324-4e03-4bfe-b185-3d77768dc908");
+    public static readonly Guid Bgra32 = new("6fddc324-4e03-4bfe-b185-3d77768dc90f");
+    public static readonly Guid Pbgra32 = new("6fddc324-4e03-4bfe-b185-3d77768dc910");
+    public static readonly Guid Rgb48 = new("6fddc324-4e03-4bfe-b185-3d77768dc915");
+    public static readonly Guid Bgr565 = new("6fddc324-4e03-4bfe-b185-3d77768dc90a");
+    public static readonly Guid Cmyk32 = new("6fddc324-4e03-4bfe-b185-3d77768dc91c");
+    public static readonly Guid BlackWhite = new("6fddc324-4e03-4bfe-b185-3d77768dc905");
+
     private static readonly Guid ImagingFactoryClsid = new("cacaf262-9370-4615-a13b-9f5539da4c0a");
     private static readonly Guid ContainerFormatWmp = new("57a37caa-367a-4540-916b-f183c5093a4b");
     private const uint GenericWrite = 0x40000000;
@@ -30,7 +38,7 @@ internal static class JpegXrBuilder
                 (pixels[i], pixels[i + 1], pixels[i + 2]) = (b, g, r);
             }
         }
-        Write(path, width, height, Bgr24, pixels, width * 3);
+        Write(path, width, height, Bgr24, pixels, width * 3, null);
     }
 
     /// <summary>Writes an HDR picture of opaque linear scRGB values (1.0 = 80 nits) as half floats.</summary>
@@ -46,10 +54,14 @@ internal static class JpegXrBuilder
                 (halves[i], halves[i + 1], halves[i + 2], halves[i + 3]) = ((Half)r, (Half)g, (Half)b, (Half)1f);
             }
         }
-        Write(path, width, height, RgbaHalf64, MemoryMarshal.AsBytes(halves.AsSpan()).ToArray(), width * 8);
+        Write(path, width, height, RgbaHalf64, MemoryMarshal.AsBytes(halves.AsSpan()).ToArray(), width * 8, null);
     }
 
-    private static void Write(string path, int width, int height, Guid pixelFormat, byte[] pixels, int stride)
+    /// <summary>
+    /// Writes <paramref name="pixels"/> of <paramref name="pixelFormat"/> with the encoder options of the JPEG XR codec
+    /// (ImageQuality, Lossless, Overlap, Subsampling, FrequencyOrder, HorizontalTileSlices, InterleavedAlpha …).
+    /// </summary>
+    public static void Write(string path, int width, int height, Guid pixelFormat, byte[] pixels, int stride, IReadOnlyDictionary<string, object>? options)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("WIC is part of Windows.");
@@ -64,8 +76,14 @@ internal static class JpegXrBuilder
             var container = ContainerFormatWmp;
             encoder = factory.CreateEncoder(ref container, IntPtr.Zero);
             encoder.Initialize(stream, EncoderNoCache);
-            encoder.CreateNewFrame(out frame, IntPtr.Zero);
-            frame.Initialize(IntPtr.Zero);
+            encoder.CreateNewFrame(out frame, out var bag);
+            if (options is { Count: > 0 })
+            {
+                var names = options.Keys.ToArray();
+                var properties = names.Select(n => new PropBag2 { Name = n }).ToArray();
+                bag.Write((uint)names.Length, properties, [.. names.Select(n => options[n])]);
+            }
+            frame.Initialize(bag);
             frame.SetSize((uint)width, (uint)height);
             var format = pixelFormat;
             frame.SetPixelFormat(ref format);
@@ -132,14 +150,14 @@ internal static class JpegXrBuilder
         void SetPalette();
         void SetThumbnail();
         void SetPreview();
-        void CreateNewFrame(out IWICBitmapFrameEncode frame, IntPtr encoderOptions);
+        void CreateNewFrame(out IWICBitmapFrameEncode frame, out IPropertyBag2 encoderOptions);
         void Commit();
     }
 
     [ComImport, Guid("00000105-a8f2-4877-ba0a-fd2b6645fb94"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IWICBitmapFrameEncode
     {
-        void Initialize(IntPtr encoderOptions);
+        void Initialize(IPropertyBag2 encoderOptions);
         void SetSize(uint width, uint height);
         void SetResolution();
         void SetPixelFormat(ref Guid pixelFormat);
@@ -149,5 +167,24 @@ internal static class JpegXrBuilder
         void WritePixels(uint lineCount, uint stride, uint bufferSize, [MarshalAs(UnmanagedType.LPArray)] byte[] pixels);
         void WriteSource();
         void Commit();
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct PropBag2
+    {
+        public uint Type;
+        public ushort VarType;
+        public ushort ClipFormat;
+        public uint Hint;
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string Name;
+        public Guid Clsid;
+    }
+
+    [ComImport, Guid("22f55882-280b-11d0-a8a9-00a0c90c2004"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IPropertyBag2
+    {
+        void Read();
+        void Write(uint count, [In, MarshalAs(UnmanagedType.LPArray)] PropBag2[] properties, [In, MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.Struct)] object[] values);
     }
 }

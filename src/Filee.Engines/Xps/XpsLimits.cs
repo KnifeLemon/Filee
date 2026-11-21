@@ -33,6 +33,12 @@ internal sealed record XpsLimits
     /// <summary>Entries of a dash pattern used; longer patterns are drawn solid.</summary>
     public int MaxDashes { get; init; } = 1024;
 
+    /// <summary>Bytes of one ICC profile applied; a larger one is not used (its colours follow the fallback rules).</summary>
+    public int MaxProfileBytes { get; init; } = 4 * 1024 * 1024;
+
+    /// <summary>ICC profiles applied in one document (each is sampled once); further ones are not used.</summary>
+    public int MaxProfiles { get; init; } = 64;
+
     /// <summary>Largest page side in points (PDF's own limit, 200 inches); larger pages are cut there.</summary>
     public float MaxPageSide { get; init; } = 14_400;
 }

@@ -155,12 +155,12 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
         };
     }
 
-    /// <summary>Flat and Triangle ends are drawn flat (Skia has no triangle cap).</summary>
-    private static SKStrokeCap Cap(string? value) => value?.Trim() switch
+    private static XpsLineCap Cap(string? value) => value?.Trim() switch
     {
-        "Round" => SKStrokeCap.Round,
-        "Square" => SKStrokeCap.Square,
-        _ => SKStrokeCap.Butt,
+        "Round" => XpsLineCap.Round,
+        "Square" => XpsLineCap.Square,
+        "Triangle" => XpsLineCap.Triangle,
+        _ => XpsLineCap.Flat,
     };
 
     // ───────────────────────── Glyphs ─────────────────────────
@@ -178,7 +178,8 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
         if (text.Length == 0 && string.IsNullOrWhiteSpace(indices))
             return null;
         var uri = (string?)element.Attribute("FontUri");
-        var embedded = document.Font(XpsPackage.Resolve(where, uri), XpsPackage.Fragment(uri));
+        var fontPart = XpsPackage.Resolve(where, uri);
+        var embedded = document.Font(fontPart, XpsPackage.Fragment(uri));
         var font = embedded ?? document.FallbackFont;
         if (font is null)
             return null;
@@ -186,9 +187,22 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
         Budget.Points(text.Length + (indices?.Count(c => c == ';') + 1 ?? 0));
         var simulations = ((string?)element.Attribute("StyleSimulations"))?.Trim() ?? "";
         var rightToLeft = (int)(XpsValues.Number((string?)element.Attribute("BidiLevel")) ?? 0) % 2 == 1;
+        // A run can't be both (ECMA-388 M5.15): right to left wins, as it changes where the glyphs go.
+        var sideways = !rightToLeft && XpsValues.Bool((string?)element.Attribute("IsSideways"), false);
         var origin = new SKPoint(XpsValues.Number((string?)element.Attribute("OriginX")) ?? 0, XpsValues.Number((string?)element.Attribute("OriginY")) ?? 0);
         // Glyph numbers of another font mean nothing in the fallback: it draws the text's characters.
-        var layout = XpsGlyphLayout.Lay(font.Typeface, size.Value, origin, text, embedded is null ? StripIndices(indices) : indices, rightToLeft);
+        var layout = XpsGlyphLayout.Lay(font.Typeface, size.Value, origin, text, embedded is null ? StripIndices(indices) : indices, rightToLeft, sideways);
+        if (embedded is not null && !document.CanSubset(embedded, layout.Glyphs))
+        {
+            // Glyphs the embedded font can't give the PDF (damaged outlines or metrics): the run takes the fallback.
+            embedded = null;
+            font = document.FallbackFont;
+            if (font is null)
+                return null;
+            layout = XpsGlyphLayout.Lay(font.Typeface, size.Value, origin, text, StripIndices(indices), rightToLeft, sideways);
+        }
+        if (embedded is null && fontPart is not null)
+            document.FontReplaced(fontPart);
         if (layout.Glyphs.Length == 0 || !layout.Positions.All(p => float.IsFinite(p.X) && float.IsFinite(p.Y)))
             return null;
         return new XpsGlyphs
@@ -202,6 +216,7 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
             Fill = Brush(element, "Fill", scope, where),
             Bold = simulations.Contains("Bold", StringComparison.OrdinalIgnoreCase),
             Italic = simulations.Contains("Italic", StringComparison.OrdinalIgnoreCase),
+            Sideways = sideways,
         };
     }
 
@@ -288,7 +303,7 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
         if (text is not null)
         {
             if (ResourceKey(text) is not { } key)
-                return XpsValues.Color(text) is { } color ? new XpsSolidBrush(color) : null;
+                return document.Color(text, where) is { } color ? new XpsSolidBrush(color) : null;
             if (scope.Find(key) is not { } entry)
                 return null;
             if (_resources.TryGetValue(entry.Element, out var known))
@@ -309,14 +324,14 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
         switch (brush.Name.LocalName)
         {
             case "SolidColorBrush":
-                return XpsValues.Color((string?)brush.Attribute("Color")) is { } color
+                return document.Color((string?)brush.Attribute("Color"), where) is { } color
                     ? new XpsSolidBrush(color) { Opacity = opacity }
                     : null;
             case "LinearGradientBrush":
             case "RadialGradientBrush":
                 {
                     var radial = brush.Name.LocalName == "RadialGradientBrush";
-                    var (colors, offsets) = Stops(brush);
+                    var (colors, offsets) = Stops(brush, where);
                     var spread = ((string?)brush.Attribute("SpreadMethod"))?.Trim() switch
                     {
                         "Reflect" => SKShaderTileMode.Mirror,
@@ -339,7 +354,8 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
                 }
             case "ImageBrush":
                 {
-                    if (document.Image(ImageSource((string?)brush.Attribute("ImageSource"), where)) is not { } image)
+                    var (picture, profile) = ImageSource((string?)brush.Attribute("ImageSource"), where);
+                    if (document.Image(picture, profile) is not { } image)
                         return null;
                     return new XpsImageBrush
                     {
@@ -361,7 +377,7 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
                         (value, visualScope, visualPart) = (entry.Element, entry.Scope, entry.Part);
                     if (value is null || Element(value, visualScope, visualPart, aliased: false) is not { } visual)
                         return null;
-                    return new XpsVisualBrush
+                    return document.Track(new XpsVisualBrush
                     {
                         Opacity = opacity,
                         Transform = transform,
@@ -369,7 +385,7 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
                         Viewbox = XpsValues.Rect((string?)brush.Attribute("Viewbox")) ?? SKRect.Empty,
                         Viewport = XpsValues.Rect((string?)brush.Attribute("Viewport")) ?? SKRect.Empty,
                         Tile = Tile((string?)brush.Attribute("TileMode")),
-                    };
+                    });
                 }
             default:
                 return null;
@@ -377,17 +393,20 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
     }
 
     /// <summary>
-    /// The part an ImageSource names: a part reference, or the picture of "{ColorConvertedBitmap picture source
-    /// profile}" (drawn without the colour conversion).
+    /// The part an ImageSource names (a part reference, or the picture of "{ColorConvertedBitmap picture profile}") and
+    /// the ICC profile part it is to be read through (null: its own, or sRGB).
     /// </summary>
-    private static string? ImageSource(string? source, string where)
+    private static (string? Part, string? Profile) ImageSource(string? source, string where)
     {
         if (source is null)
-            return null;
+            return (null, null);
         source = source.Trim();
         if (source.StartsWith("{ColorConvertedBitmap", StringComparison.Ordinal) && source.EndsWith('}'))
-            source = source["{ColorConvertedBitmap".Length..^1].Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-        return XpsPackage.Resolve(where, source);
+        {
+            var parts = source["{ColorConvertedBitmap".Length..^1].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return (XpsPackage.Resolve(where, parts.FirstOrDefault()), parts.Length > 1 ? XpsPackage.Resolve(where, parts[1]) : null);
+        }
+        return (XpsPackage.Resolve(where, source), null);
     }
 
     private static XpsTile Tile(string? mode) => mode?.Trim() switch
@@ -403,13 +422,13 @@ internal sealed class XpsPageReader(XpsDocument document, string part, Cancellat
     /// A gradient's stops sorted by offset, cut to 0…1 with the colours there found between the stops around them
     /// (Skia takes positions in 0…1 only).
     /// </summary>
-    private static (SKColor[] Colors, float[] Offsets) Stops(XElement brush)
+    private (SKColor[] Colors, float[] Offsets) Stops(XElement brush, string where)
     {
         var stops = new List<(float Offset, SKColor Color)>();
         var property = brush.Element(brush.Name.Namespace + $"{brush.Name.LocalName}.GradientStops");
         foreach (var stop in property?.Elements(brush.Name.Namespace + "GradientStop") ?? [])
         {
-            if (XpsValues.Color((string?)stop.Attribute("Color")) is { } color && XpsValues.Number((string?)stop.Attribute("Offset")) is { } offset)
+            if (document.Color((string?)stop.Attribute("Color"), where) is { } color && XpsValues.Number((string?)stop.Attribute("Offset")) is { } offset)
                 stops.Add((offset, color));
         }
         if (stops.Count == 0)

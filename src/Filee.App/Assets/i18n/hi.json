@@ -257,6 +257,8 @@
   "notice.renderer_left_out.videos_one": "1 वीडियो छोड़ दिया गया",
   "notice.renderer_left_out.pictures": "{0} चित्र छोड़ दिए गए",
   "notice.renderer_left_out.pictures_one": "1 चित्र छोड़ दिया गया",
+  "notice.renderer_left_out.fonts": "{0} एम्बेड किए गए फ़ॉन्ट बदले गए",
+  "notice.renderer_left_out.fonts_one": "1 एम्बेड किया गया फ़ॉन्ट बदला गया",
   "notice.renderer_left_out.objects_pictured": "{0} एम्बेड किए गए ऑब्जेक्ट उनकी सहेजी गई तस्वीर से बनाए गए",
   "notice.renderer_left_out.objects_pictured_one": "1 एम्बेड किया गया ऑब्जेक्ट उसकी सहेजी गई तस्वीर से बनाया गया",
   "notice.renderer_left_out.charts_pictured": "{0} चार्ट उनकी सहेजी गई तस्वीर से बनाए गए",

@@ -257,6 +257,8 @@
   "notice.renderer_left_out.videos_one": "ละวิดีโอ 1 รายการ",
   "notice.renderer_left_out.pictures": "ละรูปภาพ {0} รายการ",
   "notice.renderer_left_out.pictures_one": "ละรูปภาพ 1 รายการ",
+  "notice.renderer_left_out.fonts": "แทนที่ฟอนต์ที่ฝังไว้ {0} รายการ",
+  "notice.renderer_left_out.fonts_one": "แทนที่ฟอนต์ที่ฝังไว้ 1 รายการ",
   "notice.renderer_left_out.objects_pictured": "วาดวัตถุที่ฝังไว้ {0} รายการจากรูปที่บันทึกไว้",
   "notice.renderer_left_out.objects_pictured_one": "วาดวัตถุที่ฝังไว้ 1 รายการจากรูปที่บันทึกไว้",
   "notice.renderer_left_out.charts_pictured": "วาดแผนภูมิ {0} รายการจากรูปที่บันทึกไว้",

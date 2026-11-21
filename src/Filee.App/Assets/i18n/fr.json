@@ -263,6 +263,8 @@
   "notice.renderer_left_out.videos_one": "1 vidéo omise",
   "notice.renderer_left_out.pictures": "{0} images omises",
   "notice.renderer_left_out.pictures_one": "1 image omise",
+  "notice.renderer_left_out.fonts": "{0} polices incorporées remplacées",
+  "notice.renderer_left_out.fonts_one": "1 police incorporée remplacée",
   "notice.renderer_left_out.objects_pictured": "{0} objets incorporés dessinés d'après leur image enregistrée",
   "notice.renderer_left_out.objects_pictured_one": "1 objet incorporé dessiné d'après son image enregistrée",
   "notice.renderer_left_out.charts_pictured": "{0} graphiques dessinés d'après leur image enregistrée",

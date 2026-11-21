@@ -263,6 +263,8 @@
   "notice.renderer_left_out.videos_one": "1 video left out",
   "notice.renderer_left_out.pictures": "{0} pictures left out",
   "notice.renderer_left_out.pictures_one": "1 picture left out",
+  "notice.renderer_left_out.fonts": "{0} embedded fonts replaced",
+  "notice.renderer_left_out.fonts_one": "1 embedded font replaced",
   "notice.renderer_left_out.objects_pictured": "{0} embedded objects drawn from their saved pictures",
   "notice.renderer_left_out.objects_pictured_one": "1 embedded object drawn from its saved picture",
   "notice.renderer_left_out.charts_pictured": "{0} charts drawn from their saved pictures",

@@ -257,6 +257,8 @@
   "notice.renderer_left_out.videos_one": "動画 1 本を省略",
   "notice.renderer_left_out.pictures": "画像 {0} 枚を省略",
   "notice.renderer_left_out.pictures_one": "画像 1 枚を省略",
+  "notice.renderer_left_out.fonts": "埋め込みフォント {0} 個を置き換え",
+  "notice.renderer_left_out.fonts_one": "埋め込みフォント 1 個を置き換え",
   "notice.renderer_left_out.objects_pictured": "埋め込みオブジェクト {0} 個を保存済みの画像で描画",
   "notice.renderer_left_out.objects_pictured_one": "埋め込みオブジェクト 1 個を保存済みの画像で描画",
   "notice.renderer_left_out.charts_pictured": "グラフ {0} 個を保存済みの画像で描画",
