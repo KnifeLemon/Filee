@@ -31,6 +31,10 @@ en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't 
   so the server can only hand out the real installer. The log says where each file came from.
   It helps from the update after this version on: on such a network, this version itself still comes from
   [filee.sh](https://filee.sh/).
+- **A shortcut's results are saved next to the shortcut** (#1706). Converting a desktop shortcut (`.lnk`, or a Finder
+  alias on macOS) converts the file it points to, as before, but "next to the original" now means next to the
+  shortcut: a program's icon taken from its desktop shortcut lands on the desktop, not in the program's folder.
+  The same file dropped as itself is still saved next to itself.
 
 ## 2.5.0
 
