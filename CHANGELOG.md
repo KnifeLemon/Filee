@@ -31,6 +31,8 @@ en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't 
   so the server can only hand out the real installer. The log says where each file came from.
   It helps from the update after this version on: on such a network, this version itself still comes from
   [filee.sh](https://filee.sh/).
+- **rustyfiles** counts as a file manager for gestures (#1714): with the default *File managers and desktop* scope, a
+  Ctrl + drag out of rustyfiles opens the donut, as in Explorer (Windows).
 
 ## 2.5.0
 
