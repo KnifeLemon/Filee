@@ -5,16 +5,16 @@
 //  * XLSX: a visible chart sheet whose chart ChartReader doesn't draw, or with pictures or shapes over its chart
 //    ("charts", ...); in each visible worksheet's drawing what XlsxDrawing leaves out (charts
 //    ChartReader doesn't draw, SmartArt, embedded objects, ink, text in shapes, freeform shapes, ...); form controls
-//    (ctrlProp parts, or legacy VML controls); embedded OLE objects. Comments are not printed unless the page setup
-//    asks for them, and are left out of the check.
+//    (ctrlProp parts, or legacy VML controls); embedded OLE objects. Comments are printed when the page setup asks for
+//    them (SheetComments) and are left out of the check.
 //  * XLSB: the same relationships as XLSX (a chart sheet's drawing is the one its binary part relates to); the
 //    visible sheets come from the binary workbook part.
 //  * XLS: the reader takes charts (BiffChartReader) and no other drawing, so every other object of a visible sheet is
 //    named by its OBJ record's type (pictures, text boxes, shapes, form controls; comments aside), as are charts and
 //    chart sheets BiffChartReader doesn't read.
 //  * ODS: the reader takes charts OdfChartReader draws (with their frames' replacement pictures) and the pictures and
-//    shapes OdsDrawing draws; other charts and embedded objects, and what OdsDrawing leaves out (text boxes, text in
-//    shapes, freeform shapes, form controls, SVG pictures, ...) of a visible table are named.
+//    shapes OdsDrawing draws; other charts and embedded objects, and what OdsDrawing leaves out (arcs, connectors, form
+//    controls, SVG pictures, hatch fills, ...) of a visible table are named.
 // The parts are read within DocumentLimits; a file that can't be read gets no answer here (null), and the printer
 // then refuses it with the reader's own reason.
 

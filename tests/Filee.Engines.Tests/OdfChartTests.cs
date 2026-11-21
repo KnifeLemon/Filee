@@ -215,6 +215,24 @@ public sealed class OdfChartTests(EngineFixture fx) : IClassFixture<EngineFixtur
     }
 
     [Fact]
+    public void A_stock_chart_has_one_legend_entry_keyed_by_its_candlestick_or_range_line()
+    {
+        // The prices are one entry, named after the close series: the others are left out of the legend.
+        var hlc = Drawn(OdfChartBuilder.Columns("chart:stock").Replace("<chart:wall/>",
+            "<chart:wall/><chart:stock-range-line chart:style-name=\"s2\"/>", StringComparison.Ordinal));
+        Assert.Equal([0, 1], hlc.Legend!.Deleted.Order());
+        var close = hlc.Plots[0].Series[^1];
+        Assert.Equal(("West", Blue), (close.Name, close.LegendKey!.Line!.Color));
+
+        var candles = Drawn(OdfChartBuilder.Columns("chart:stock", series: 4, plotProps: "chart:japanese-candle-stick=\"true\"")
+            .Replace("<chart:wall/>", "<chart:wall/><chart:stock-gain-marker chart:style-name=\"pGreen\"/><chart:stock-loss-marker chart:style-name=\"pRed\"/>", StringComparison.Ordinal));
+        Assert.Equal([0, 1, 2], candles.Legend!.Deleted.Order());
+        Assert.Equal(Green, candles.Plots[0].Series[^1].LegendKey!.Fill);
+        // Only the close series has a key of its own.
+        Assert.All(candles.Plots[0].Series.Take(3), s => Assert.Null(s.LegendKey));
+    }
+
+    [Fact]
     public void A_gantt_chart_floats_each_bar_from_its_start_to_its_end()
     {
         // Start in column B (40, 55, 70, 62), end in column C (30, 45, 35, 50): every end comes before its start here,

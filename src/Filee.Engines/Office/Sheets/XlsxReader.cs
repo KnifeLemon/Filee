@@ -5,8 +5,10 @@
 // rows, and what printing needs: the page setup, margins, print options, headers and footers (with their
 // pictures), print areas, print titles, manual page breaks, conditional formats that colour cells, and the pictures,
 // shapes and charts of each sheet's drawing (XlsxDrawing, which names what it leaves out: 3D charts, SmartArt, ...),
-// and chart sheets (Workbook.ChartSheets: their page setup and chart, for the printer).
-// Comments are not read. The package is read within DocumentLimits; the charts' points within ChartBudget.
+// and chart sheets (Workbook.ChartSheets: their page setup and chart, for the printer); tables with the look of their
+// table style (SheetTables: built-in styles and the workbook's own tableStyles), and the notes on cells (comments
+// parts, shown or not and their boxes from the legacy VML drawing: SheetComments) with pageSetup cellComments.
+// The package is read within DocumentLimits; the charts' points within ChartBudget.
 
 using System.Globalization;
 using System.Text;
@@ -39,6 +41,20 @@ internal sealed class XlsxReader
     private readonly List<(string Text, IReadOnlyList<CellRun>? Runs)> _sharedStrings = [];
     private readonly List<(CellStyle Style, string Format)> _cellFormats = [];
     private readonly List<DifferentialStyle> _dxfs = [];
+
+    /// <summary>The borders between cells (vertical, horizontal) of each differential format, which table styles use.</summary>
+    private readonly List<(CellBorder? Vertical, CellBorder? Horizontal)> _dxfInner = [];
+
+    /// <summary>The workbook's own table styles by name (styles.xml tableStyles).</summary>
+    private readonly Dictionary<string, TableStyle> _tableStyles = new(StringComparer.Ordinal);
+
+    /// <summary>The look of a cell that sets nothing (the Normal style's font).</summary>
+    private CellStyle _normal = CellStyle.Default;
+
+    /// <summary>What the tables may still cost in this workbook.</summary>
+    private readonly TableBudget _tableBudget = new();
+
+    private int _tables;
     private OoxmlColors _colors = OoxmlColors.FromTheme(null);
     private XDocument? _theme;
     private NumberFormatter _formatter = new();
@@ -278,6 +294,8 @@ internal sealed class XlsxReader
             book.DefaultFontName = fontName;
         if (normalFont?.Size is > 0 and <= 409 && normalFont.Size is { } fontSize)
             book.DefaultFontSize = fontSize;
+        if (normalFont is not null)
+            _normal = new CellStyle { Bold = normalFont.Bold, Italic = normalFont.Italic, Underline = normalFont.Underline, Strike = normalFont.Strike, Color = normalFont.Color };
 
         foreach (var xf in root.Element(S + "cellXfs")?.Elements(S + "xf") ?? [])
         {
@@ -359,8 +377,37 @@ internal sealed class XlsxReader
                 Top = sides.Top.IsVisible ? sides.Top : null,
                 Bottom = sides.Bottom.IsVisible ? sides.Bottom : null,
             });
+            CellBorder? Inner(string side) => dxf.Element(S + "border")?.Element(S + side) is { } line && (string?)line.Attribute("style") is { } lineStyle and not "none"
+                ? new CellBorder(lineStyle, _colors.Spreadsheet(line.Element(S + "color")))
+                : null;
+            _dxfInner.Add((Inner("vertical"), Inner("horizontal")));
+        }
+
+        // The workbook's own table styles: their parts point into the differential formats.
+        foreach (var tableStyle in root.Element(S + "tableStyles")?.Elements(S + "tableStyle") ?? [])
+        {
+            if ((string?)tableStyle.Attribute("name") is not { Length: > 0 } styleName || (string?)tableStyle.Attribute("table") is "0" or "false"
+                || _tableStyles.Count >= SheetTables.MaxTables)
+                continue;
+            var parts = new Dictionary<string, TableStylePart>(StringComparer.Ordinal);
+            foreach (var element in tableStyle.Elements(S + "tableStyleElement").Take(32))
+            {
+                var type = (string?)element.Attribute("type");
+                if (!SheetTables.IsTablePart(type) || element.Attribute("dxfId") is null || Index(element, "dxfId") is var id && id >= _dxfs.Count)
+                    continue;
+                parts[type!] = new TableStylePart(_dxfs[id], _dxfInner[id].Vertical, _dxfInner[id].Horizontal,
+                    (int)Math.Clamp(Number(element.Attribute("size")) ?? 1, 1, 9));
+            }
+            _tableStyles[styleName] = new TableStyle(parts);
         }
     }
+
+    /// <summary>A table style by name: the workbook's own, else a built-in one in the workbook's theme colours.</summary>
+    private TableStyle? TableStyleOf(string? name) =>
+        name is null ? null : _tableStyles.TryGetValue(name, out var own) ? own : SheetTables.BuiltIn(name, ThemeColor);
+
+    private string? ThemeColor(int theme, double tint) => _colors.Spreadsheet(new XElement("color", new XAttribute("theme", theme),
+        new XAttribute("tint", tint.ToString("R", CultureInfo.InvariantCulture))));
 
     /// <summary>Excel's textRotation: 1–90 counter-clockwise, 91–180 clockwise (90 − value), 255 stacked.</summary>
     internal static int Rotation(int value) => value switch
@@ -536,11 +583,54 @@ internal sealed class XlsxReader
         }
 
         sheet.PageSetup = PageSetup(xml, partPath);
+        Tables(xml, partPath, sheet);
+        Comments(xml, partPath, sheet);
         foreach (var formatting in xml.Elements(S + "conditionalFormatting"))
             ConditionalFormats(formatting, sheet);
         if (_package.Target(partPath, (string?)xml.Element(S + "drawing")?.Attribute(R + "id")) is { } drawing)
             sheet.Drawings.AddRange(XlsxDrawing.Read(_package, drawing, _theme?.Root, read: true, _charts).Drawings);
         return sheet;
+    }
+
+    /// <summary>The sheet's tables (tableParts → table parts) with the look of their styles put on their cells.</summary>
+    private void Tables(XElement xml, string partPath, Worksheet sheet)
+    {
+        var tables = new List<SheetTable>();
+        foreach (var tablePart in xml.Element(S + "tableParts")?.Elements(S + "tablePart") ?? [])
+        {
+            if (++_tables > SheetTables.MaxTables || _package.Target(partPath, (string?)tablePart.Attribute(R + "id")) is not { } target
+                || _package.Part(target)?.Root is not { } table || table.Name != S + "table" || CellRange.Parse((string?)table.Attribute("ref")) is not { } range)
+                continue;
+            var info = table.Element(S + "tableStyleInfo");
+            bool Flag(string name) => info?.Attribute(name) is { } flag && On(flag);
+            tables.Add(new SheetTable(range, (string?)info?.Attribute("name"))
+            {
+                HeaderRows = (int)Math.Clamp(Number(table.Attribute("headerRowCount")) ?? 1, 0, 1),
+                TotalRows = (int)Math.Clamp(Number(table.Attribute("totalsRowCount")) ?? 0, 0, 1),
+                FirstColumn = Flag("showFirstColumn"),
+                LastColumn = Flag("showLastColumn"),
+                RowStripes = Flag("showRowStripes"),
+                ColumnStripes = Flag("showColumnStripes"),
+            });
+        }
+        SheetTables.Apply(sheet, tables, TableStyleOf, _normal, _tableBudget);
+    }
+
+    /// <summary>The notes of the sheet's comments part, shown or not and their boxes from its legacy VML drawing.</summary>
+    private void Comments(XElement xml, string partPath, Worksheet sheet)
+    {
+        if (_package.TargetOfType(partPath, "/comments") is not { } part || _package.Part(part)?.Root is not { } comments)
+            return;
+        var vml = SheetComments.Vml(_package, _package.Target(partPath, (string?)xml.Element(S + "legacyDrawing")?.Attribute(R + "id")));
+        foreach (var comment in comments.Element(S + "commentList")?.Elements(S + "comment") ?? [])
+        {
+            if (sheet.Comments.Count >= SheetComments.MaxComments)
+                break;
+            if (!CellRange.TryParseCell((string?)comment.Attribute("ref") ?? "", out var row, out var column) || comment.Element(S + "text") is not { } text)
+                continue;
+            var (plain, runs) = RichText(text);
+            SheetComments.Add(sheet, row, column, plain, runs, vml);
+        }
     }
 
     /// <summary>
@@ -593,6 +683,12 @@ internal sealed class XlsxReader
                 FitHeight = Number(page.Attribute("fitToHeight")) is { } down and >= 0 and <= 32767 ? (int)down : 1,
                 OverThenDown = (string?)page.Attribute("pageOrder") == "overThenDown",
                 FirstPageNumber = On(page.Attribute("useFirstPageNumber")) && Number(page.Attribute("firstPageNumber")) is { } first and >= -32768 and <= 32767 ? (int)first : null,
+                Comments = (string?)page.Attribute("cellComments") switch
+                {
+                    "atEnd" => SheetCommentsPrint.AtEnd,
+                    "asDisplayed" => SheetCommentsPrint.AsDisplayed,
+                    _ => SheetCommentsPrint.None,
+                },
             };
         }
         setup = setup with { FitToPage = On(xml.Element(S + "sheetPr")?.Element(S + "pageSetUpPr")?.Attribute("fitToPage")) };

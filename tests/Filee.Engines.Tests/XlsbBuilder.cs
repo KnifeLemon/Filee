@@ -85,8 +85,11 @@ internal sealed class XlsbBuilder
     /// <summary>Print areas and print titles: the sheet's position, "Print_Area" or "Print_Titles", the ranges (0-based, inclusive).</summary>
     public List<(int Sheet, string Name, (int Top, int Left, int Bottom, int Right)[] Ranges)> Names { get; } = [];
 
-    /// <summary>Differential formats of conditional formats: a fill (background), a font colour, bold.</summary>
+    /// <summary>Differential formats of conditional formats and table styles: a fill (background), a font colour, bold.</summary>
     public List<(XlsbColor? Fill, XlsbColor? Font, bool Bold)> Dxfs { get; } = [];
+
+    /// <summary>The workbook's own table styles: name, then parts (ECMA-376 type name, its <see cref="Dxfs"/> index).</summary>
+    public List<(string Name, (string Type, int Dxf)[] Parts)> TableStyles { get; } = [];
 
     /// <summary>More parts (drawings, VML) shared by both packages, by zip path.</summary>
     public Dictionary<string, string> Parts { get; } = [];
@@ -130,8 +133,16 @@ internal sealed class XlsbBuilder
         for (var i = 0; i < Sheets.Count; i++)
         {
             parts[$"xl/{Sheets[i].Folder}/sheet{i + 1}.bin"] = Sheets[i].Bin();
-            if (Sheets[i].Relationships.Count > 0)
-                parts[$"xl/{Sheets[i].Folder}/_rels/sheet{i + 1}.bin.rels"] = Utf8(OpcWriter.Declaration + OpcWriter.Relationships(Sheets[i].Relationships));
+            var relationships = Sheets[i].Relationships.Concat(Sheets[i].PartRelationships(i + 1, "bin")).ToList();
+            if (relationships.Count > 0)
+                parts[$"xl/{Sheets[i].Folder}/_rels/sheet{i + 1}.bin.rels"] = Utf8(OpcWriter.Declaration + OpcWriter.Relationships(relationships));
+            if (Sheets[i].Notes.Count > 0)
+            {
+                parts[$"xl/comments{i + 1}.bin"] = Sheets[i].NotesBin();
+                parts[$"xl/drawings/vmlDrawing{i + 1}.vml"] = Utf8(Sheets[i].NotesVml());
+            }
+            for (var k = 0; k < Sheets[i].Tables.Count; k++)
+                parts[$"xl/tables/table{i + 1}_{k + 1}.bin"] = Sheets[i].TableBin(k);
         }
         return Save(path, parts);
     }
@@ -222,9 +233,25 @@ internal sealed class XlsbBuilder
             }
             w.Record(506, []);
         }
+        if (TableStyles.Count > 0)
+        {
+            w.Record(508, [.. U32((uint)TableStyles.Count), .. NullString(), .. NullString()]); // BrtBeginTableStyles
+            foreach (var (name, styleParts) in TableStyles)
+            {
+                w.Record(510, [.. U16(0x04), .. U32((uint)styleParts.Length), .. WideString(name)]); // BrtBeginTableStyle: fIsTable
+                foreach (var (type, dxf) in styleParts)
+                    w.Record(512, [.. U32((uint)TseType(type)), .. U32(1), .. U32((uint)dxf)]); // BrtTableStyleElement
+                w.Record(511, []);
+            }
+            w.Record(509, []);
+        }
         w.Record(279, []);
         return w.ToArray();
     }
+
+    private static int TseType(string type) => Array.IndexOf(
+        ["wholeTable", "headerRow", "totalRow", "firstColumn", "lastColumn", "firstRowStripe", "secondRowStripe", "firstColumnStripe", "secondColumnStripe",
+            "firstHeaderCell", "lastHeaderCell", "firstTotalCell", "lastTotalCell"], type);
 
     private static byte[] Xf(int parent, (int Format, int Font, int Fill, int Border, int Rotation, int Indent, int Horizontal, int Vertical, bool Wrap, bool Shrink) xf)
     {
@@ -272,8 +299,16 @@ internal sealed class XlsbBuilder
         for (var i = 0; i < Sheets.Count; i++)
         {
             parts[$"xl/{Sheets[i].Folder}/sheet{i + 1}.xml"] = Utf8(OpcWriter.Declaration + Sheets[i].Xml());
-            if (Sheets[i].Relationships.Count > 0)
-                parts[$"xl/{Sheets[i].Folder}/_rels/sheet{i + 1}.xml.rels"] = Utf8(OpcWriter.Declaration + OpcWriter.Relationships(Sheets[i].Relationships));
+            var relationships = Sheets[i].Relationships.Concat(Sheets[i].PartRelationships(i + 1, "xml")).ToList();
+            if (relationships.Count > 0)
+                parts[$"xl/{Sheets[i].Folder}/_rels/sheet{i + 1}.xml.rels"] = Utf8(OpcWriter.Declaration + OpcWriter.Relationships(relationships));
+            if (Sheets[i].Notes.Count > 0)
+            {
+                parts[$"xl/comments{i + 1}.xml"] = Utf8(OpcWriter.Declaration + Sheets[i].NotesXml());
+                parts[$"xl/drawings/vmlDrawing{i + 1}.vml"] = Utf8(Sheets[i].NotesVml());
+            }
+            for (var k = 0; k < Sheets[i].Tables.Count; k++)
+                parts[$"xl/tables/table{i + 1}_{k + 1}.xml"] = Utf8(OpcWriter.Declaration + Sheets[i].TableXml(i + 1, k));
         }
         return Save(path, parts);
     }
@@ -338,6 +373,18 @@ internal sealed class XlsbBuilder
                 sb.Append("</dxf>");
             }
             sb.Append("</dxfs>");
+        }
+        if (TableStyles.Count > 0)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $"<tableStyles count=\"{TableStyles.Count}\">");
+            foreach (var (name, styleParts) in TableStyles)
+            {
+                sb.Append(CultureInfo.InvariantCulture, $"<tableStyle name=\"{OpcWriter.Escape(name)}\" pivot=\"0\" count=\"{styleParts.Length}\">");
+                foreach (var (type, dxf) in styleParts)
+                    sb.Append(CultureInfo.InvariantCulture, $"<tableStyleElement type=\"{type}\" dxfId=\"{dxf}\"/>");
+                sb.Append("</tableStyle>");
+            }
+            sb.Append("</tableStyles>");
         }
         return sb.ToString();
     }
@@ -541,6 +588,98 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
 
     public List<(string Id, string Type, string Target)> Relationships { get; } = [];
 
+    /// <summary>Notes on cells: row, column, author, text, shown on the sheet (their box in the VML: Excel's default place).</summary>
+    public List<(int Row, int Column, string Author, string Text, bool Shown)> Notes { get; } = [];
+
+    /// <summary>How the notes print: 0 not, 1 as displayed, 2 at the end (needs <see cref="PageSetup"/>).</summary>
+    public int NotesPrint { get; set; }
+
+    /// <summary>Tables: range, style name, first column, row stripes, a total row.</summary>
+    public List<((int Top, int Left, int Bottom, int Right) Range, string Style, bool FirstColumn, bool RowStripes, bool Totals)> Tables { get; } = [];
+
+    /// <summary>The relationships of the sheet's notes, their VML and its tables.</summary>
+    public IEnumerable<(string Id, string Type, string Target)> PartRelationships(int sheet, string extension)
+    {
+        if (Notes.Count > 0)
+        {
+            yield return ("rIdNotes", "comments", $"../comments{sheet}.{extension}");
+            yield return ("rIdVml", "vmlDrawing", $"../drawings/vmlDrawing{sheet}.vml");
+        }
+        for (var k = 0; k < Tables.Count; k++)
+            yield return ($"rIdTable{k + 1}", "table", $"../tables/table{sheet}_{k + 1}.{extension}");
+    }
+
+    private static string NoteText((int Row, int Column, string Author, string Text, bool Shown) note) => $"{note.Author}:\n{note.Text}";
+
+    /// <summary>The comments part ([MS-XLSB] 2.1.7.8): authors, then each note's cell and plain text.</summary>
+    public byte[] NotesBin()
+    {
+        var w = new RecordWriter();
+        var authors = Notes.Select(n => n.Author).Distinct().ToList();
+        w.Record(628, []); // BrtBeginComments
+        w.Record(630, []); // BrtBeginCommentAuthors
+        foreach (var author in authors)
+            w.Record(632, XlsbBuilder.WideString(author));
+        w.Record(631, []);
+        w.Record(633, []); // BrtBeginCommentList
+        foreach (var note in Notes)
+        {
+            w.Record(635, [.. XlsbBuilder.U32((uint)authors.IndexOf(note.Author)), .. XlsbBuilder.U32((uint)note.Row), .. XlsbBuilder.U32((uint)note.Row),
+                .. XlsbBuilder.U32((uint)note.Column), .. XlsbBuilder.U32((uint)note.Column), .. new byte[16]]);
+            w.Record(637, [1, .. XlsbBuilder.WideString(NoteText(note)), .. XlsbBuilder.U32(0)]); // RichStr without runs
+            w.Record(636, []);
+        }
+        w.Record(634, []);
+        w.Record(629, []);
+        return w.ToArray();
+    }
+
+    public string NotesXml()
+    {
+        var authors = Notes.Select(n => n.Author).Distinct().ToList();
+        return "<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><authors>" +
+               string.Concat(authors.Select(a => $"<author>{OpcWriter.Escape(a)}</author>")) + "</authors><commentList>" +
+               string.Concat(Notes.Select(n => $"<comment ref=\"{XlsbBuilder.Column(n.Column)}{n.Row + 1}\" authorId=\"{authors.IndexOf(n.Author)}\">" +
+                   $"<text><t xml:space=\"preserve\">{OpcWriter.Escape(NoteText(n))}</t></text></comment>")) +
+               "</commentList></comments>";
+    }
+
+    /// <summary>The legacy VML drawing with a note shape per note, in Excel's default place beside its cell.</summary>
+    public string NotesVml() =>
+        "<xml xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:x=\"urn:schemas-microsoft-com:office:excel\">" +
+        string.Concat(Notes.Select((n, i) =>
+            $"<v:shape id=\"_x0000_s{1025 + i}\" type=\"#_x0000_t202\" style=\"position:absolute;width:108pt;height:59.25pt;z-index:{i + 1};visibility:{(n.Shown ? "visible" : "hidden")}\" fillcolor=\"#ffffe1\" o:insetmode=\"auto\">" +
+            "<v:textbox/><x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/>" +
+            $"<x:Anchor>{n.Column + 1}, 15, {Math.Max(0, n.Row - 1)}, 10, {n.Column + 3}, 15, {n.Row + 3}, 16</x:Anchor><x:AutoFill>False</x:AutoFill>" +
+            $"<x:Row>{n.Row}</x:Row><x:Column>{n.Column}</x:Column>{(n.Shown ? "<x:Visible/>" : "")}</x:ClientData></v:shape>")) +
+        "</xml>";
+
+    /// <summary>A table part ([MS-XLSB] 2.1.7.51): BrtBeginList, BrtTableStyleClient, BrtEndList.</summary>
+    public byte[] TableBin(int k)
+    {
+        var ((top, left, bottom, right), style, firstColumn, rowStripes, totals) = Tables[k];
+        var w = new RecordWriter();
+        w.Record(343, [.. XlsbBuilder.U32((uint)top), .. XlsbBuilder.U32((uint)bottom), .. XlsbBuilder.U32((uint)left), .. XlsbBuilder.U32((uint)right),
+            .. XlsbBuilder.U32(0), .. XlsbBuilder.U32((uint)k + 1), .. XlsbBuilder.U32(1), .. XlsbBuilder.U32(totals ? 1u : 0u), .. XlsbBuilder.U32(0),
+            .. Enumerable.Repeat(XlsbBuilder.U32(0xFFFFFFFF), 6).SelectMany(b => b), .. XlsbBuilder.U32(0),
+            .. XlsbBuilder.WideString($"Table{k + 1}"), .. XlsbBuilder.WideString($"Table{k + 1}"), .. XlsbBuilder.NullString(), .. XlsbBuilder.NullString(),
+            .. XlsbBuilder.NullString(), .. XlsbBuilder.NullString()]); // BrtBeginList
+        w.Record(513, [.. XlsbBuilder.U16((ushort)((firstColumn ? 0x01 : 0) | (rowStripes ? 0x04 : 0))), .. XlsbBuilder.WideString(style)]); // BrtTableStyleClient
+        w.Record(344, []);
+        return w.ToArray();
+    }
+
+    public string TableXml(int sheet, int k)
+    {
+        var ((top, left, bottom, right), style, firstColumn, rowStripes, totals) = Tables[k];
+        var id = sheet * 100 + k + 1;
+        return $"<table xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" id=\"{id}\" name=\"Table{id}\" displayName=\"Table{id}\" " +
+               $"ref=\"{XlsbBuilder.Column(left)}{top + 1}:{XlsbBuilder.Column(right)}{bottom + 1}\"{(totals ? " totalsRowCount=\"1\"" : "")}>" +
+               $"<tableColumns count=\"{right - left + 1}\">" + string.Concat(Enumerable.Range(1, right - left + 1).Select(c => $"<tableColumn id=\"{c}\" name=\"Column{c}\"/>")) +
+               $"</tableColumns><tableStyleInfo name=\"{OpcWriter.Escape(style)}\" showFirstColumn=\"{(firstColumn ? 1 : 0)}\" showLastColumn=\"0\" " +
+               $"showRowStripes=\"{(rowStripes ? 1 : 0)}\" showColumnStripes=\"0\"/></table>";
+    }
+
     /// <summary>Records written into the sheet data after the cells (for hostile tests).</summary>
     public List<byte[]> ExtraRecords { get; } = [];
 
@@ -694,7 +833,8 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
             w.Record(476, [.. m.SelectMany(x => XlsbBuilder.F64(x))]);
         if (PageSetup is { } p)
         {
-            var flags = (ushort)((p.OverThenDown ? 0x01 : 0) | (p.Landscape ? 0x02 : 0) | (p.FirstPage is not null ? 0x80 : 0));
+            var flags = (ushort)((p.OverThenDown ? 0x01 : 0) | (p.Landscape ? 0x02 : 0) | (p.FirstPage is not null ? 0x80 : 0)
+                                 | (NotesPrint > 0 ? 0x20 : 0) | (NotesPrint == 2 ? 0x100 : 0));
             w.Record(478, [.. XlsbBuilder.U32((uint)p.Paper), .. XlsbBuilder.U32((uint)p.Scale), .. XlsbBuilder.U32(600), .. XlsbBuilder.U32(600), .. XlsbBuilder.U32(1),
                 .. XlsbBuilder.U32((uint)(p.FirstPage ?? 1)), .. XlsbBuilder.U32((uint)p.Wide), .. XlsbBuilder.U32((uint)p.Tall), .. XlsbBuilder.U16(flags), .. XlsbBuilder.NullString()]);
         }
@@ -709,6 +849,15 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
         Breaks(w, 394, 395, _columnBreaks, 1048575);
         if (DrawingId is not null)
             w.Record(550, XlsbBuilder.WideString(DrawingId));
+        if (Notes.Count > 0)
+            w.Record(551, XlsbBuilder.WideString("rIdVml")); // BrtLegacyDrawing
+        if (Tables.Count > 0)
+        {
+            w.Record(660, XlsbBuilder.U32((uint)Tables.Count)); // BrtBeginListParts
+            for (var k = 0; k < Tables.Count; k++)
+                w.Record(661, XlsbBuilder.WideString($"rIdTable{k + 1}"));
+            w.Record(662, []);
+        }
         w.Record(130, []); // BrtEndSheet
         return w.ToArray();
     }
@@ -817,7 +966,8 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
         if (PageSetup is { } p)
             sb.Append(CultureInfo.InvariantCulture,
                 $"<pageSetup paperSize=\"{p.Paper}\" scale=\"{p.Scale}\" fitToWidth=\"{p.Wide}\" fitToHeight=\"{p.Tall}\" orientation=\"{(p.Landscape ? "landscape" : "portrait")}\"" +
-                $"{(p.OverThenDown ? " pageOrder=\"overThenDown\"" : "")}{(p.FirstPage is { } first ? $" firstPageNumber=\"{first}\" useFirstPageNumber=\"1\"" : "")}/>");
+                $"{(p.OverThenDown ? " pageOrder=\"overThenDown\"" : "")}{(p.FirstPage is { } first ? $" firstPageNumber=\"{first}\" useFirstPageNumber=\"1\"" : "")}" +
+                $"{NotesPrint switch { 1 => " cellComments=\"asDisplayed\"", 2 => " cellComments=\"atEnd\"", _ => "" }}/>");
         if (HeaderFooter is { } hf)
         {
             sb.Append("<headerFooter").Append(hf.DifferentFirst ? " differentFirst=\"1\"" : "").Append(" scaleWithDoc=\"1\" alignWithMargins=\"1\">");
@@ -835,6 +985,11 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
             sb.Append("<colBreaks>").Append(string.Concat(_columnBreaks.Select(b => $"<brk id=\"{b}\" max=\"1048575\" man=\"1\"/>"))).Append("</colBreaks>");
         if (DrawingId is not null)
             sb.Append($"<drawing r:id=\"{DrawingId}\"/>");
+        if (Notes.Count > 0)
+            sb.Append("<legacyDrawing r:id=\"rIdVml\"/>");
+        if (Tables.Count > 0)
+            sb.Append(CultureInfo.InvariantCulture, $"<tableParts count=\"{Tables.Count}\">")
+                .Append(string.Concat(Enumerable.Range(1, Tables.Count).Select(k => $"<tablePart r:id=\"rIdTable{k}\"/>"))).Append("</tableParts>");
         return sb.Append("</worksheet>").ToString();
     }
 

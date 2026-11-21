@@ -161,11 +161,13 @@ public sealed class SheetObjectTests(EngineFixture fx) : IClassFixture<EngineFix
         Assert.Null(Check($"<draw:frame {Box}><draw:image xlink:href=\"Pictures/x.svg\"/><draw:image xlink:href=\"Pictures/red.png\"/></draw:frame>"));
         Assert.Equal("SVG pictures", Check($"<draw:frame {Box}><draw:image xlink:href=\"Pictures/x.svg\"/></draw:frame>"));
         Assert.Equal("pictures", Check($"<draw:frame {Box}><draw:image xlink:href=\"Pictures/missing.png\"/></draw:frame>"));
-        Assert.Equal("text boxes", Check($"<draw:frame {Box}><draw:text-box><text:p>Note</text:p></draw:text-box></draw:frame>"));
-        Assert.Equal("text in shapes", Check($"<draw:custom-shape {Box}><text:p>Label</text:p><draw:enhanced-geometry draw:type=\"ellipse\"/></draw:custom-shape>"));
-        Assert.Equal("freeform shapes", Check($"<draw:polygon {Box} draw:points=\"0,0 10,0 5,10\"/>"));
+        // Text boxes, text in shapes, polygons and gradients are drawn (SheetNotesAndTablesTests); a custom shape of
+        // no known type without a path of its own is not.
+        Assert.Null(Check($"<draw:frame {Box}><draw:text-box><text:p>Note</text:p></draw:text-box></draw:frame>"));
+        Assert.Null(Check($"<draw:custom-shape {Box}><text:p>Label</text:p><draw:enhanced-geometry draw:type=\"ellipse\"/></draw:custom-shape>"));
+        Assert.Null(Check($"<draw:polygon {Box} draw:points=\"0,0 10,0 5,10\"/>"));
         Assert.Equal("freeform shapes", Check($"<draw:custom-shape {Box}><draw:enhanced-geometry draw:type=\"non-primitive\"/></draw:custom-shape>"));
-        Assert.Equal("gradient fills", Check($"<draw:rect draw:style-name=\"gr2\" {Box}/>",
+        Assert.Null(Check($"<draw:rect draw:style-name=\"gr2\" {Box}/>",
             "<style:style " + DrawNamespaces + " style:name=\"gr2\" style:family=\"graphic\"><style:graphic-properties draw:fill=\"gradient\"/></style:style>"));
         Assert.Equal("arcs", Check($"<draw:circle draw:kind=\"arc\" {Box}/>"));
         Assert.Equal("grouped charts and objects", Check($"<draw:g><draw:frame {Box}><draw:object xlink:href=\"./Object 1\"/></draw:frame></draw:g>"));
