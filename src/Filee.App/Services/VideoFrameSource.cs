@@ -16,6 +16,12 @@ public interface IVideoFrameSource
     Task<bool> WriteFrameAsync(string path, double seconds, string output, int maxHeight, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Writes the frame at <paramref name="seconds"/> as a PNG at the size the video is shown at ("Mark this frame"):
+    /// the frame <see cref="WriteFrameAsync"/> shows at that time.
+    /// </summary>
+    Task<FrameStill> WriteStillAsync(string path, double seconds, string output, CancellationToken cancellationToken);
+
+    /// <summary>
     /// The loudness of the sound from <paramref name="start"/> to <paramref name="end"/> seconds in
     /// <paramref name="count"/> steps (0 to 1); empty without sound.
     /// </summary>
@@ -42,6 +48,9 @@ public sealed class FfmpegFrameSource : IVideoFrameSource
 
     public Task<bool> WriteFrameAsync(string path, double seconds, string output, int maxHeight, CancellationToken cancellationToken) =>
         VideoFrames.WriteFrameAsync(path, seconds, output, maxHeight, cancellationToken);
+
+    public Task<FrameStill> WriteStillAsync(string path, double seconds, string output, CancellationToken cancellationToken) =>
+        VideoFrames.WriteStillAsync(path, seconds, output, cancellationToken);
 
     public Task<float[]> ReadLoudnessAsync(string path, double start, double end, int count, string workFolder, CancellationToken cancellationToken) =>
         ClipPreview.ReadLoudnessAsync(path, start, end, count, workFolder, cancellationToken);

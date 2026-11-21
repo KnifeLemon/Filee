@@ -295,4 +295,54 @@ public class ImageFormatTests(EngineFixture fx) : IClassFixture<EngineFixture>
         DdsChannelOrder.Swap(image, readsSwapped: true);
         Assert.Equal([0, 0, 255], image.GetPixels().ToByteArray(PixelMapping.RGB));
     }
+
+    /// <summary>
+    /// #1547: Magick.NET-Q8 holds 8 bits per channel, so converting a 16-bit source must write an 8-bit file rather
+    /// than a 16-bit (or 12-bit AVIF) file padded with duplicated 8-bit samples.
+    /// </summary>
+    [Theory]
+    [InlineData("tiff")]
+    [InlineData("psd")]
+    [InlineData("psb")]
+    [InlineData("ppm")]
+    [InlineData("pam")]
+    [InlineData("miff")]
+    [InlineData("jxl")]
+    [InlineData("jp2")]
+    [InlineData("avif")]
+    public async Task Sixteen_bit_source_converts_to_eight_bit_output(string format)
+    {
+        var dir = fx.NewFolder();
+        var source = Path.Combine(dir, "source16.tiff");
+        using (var img = new MagickImage(MagickColors.CornflowerBlue, 32, 24))
+        {
+            img.Depth = 16;
+            img.Write(source, MagickFormat.Tiff);
+        }
+        using (var input = new MagickImage(source))
+            Assert.Equal(16u, input.Depth);
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = format });
+
+        AssertDone(job);
+        var output = job.Outputs.Single();
+        using var result = new MagickImage(output, new MagickReadSettings { Format = ImageEncoder.ToMagickFormat(format) });
+        Assert.True(result.Depth <= 8, $"{format} wrote {result.Depth}-bit output for a 16-bit source");
+    }
+
+    /// <summary>
+    /// #1547: Depth clamping in <see cref="ImageEncoder"/> only lowers depths above 8, leaving 1-bit monochrome
+    /// sources untouched.
+    /// </summary>
+    [Fact]
+    public void ApplyOptions_keeps_sub_eight_bit_depth_and_caps_sixteen_bit_depth()
+    {
+        using var mono = new MagickImage(MagickColors.Black, 8, 8) { Depth = 1 };
+        ImageEncoder.ApplyOptions(mono, new ImageOptions(), "tiff");
+        Assert.Equal(1u, mono.Depth);
+
+        using var high = new MagickImage(MagickColors.CornflowerBlue, 8, 8) { Depth = 16 };
+        ImageEncoder.ApplyOptions(high, new ImageOptions(), "tiff");
+        Assert.Equal(8u, high.Depth);
+    }
 }

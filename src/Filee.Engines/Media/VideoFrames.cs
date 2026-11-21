@@ -23,6 +23,13 @@ public sealed record VideoSummary(double Duration, int Width, int Height, double
     public double LastFrameTime => Math.Max(0, Duration - FrameLength);
 }
 
+/// <summary>A frame written for "Mark this frame".</summary>
+/// <param name="Written">False when FFmpeg found no frame there (past the end) or failed.</param>
+/// <param name="ColorsNotConverted">
+/// An HDR frame written with its colours as decoded (FFmpeg has no zscale): it looks washed out, and Annotate says so.
+/// </param>
+public sealed record FrameStill(bool Written, bool ColorsNotConverted);
+
 /// <summary>Reads a video's length and takes pictures of single frames with Filee's FFmpeg.</summary>
 public static class VideoFrames
 {
@@ -62,8 +69,34 @@ public static class VideoFrames
         seconds = Math.Max(0, seconds);
         var seek = await KeyFrames.FindAsync(ffprobe, input, seconds, cancellationToken);
         var arguments = MediaEncoding.FrameAt(input, seconds, seek, output, maxHeight, null);
-        var result = await FfmpegRunner.RunAsync(ffmpeg, arguments, null, cancellationToken, FrameStall);
-        return result.ExitCode == 0 && File.Exists(output) && new FileInfo(output).Length > 0;
+        return Written(await FfmpegRunner.RunAsync(ffmpeg, arguments, null, cancellationToken, FrameStall), output);
+    }
+
+    /// <summary>FFmpeg ended well and wrote the picture.</summary>
+    private static bool Written(Infrastructure.ProcessResult result, string output) =>
+        result.ExitCode == 0 && File.Exists(output) && new FileInfo(output).Length > 0;
+
+    /// <summary>
+    /// Writes the frame at <paramref name="seconds"/> as a PNG at the size the video is shown at to
+    /// <paramref name="output"/> ("Mark this frame"): the frame <see cref="WriteFrameAsync"/> shows at that time. An
+    /// HDR frame gets ordinary colours where FFmpeg can convert them (as a Live Photo's).
+    /// </summary>
+    public static async Task<FrameStill> WriteStillAsync(string path, double seconds, string output, CancellationToken cancellationToken)
+    {
+        var (ffmpeg, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
+        var input = MediaInput.For(path);
+        seconds = Math.Max(0, seconds);
+        // The stream (HDR, turned, pixel shape) and where to read from, found side by side.
+        var probing = MediaInfo.ProbeAsync(ffprobe, input, cancellationToken);
+        var seeking = KeyFrames.FindAsync(ffprobe, input, seconds, cancellationToken);
+        await Task.WhenAll(probing, seeking); // both looked at, also when one fails
+        var video = probing.Result.Video ?? throw new InvalidOperationException("The file has no video stream.");
+        var seek = seeking.Result;
+        // Asking FFmpeg for its filters waits for it (the first time): off the caller's thread.
+        var toneMap = video.IsHdr && await Task.Run(() => FfmpegConverter.HasFilter(ffmpeg, "zscale"), cancellationToken);
+        var written = Written(await FfmpegRunner.RunAsync(ffmpeg, MediaEncoding.StillAt(input, seconds, seek, output, video, toneMap), null,
+            cancellationToken, FrameStall), output);
+        return new FrameStill(written, written && video.IsHdr && !toneMap);
     }
 
     /// <summary>The time of the timeline's picture <paramref name="index"/> of <paramref name="count"/>: the middle of its part.</summary>

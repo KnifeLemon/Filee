@@ -782,7 +782,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             Path.Combine(folder, EngineEnvironment.ProgramName("ffprobe.exe")));
     }
 
-    /// <summary>"9.0.2" from <c>ffmpeg -version</c>; cached per executable so re-checking the engines stays cheap.</summary>
+    /// <summary>"9.1" from <c>ffmpeg -version</c>; cached per executable so re-checking the engines stays cheap.</summary>
     /// <exception cref="InvalidOperationException">FFmpeg does not start, fails or does not answer within <paramref name="timeout"/>.</exception>
     internal static string VersionOf(string ffmpeg, TimeSpan? timeout = null) =>
         Versions.GetOrAdd($"{ffmpeg}|{File.GetLastWriteTimeUtc(ffmpeg).Ticks}", _ =>
@@ -798,7 +798,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             }
             if (result.ExitCode != 0)
                 throw new InvalidOperationException($"FFmpeg does not start (exit code {result.ExitCode}).");
-            // "ffmpeg version 9.0.2-full_build-www.gyan.dev Copyright …" → "9.0.2"
+            // "ffmpeg version 9.1-full_build-www.gyan.dev Copyright …" → "9.1"
             var firstLine = result.StandardOutput.Split('\n', 2)[0];
             var match = VersionPattern().Match(firstLine);
             return match.Success ? match.Groups[1].Value : firstLine.Trim();

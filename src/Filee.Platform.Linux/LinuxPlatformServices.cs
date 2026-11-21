@@ -14,7 +14,7 @@ public sealed class LinuxPlatformServices : IPlatformServices
 
     private static readonly HashSet<string> FileManagers = new(StringComparer.OrdinalIgnoreCase)
     {
-        "thunar", "nautilus", "org.gnome.nautilus", "nemo", "dolphin", "caja", "pcmanfm", "pcmanfm-qt", "xfdesktop",
+        "thunar", "nautilus", "org.gnome.nautilus", "nemo", "dolphin", "caja", "pcmanfm", "pcmanfm-qt", "xfdesktop", "flea", "flea-gui",
     };
 
     public static bool IsWaylandSession =>
