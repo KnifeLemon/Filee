@@ -5,9 +5,17 @@
 // fill and outline as the shape's fillcolor / strokecolor. A note without a VML shape, or VML that isn't well-formed
 // XML, is a hidden note with Excel's default box.
 //
+// Threaded comments (Excel 365: a sheet relationship ".../threadedComment" to a ThreadedComments part, the workbook's
+// ".../person" part naming their authors; read from the same XML parts in XLSX and XLSB) are read as notes too: the
+// first comment of a thread with its author, its replies (parentId) after it in their order. Excel also writes a
+// legacy copy of each thread into the comments part (a notice that the thread needs a newer Excel, then the
+// messages); the thread replaces that copy. A thread isn't shown on the sheet: Excel prints threaded comments only at
+// the end of the sheet.
+//
 // Printed (SheetPrinter, SheetPageRenderer): "as displayed" draws the shown notes' boxes over the cells with a line to
-// their cell's corner; "at end" lists every note of the printed cells after the sheet's pages, "Cell: B2" and then
-// "Comment: " and the note's text (Excel's, which begins with the author's name), in Excel's words.
+// their cell's corner; "at end" lists every note of the printed cells after the sheet's pages, "Cell: B2", then
+// "Comment: " and the note's text (Excel's begins with the author's name), then "Reply: " and each reply, in the app's
+// language (SheetWords).
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -20,6 +28,7 @@ internal static class SheetComments
 {
     private static readonly XNamespace V = "urn:schemas-microsoft-com:vml";
     private static readonly XNamespace X = "urn:schemas-microsoft-com:office:excel";
+    private static readonly XNamespace Tc = "http://schemas.microsoft.com/office/spreadsheetml/2018/threadedcomments";
 
     /// <summary>Notes of one sheet read at most (Excel's own limit is a note per cell); more are left out.</summary>
     public const int MaxComments = 65_536;
@@ -29,11 +38,6 @@ internal static class SheetComments
 
     /// <summary>Excel's note box: the colour of ToolTip backgrounds (#FFFFE1).</summary>
     public static readonly SKColor DefaultFill = new(0xFF, 0xFF, 0xE1);
-
-    /// <summary>The words of the list printed at the end, as Excel prints them.</summary>
-    public const string CellWord = "Cell:";
-
-    public const string CommentWord = "Comment:";
 
     /// <summary>
     /// The notes' shapes in the legacy VML drawing <paramref name="vmlPath"/> by cell: shown or not, and the box; an
@@ -125,6 +129,103 @@ internal static class SheetComments
         }
         var (shown, box) = vml.TryGetValue((row, column), out var note) ? note : (false, null);
         sheet.Comments.Add(new SheetComment(row, column, text) { Runs = runs, Author = author, Shown = shown, Box = box });
+    }
+
+    /// <summary>
+    /// The authors of threaded comments by person id: the workbook's persons part (".../person" relationship of
+    /// <paramref name="workbookPart"/>), displayName by id; empty without one, or when it isn't well-formed XML.
+    /// </summary>
+    public static Dictionary<string, string> Persons(OpcPackage package, string workbookPart)
+    {
+        var persons = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (package.TargetOfType(workbookPart, "/person") is not { } part)
+            return persons;
+        XDocument? list;
+        try
+        {
+            list = package.Part(part);
+        }
+        catch (InvalidDataException)
+        {
+            return persons;
+        }
+        foreach (var person in list?.Root?.Elements(Tc + "person") ?? [])
+        {
+            if (persons.Count >= MaxComments)
+                break;
+            if ((string?)person.Attribute("id") is { Length: > 0 } id && (string?)person.Attribute("displayName") is { Length: > 0 } name)
+                persons[id] = name.Length > 255 ? name[..255] : name;
+        }
+        return persons;
+    }
+
+    /// <summary>
+    /// Reads the threaded comments of sheet part <paramref name="sheetPart"/> into <paramref name="sheet"/>'s notes:
+    /// each thread replaces the note on its cell (Excel's legacy copy of it) or is added; past <see cref="MaxComments"/>
+    /// messages of a sheet the rest are left out. A part that isn't well-formed XML is skipped (the legacy copy stays).
+    /// </summary>
+    public static void Threaded(OpcPackage package, string sheetPart, Worksheet sheet, Func<IReadOnlyDictionary<string, string>> persons)
+    {
+        if (package.TargetOfType(sheetPart, "/threadedComment") is not { } part)
+            return;
+        XDocument? document;
+        try
+        {
+            document = package.Part(part);
+        }
+        catch (InvalidDataException)
+        {
+            return;
+        }
+        if (document?.Root is not { } root)
+            return;
+        var names = persons();
+        string? Author(XElement comment) => (string?)comment.Attribute("personId") is { } id && names.TryGetValue(id, out var name) ? name : null;
+        static string Text(XElement comment)
+        {
+            var text = comment.Element(Tc + "text")?.Value ?? "";
+            return text.Length > MaxCharacters ? text[..MaxCharacters] : text;
+        }
+
+        // Threads in their order, replies gathered by the id of the comment they answer.
+        var threads = new List<(string? Id, int Row, int Column, XElement First)>();
+        var replies = new Dictionary<string, List<(string? Author, string Text)>>(StringComparer.OrdinalIgnoreCase);
+        var messages = 0;
+        foreach (var comment in root.Elements(Tc + "threadedComment"))
+        {
+            if (++messages > MaxComments)
+                break;
+            if ((string?)comment.Attribute("parentId") is { Length: > 0 } parent)
+            {
+                if (!replies.TryGetValue(parent, out var answers))
+                    replies[parent] = answers = [];
+                answers.Add((Author(comment), Text(comment)));
+            }
+            else if (CellRange.TryParseCell((string?)comment.Attribute("ref") ?? "", out var row, out var column)
+                     && row is >= 0 and <= SheetPagination.MaxRow && column is >= 0 and <= SheetPagination.MaxColumn)
+                threads.Add(((string?)comment.Attribute("id"), row, column, comment));
+        }
+        if (threads.Count == 0)
+            return;
+        var at = new Dictionary<(int Row, int Column), int>();
+        for (var i = 0; i < sheet.Comments.Count; i++)
+            at.TryAdd((sheet.Comments[i].Row, sheet.Comments[i].Column), i);
+        foreach (var (id, row, column, first) in threads)
+        {
+            var note = new SheetComment(row, column, Text(first))
+            {
+                Author = Author(first),
+                Replies = id is not null && replies.TryGetValue(id, out var answers) ? answers : [],
+                Threaded = true,
+            };
+            if (at.TryGetValue((row, column), out var index))
+                sheet.Comments[index] = note;
+            else if (sheet.Comments.Count < MaxComments)
+            {
+                at[(row, column)] = sheet.Comments.Count;
+                sheet.Comments.Add(note);
+            }
+        }
     }
 
     /// <summary>

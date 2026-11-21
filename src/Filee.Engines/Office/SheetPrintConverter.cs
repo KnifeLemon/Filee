@@ -3,7 +3,7 @@
 // page logic and writes them with the PDF writer of the Filee renderer. CSV and TSV have no page setup and keep their
 // route through the HWPX writer (each sheet fitted to the page width).
 //
-// What the printer doesn't draw yet (charts, text in shapes, SmartArt, form controls, the drawings of XLS and ODS
+// What the printer doesn't draw yet (some charts, SmartArt, form controls, the drawings of XLS and ODS
 // files: SheetCapabilities) is looked for first. A workbook with any of it is handed to LibreOffice when it is
 // installed, inside this step: a planned route without this engine (ConversionEdge.Checked) would take the HWPX writer
 // and rhwp instead, which cost less than LibreOffice's fallback edge and keep less than this printer. Without

@@ -440,6 +440,12 @@ internal sealed record SheetComment(int Row, int Column, string Text)
     /// <summary>The note's author when the file keeps it apart from the text, or null.</summary>
     public string? Author { get; init; }
 
+    /// <summary>A threaded comment's replies in their order: author (null when unknown) and text.</summary>
+    public IReadOnlyList<(string? Author, string Text)> Replies { get; init; } = [];
+
+    /// <summary>The note is a threaded comment (Excel prints those only at the end of the sheet).</summary>
+    public bool Threaded { get; init; }
+
     /// <summary>The note is shown on the sheet (not only when the pointer is over its cell).</summary>
     public bool Shown { get; init; }
 

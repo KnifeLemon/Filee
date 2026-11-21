@@ -6,8 +6,9 @@
 // pictures), print areas, print titles, manual page breaks, conditional formats that colour cells, and the pictures,
 // shapes and charts of each sheet's drawing (XlsxDrawing, which names what it leaves out: 3D charts, SmartArt, ...),
 // and chart sheets (Workbook.ChartSheets: their page setup and chart, for the printer); tables with the look of their
-// table style (SheetTables: built-in styles and the workbook's own tableStyles), and the notes on cells (comments
-// parts, shown or not and their boxes from the legacy VML drawing: SheetComments) with pageSetup cellComments.
+// table style (SheetTables: built-in styles and the workbook's own tableStyles) and their own formats (the table's
+// and its columns' dxf ids), and the notes on cells (comments parts, shown or not and their boxes from the legacy VML
+// drawing, and threaded comments with their replies: SheetComments) with pageSetup cellComments.
 // The package is read within DocumentLimits; the charts' points within ChartBudget.
 
 using System.Globalization;
@@ -44,6 +45,9 @@ internal sealed class XlsxReader
 
     /// <summary>The borders between cells (vertical, horizontal) of each differential format, which table styles use.</summary>
     private readonly List<(CellBorder? Vertical, CellBorder? Horizontal)> _dxfInner = [];
+
+    /// <summary>The authors of threaded comments by person id, read when a sheet first has threaded comments.</summary>
+    private Dictionary<string, string>? _persons;
 
     /// <summary>The workbook's own table styles by name (styles.xml tableStyles).</summary>
     private readonly Dictionary<string, TableStyle> _tableStyles = new(StringComparer.Ordinal);
@@ -611,13 +615,50 @@ internal sealed class XlsxReader
                 LastColumn = Flag("showLastColumn"),
                 RowStripes = Flag("showRowStripes"),
                 ColumnStripes = Flag("showColumnStripes"),
+                Formats = TableFormats(table),
             });
         }
         SheetTables.Apply(sheet, tables, TableStyleOf, _normal, _tableBudget);
     }
 
-    /// <summary>The notes of the sheet's comments part, shown or not and their boxes from its legacy VML drawing.</summary>
+    /// <summary>
+    /// A table's own formats: the table's header / data / total row formats, their border formats, then each
+    /// column's (tableColumn headerRowDxfId / dataDxfId / totalsRowDxfId); ids past the workbook's dxfs are skipped.
+    /// </summary>
+    private List<TableFormat> TableFormats(XElement table)
+    {
+        var formats = new List<TableFormat>();
+        void Add(XElement element, string attribute, TableArea area, bool outline, int? column)
+        {
+            if (element.Attribute(attribute) is not null && Index(element, attribute) is var id && id < _dxfs.Count)
+                formats.Add(new TableFormat(area, new TableStylePart(_dxfs[id], _dxfInner[id].Vertical, _dxfInner[id].Horizontal), outline, column));
+        }
+        Add(table, "headerRowDxfId", TableArea.Header, false, null);
+        Add(table, "dataDxfId", TableArea.Data, false, null);
+        Add(table, "totalsRowDxfId", TableArea.Totals, false, null);
+        Add(table, "headerRowBorderDxfId", TableArea.Header, true, null);
+        Add(table, "tableBorderDxfId", TableArea.Data, true, null);
+        Add(table, "totalsRowBorderDxfId", TableArea.Totals, true, null);
+        var column = 0;
+        foreach (var tableColumn in table.Element(S + "tableColumns")?.Elements(S + "tableColumn").Take(SheetPagination.MaxColumn + 1) ?? [])
+        {
+            Add(tableColumn, "headerRowDxfId", TableArea.Header, false, column);
+            Add(tableColumn, "dataDxfId", TableArea.Data, false, column);
+            Add(tableColumn, "totalsRowDxfId", TableArea.Totals, false, column);
+            column++;
+        }
+        return formats;
+    }
+
+    /// <summary>The sheet's notes: its comments part's, then its threaded comments (which replace their legacy copies).</summary>
     private void Comments(XElement xml, string partPath, Worksheet sheet)
+    {
+        LegacyComments(xml, partPath, sheet);
+        SheetComments.Threaded(_package, partPath, sheet, () => _persons ??= SheetComments.Persons(_package, _package.MainPartPath ?? "xl/workbook.xml"));
+    }
+
+    /// <summary>The notes of the sheet's comments part, shown or not and their boxes from its legacy VML drawing.</summary>
+    private void LegacyComments(XElement xml, string partPath, Worksheet sheet)
     {
         if (_package.TargetOfType(partPath, "/comments") is not { } part || _package.Part(part)?.Root is not { } comments)
             return;

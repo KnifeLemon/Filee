@@ -318,10 +318,10 @@ public sealed class SheetObjectTests(EngineFixture fx) : IClassFixture<EngineFix
         var box = SKRectI.Create((int)(50.4 + 0.1 * width) + 1, (int)(54 + 0.1 * height) + 1, (int)(0.2 * width) - 2, (int)(0.2 * height) - 2);
         Assert.True(Count(page, Magenta, box) > 0.95 * box.Width * box.Height);
 
-        // A user shape with text isn't drawn whole: it is named.
+        // A user shape with text is drawn with its text.
         book.Parts["xl/drawings/drawing2.xml"] = book.Parts["xl/drawings/drawing2.xml"]
             .Replace("</cdr:spPr>", "</cdr:spPr><cdr:txBody><a:bodyPr/><a:p><a:r><a:t>Peak</a:t></a:r></a:p></cdr:txBody>", StringComparison.Ordinal);
-        Assert.Equal("text in shapes", SheetCapabilities.FirstUnsupported(Save(book), "xlsx"));
+        Assert.Null(SheetCapabilities.FirstUnsupported(Save(book), "xlsx"));
     }
 
     [Fact]

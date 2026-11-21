@@ -12,10 +12,10 @@
 // too) and chart sheets (their page setup and the chart of their drawing, with what is placed over it).
 // Conditional formats are read as the XLSX reader reads them (BrtBeginConditionalFormatting, BrtBeginCFRule with its
 // differential format from styles.bin's BrtDXF, colour scales' BrtCFVO and BrtColor). Tables are read as the XLSX
-// reader reads them (BrtBeginListParts / BrtListPart → the table part's BrtBeginList and BrtTableStyleClient; the
-// workbook's own styles from BrtBeginTableStyle / BrtTableStyleElement), and the notes on cells (the comments part's
-// BrtCommentAuthor, BrtBeginComment and BrtCommentText; shown or not from the BrtLegacyDrawing VML) with BrtPageSetup's
-// fNotes / fEndNotes. Left out, as by the XLSX reader: data validation, rules with formulas of their own, data bars and
+// reader reads them (BrtBeginListParts / BrtListPart → the table part's BrtBeginList with its formats, BrtBeginListCol
+// and BrtTableStyleClient; the workbook's own styles from BrtBeginTableStyle / BrtTableStyleElement), and the notes on
+// cells (the comments part's BrtCommentAuthor, BrtBeginComment and BrtCommentText; shown or not from the
+// BrtLegacyDrawing VML; threaded comments from the same XML parts as in XLSX) with BrtPageSetup's fNotes / fEndNotes. Left out, as by the XLSX reader: data validation, rules with formulas of their own, data bars and
 // icon sets.
 //
 // The input is untrusted: the package is read within DocumentLimits (part and total sizes counted while unpacking,
@@ -86,6 +86,7 @@ internal sealed class XlsbReader
     private const int DXF = 507;
     private const int ColorRecord = 564;
     private const int BeginList = 343;
+    private const int BeginListCol = 347;
     private const int TableStyleRecord = 512;
     private const int BeginTableStyle = 510;
     private const int EndTableStyle = 511;
@@ -140,6 +141,9 @@ internal sealed class XlsbReader
 
     /// <summary>The borders between cells (vertical, horizontal) of each BrtDXF, which table styles use.</summary>
     private readonly List<(CellBorder? Vertical, CellBorder? Horizontal)> _dxfInner = [];
+
+    /// <summary>The authors of threaded comments by person id, read when a sheet first has threaded comments.</summary>
+    private Dictionary<string, string>? _persons;
 
     /// <summary>The workbook's own table styles by name (BrtBeginTableStyle).</summary>
     private readonly Dictionary<string, TableStyle> _tableStyles = new(StringComparer.Ordinal);
@@ -977,14 +981,16 @@ internal sealed class XlsbReader
         SheetTables.Apply(sheet, tables, TableStyleOf, _normal, _tableBudget);
         if (_package.TargetOfType(partPath, "/comments") is { } commentsPart)
             ReadComments(commentsPart, sheet, SheetComments.Vml(_package, _package.Target(partPath, notes)));
+        SheetComments.Threaded(_package, partPath, sheet, () => _persons ??= SheetComments.Persons(_package, _package.MainPartPath ?? "xl/workbook.bin"));
         if (_package.Target(partPath, drawing) is { } drawingPart)
             sheet.Drawings.AddRange(XlsxDrawing.Read(_package, drawingPart, _theme?.Root, read: true, _charts).Drawings);
         return sheet;
     }
 
     /// <summary>
-    /// A table part ([MS-XLSB] 2.1.7.51): BrtBeginList's range and header / total rows, BrtTableStyleClient's style and
-    /// options; null without a range.
+    /// A table part ([MS-XLSB] 2.1.7.51): BrtBeginList's range, header / total rows and formats (nDxfHeader, nDxfData,
+    /// nDxfAgg and the border ones), each BrtBeginListCol's formats (nDxfHdr, nDxfInsertRow taken as its data rows',
+    /// nDxfAgg), BrtTableStyleClient's style and options; null without a range.
     /// </summary>
     private SheetTable? ReadTable(string partPath)
     {
@@ -992,6 +998,13 @@ internal sealed class XlsbReader
         if (stream is null)
             return null;
         SheetTable? table = null;
+        var formats = new List<TableFormat>();
+        var column = 0;
+        void Format(uint dxf, TableArea area, bool outline, int? at)
+        {
+            if (dxf < _dxfs.Count)
+                formats.Add(new TableFormat(area, new TableStylePart(_dxfs[(int)dxf], _dxfInner[(int)dxf].Vertical, _dxfInner[(int)dxf].Horizontal), outline, at));
+        }
         var records = new Records(stream, partPath, this);
         while (records.Next())
         {
@@ -1005,6 +1018,18 @@ internal sealed class XlsbReader
                     var totals = list.U32();
                     if (top > bottom || left > right || bottom > SheetPagination.MaxRow || right > SheetPagination.MaxColumn)
                         return null;
+                    if (list.Left >= 28)
+                    {
+                        list.Skip(4); // fShownTotalRow, fSingleCell, ...
+                        var (headerDxf, dataDxf, totalsDxf) = (list.U32(), list.U32(), list.U32());
+                        var (borderDxf, headerBorderDxf, totalsBorderDxf) = (list.U32(), list.U32(), list.U32());
+                        Format(headerDxf, TableArea.Header, false, null);
+                        Format(dataDxf, TableArea.Data, false, null);
+                        Format(totalsDxf, TableArea.Totals, false, null);
+                        Format(headerBorderDxf, TableArea.Header, true, null);
+                        Format(borderDxf, TableArea.Data, true, null);
+                        Format(totalsBorderDxf, TableArea.Totals, true, null);
+                    }
                     table = new SheetTable(new CellRange((int)top, (int)left, (int)bottom, (int)right), null)
                     {
                         HeaderRows = header == 0 ? 0 : 1,
@@ -1012,21 +1037,33 @@ internal sealed class XlsbReader
                         RowStripes = false,
                     };
                     break;
+                case BeginListCol when table is not null && column <= SheetPagination.MaxColumn:
+                    var listColumn = records.Fields();
+                    if (listColumn.Left >= 20)
+                    {
+                        listColumn.Skip(8); // idField, ilta
+                        var (headerDxf, insertDxf, totalsDxf) = (listColumn.U32(), listColumn.U32(), listColumn.U32());
+                        Format(headerDxf, TableArea.Header, false, column);
+                        Format(insertDxf, TableArea.Data, false, column);
+                        Format(totalsDxf, TableArea.Totals, false, column);
+                    }
+                    column++;
+                    break;
                 case TableStyleClient when table is not null:
                     var client = records.Fields();
                     var flags = client.U16();
-                    table = table with
+                    return table with
                     {
                         StyleName = client.String(nullable: true),
                         FirstColumn = (flags & 0x01) != 0,
                         LastColumn = (flags & 0x02) != 0,
                         RowStripes = (flags & 0x04) != 0,
                         ColumnStripes = (flags & 0x08) != 0,
+                        Formats = formats,
                     };
-                    return table;
             }
         }
-        return table;
+        return table is null ? null : table with { Formats = formats };
     }
 
     /// <summary>The notes of a comments part ([MS-XLSB] 2.1.7.8): authors, then each note's cell and rich text.</summary>
