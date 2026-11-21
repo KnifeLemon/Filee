@@ -2028,6 +2028,14 @@ File contents are streamed, progress reports bytes written, and cancellation is 
 streaming. A previous destination inside the source is excluded. A new image replaces its destination only after
 all expected bytes have been written; failures and cancellation preserve any previous image.
 
+**BIN/CUE → ISO** (`Archives/CueSheet.cs`, #1680): drop a `.cue` sheet with its `.bin` beside it (resolved relative to
+the cue's folder, falling back to its file name in that folder when the cue keeps an old absolute path). Filee accepts a
+single data track in `MODE1/2048`, `MODE1/2352`, `MODE2/2352` or `MODE2/2336`, starting at `INDEX 01`, and streams the
+2048-byte user data of each sector verbatim into the ISO without re-mastering. Multi-track discs (such as PlayStation 1
+images with audio tracks), non-data tracks (`AUDIO`, `CDG`), Mode 2 Form 2 sectors (video or XA audio, submode bit
+`0x20`), missing or truncated `.bin` files and tracks whose sector 16 lacks the ISO 9660 `CD001` signature are refused.
+Extracting or repacking a `.cue` chains `cue → iso → …` through the existing ISO reader. CHD and CSO are not supported.
+
 ## LibreOffice
 
 - Each parallel worker gets its own profile under `%APPDATA%\Filee\libreoffice-profiles` (LibreOffice silently

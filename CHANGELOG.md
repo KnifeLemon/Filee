@@ -24,6 +24,8 @@ ko: GitHub에서 업데이트 파일을 받지 못하면 Filee 다운로드 서�
 en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't answer
 ko: 비스듬히 스캔하거나 찍은 페이지로 만든 검색 가능한 PDF도 TXT로 변환하면 텍스트가 나와요
 en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT with their text
+ko: 데이터 트랙 하나짜리 BIN/CUE 디스크 이미지를 ISO로 변환하고 압축을 풀 수 있어요
+en: Single-track BIN/CUE disc images convert to ISO (and extract or repack from there)
 -->
 
 - **Updating from Settings → About works when GitHub's downloads don't answer** (#1593). The in-app update on Windows
@@ -38,6 +40,11 @@ en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT 
   PDF readers select its text: Tesseract writes each line along its slanted baseline, and Filee only read level text.
   The recognized text now comes out line by line, also in Markdown without pictures and in a DOCX or HWPX made with
   "Recognize text". PDFs with visible text read as before.
+
+- **BIN/CUE disc images to ISO** (#1680). Drop a `.cue` sheet with its `.bin` beside it to copy a single data track
+  (`MODE1/2048`, `MODE1/2352`, `MODE2/2352` or `MODE2/2336`) straight into an ISO 9660 image without re-mastering, or
+  extract and repack its files through ISO. Multi-track discs (such as PlayStation 1 images with audio tracks), Mode 2
+  Form 2 sectors and non-ISO payloads are refused with a clear reason. CHD and CSO are not supported.
 
 ## 2.5.0
 
