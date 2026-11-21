@@ -11,7 +11,8 @@
 //   style that rhwp measures (MeasuredLatin); without one it gets the language font as before.
 // - CFF2: variable fonts with CFF2 outlines (Source Han Serif VF, "思源宋体 VF") fail rhwp's font subsetter and the
 //   page came out blank (issue #61); they are not usable and are always swapped.
-// - The lookup through Skia's font manager, cached per name for the HWPX copies rhwp gets.
+// - The lookup through Skia's font manager (SystemFonts.MatchFamily: on macOS only for installed families), cached per
+//   name for the HWPX copies rhwp gets.
 
 using System.Collections.Concurrent;
 using Filee.Engines.Typesetting;
@@ -53,7 +54,7 @@ internal static class RhwpFonts
     {
         foreach (var (candidate, _) in FontSubstitution.Names(name))
         {
-            var typeface = SKFontManager.Default.MatchFamily(candidate);
+            var typeface = SystemFonts.MatchFamily(candidate);
             // Windows matches localized names ("思源宋体 VF") and returns nothing for unknown ones; fontconfig always
             // returns some font, so elsewhere only a font with the requested name counts.
             if (typeface is null)

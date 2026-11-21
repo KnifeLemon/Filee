@@ -4,6 +4,7 @@
 // Runs after whichever engine made the PDF (JobQueue), once for a merged PDF.
 
 using Filee.Core.Presets;
+using Filee.Engines.Typesetting;
 using Filee.Engines.Vector;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
@@ -140,14 +141,15 @@ internal static class PdfFinishing
 
     /// <summary>
     /// The text's glyph outlines at <paramref name="size"/> points, baseline at y = 0 (y down). The font is one the PC
-    /// has for the text's first non-Latin character, else Arial or the system's default face.
+    /// has for the text's first non-Latin character, else Arial or the system's default face. The typeface isn't disposed:
+    /// SkiaSharp hands out one wrapper per native typeface, which other code may still draw with (SystemFonts).
     /// </summary>
     internal static SKPath Outline(GlyphOutlines glyphs, string text, float size, bool bold)
     {
         var style = bold ? SKFontStyle.Bold : SKFontStyle.Normal;
         var other = text.EnumerateRunes().FirstOrDefault(r => r.Value > 0x24F);
-        using var typeface = (other.Value > 0 ? SKFontManager.Default.MatchCharacter(null, style, null, other.Value) : null)
-                             ?? SKFontManager.Default.MatchFamily("Arial", style)
+        var typeface = (other.Value > 0 ? SKFontManager.Default.MatchCharacter(null, style, null, other.Value) : null)
+                             ?? SystemFonts.MatchFamily("Arial", style)
                              ?? SKTypeface.CreateDefault();
         using var font = new SKFont(typeface, size);
         var path = new SKPath { FillType = SKPathFillType.Winding };

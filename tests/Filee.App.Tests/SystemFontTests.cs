@@ -124,6 +124,20 @@ public class SystemFontTests
     public void The_chain_names_the_system_fonts_by_the_collections_key() =>
         Assert.Equal(SystemUiFontCollection.KeyName, SoftPalette.SystemKey);
 
+    /// <summary>
+    /// On macOS a family CoreText doesn't list isn't asked for (one macOS offers for download can hold up every font
+    /// request); Windows and Linux ask for every name. The alias is taken off either way.
+    /// </summary>
+    [Fact]
+    public void The_system_collection_asks_only_for_installed_families_on_macos()
+    {
+        Assert.Equal(!OperatingSystem.IsMacOS(), SystemUiFontCollection.Installed("Filee No Such Family|asked", out var name));
+        Assert.Equal("Filee No Such Family", name);
+        Assert.True(SystemUiFontCollection.Installed(".AppleSystemUIFont", out _));
+        if (OperatingSystem.IsMacOS())
+            Assert.True(SystemUiFontCollection.Installed("Helvetica", out _));
+    }
+
     /// <summary>Avalonia's own system collection answers Han in Yu Gothic UI whatever family is asked (#1065).</summary>
     [AvaloniaFact]
     public void A_letter_is_only_matched_in_the_system_family_asked_for()

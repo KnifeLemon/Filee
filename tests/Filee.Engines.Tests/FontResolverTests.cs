@@ -254,6 +254,82 @@ public class FontResolverTests
         Assert.False(SystemFonts.Asks("Ari\0\0"));
         Assert.Empty(SystemFonts.Instance.Family("Filee No Such Family"));
         Assert.NotEmpty(SystemFonts.Instance.Family("Helvetica"));
+        // The other lookups by a document's name go through the same check.
+        Assert.Null(SystemFonts.MatchFamily("Filee No Such Family"));
+        Assert.Null(SystemFonts.MatchFamily("NanumGothic"));
+        Assert.NotNull(SystemFonts.MatchFamily("Helvetica"));
+        Assert.True(SystemFonts.Asks(".AppleSystemUIFont"));
+        Assert.Null(Filee.Engines.Hwp.RhwpFonts.Find("Filee No Such Family"));
+        Assert.NotEqual("Filee No Such Family", Filee.Engines.Cad.CadFonts.Resolve("Filee No Such Family", false, false).FamilyName);
+    }
+
+    [Fact]
+    public void A_family_counts_as_installed_when_listed_or_one_of_apples_hidden_faces()
+    {
+        HashSet<string> installed = new(StringComparer.OrdinalIgnoreCase) { "Helvetica", "Apple SD Gothic Neo" };
+
+        Assert.True(SystemFonts.Listed(installed, "helvetica"));
+        Assert.True(SystemFonts.Listed(installed, ".AppleSystemUIFont"));
+        Assert.True(SystemFonts.Listed(installed, ".SF NS"));
+        Assert.False(SystemFonts.Listed(installed, "NanumGothic"));
+        Assert.False(SystemFonts.Listed(installed, "."));
+        Assert.False(SystemFonts.Listed(installed, ".Ari\0"));
+        Assert.False(SystemFonts.Listed(installed, ".나눔"));
+        // Windows and Linux ask for every name.
+        if (!OperatingSystem.IsMacOS())
+            Assert.True(SystemFonts.Asks("Filee No Such Family"));
+    }
+
+    [Fact]
+    public void The_platforms_fallback_is_asked_once_per_face_and_not_for_blocks_that_have_nothing()
+    {
+        var han = Face("Fallback Han", Han);
+        var asked = 0;
+        var fallbacks = new CharacterFallbacks((codePoint, _, _) =>
+        {
+            asked++;
+            return han.Has(codePoint) ? han : null;
+        });
+
+        // Every character of the face: one question, the face answers the rest.
+        foreach (var c in Han)
+            Assert.Same(han, fallbacks.Find(c, FontStyle.Regular, "zh-Hans"));
+        Assert.Equal(1, asked);
+
+        // 20,000 private-use characters nothing has: a few questions per block of 128, none the second time.
+        asked = 0;
+        for (var codePoint = 0xF0000; codePoint < 0xF0000 + 20_000; codePoint++)
+            Assert.Null(fallbacks.Find(codePoint, FontStyle.Regular, "zh-Hans"));
+        var blocks = (20_000 + 127) / 128 + 1;
+        Assert.InRange(asked, 1, blocks * CharacterFallbacks.MissesPerBlock);
+        asked = 0;
+        for (var codePoint = 0xF0000; codePoint < 0xF0000 + 20_000; codePoint++)
+            fallbacks.Find(codePoint, FontStyle.Regular, "zh-Hans");
+        Assert.Equal(0, asked);
+
+        // Unassigned code points, lone surrogates and controls are never asked about.
+        foreach (var codePoint in new[] { 0x0378, 0xD800, 0x0007, 0x110000, -1 })
+            Assert.Null(fallbacks.Find(codePoint, FontStyle.Regular, null));
+        Assert.Equal(0, asked);
+
+        // Another style or language is its own question; a block with a hit stays open.
+        Assert.Same(han, fallbacks.Find('改', FontStyle.From(true, false), "zh-Hans"));
+        Assert.Equal(1, asked);
+        fallbacks.Clear();
+        Assert.Same(han, fallbacks.Find('改', FontStyle.Regular, "zh-Hans"));
+        Assert.Equal(2, asked);
+    }
+
+    [Fact]
+    public void The_installed_fonts_are_asked_a_bounded_number_of_times_for_characters_none_has()
+    {
+        // Plane 15 is private use: no font on a test machine is expected to have it.
+        SystemFonts.CharacterQuestions = 0;
+        var found = 0;
+        for (var codePoint = 0xF4000; codePoint < 0xF4000 + 10_000; codePoint++)
+            found += SystemFonts.Instance.ForCharacter(codePoint, FontStyle.Regular, "ko") is null ? 0 : 1;
+        Assert.SkipWhen(found > 0, "An installed font has plane 15 characters.");
+        Assert.InRange(SystemFonts.CharacterQuestions, 0, ((10_000 / 128) + 2) * CharacterFallbacks.MissesPerBlock);
     }
 
     private static List<(string Text, string Family)> Describe(string text, List<FontRun> runs) =>

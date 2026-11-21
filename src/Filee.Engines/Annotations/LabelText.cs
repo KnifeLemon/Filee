@@ -7,6 +7,7 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
+using Filee.Engines.Typesetting;
 using Filee.Engines.Vector;
 using SkiaSharp;
 
@@ -500,7 +501,7 @@ internal static class LabelText
             return system;
         foreach (var family in (string[])["DejaVu Sans", "Noto Sans", "Liberation Sans", "Ubuntu", "Cantarell", "Arial"])
         {
-            if (SKFontManager.Default.MatchFamily(family, SKFontStyle.Bold) is { } face)
+            if (SystemFonts.MatchFamily(family, SKFontStyle.Bold) is { } face)
                 return face;
         }
         return system;

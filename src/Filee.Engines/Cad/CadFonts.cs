@@ -3,6 +3,7 @@
 // Characters the chosen typeface lacks (Hangul, Hanzi ...) fall back per character to a CJK font.
 
 using System.Collections.Concurrent;
+using Filee.Engines.Typesetting;
 using SkiaSharp;
 
 namespace Filee.Engines.Cad;
@@ -183,8 +184,9 @@ internal static class CadFonts
     private static SKTypeface? Find(string family, bool bold, bool italic) =>
         Families.GetOrAdd((family, bold, italic), key =>
         {
-            // MatchFamily returns null for unknown families (FromFamilyName would silently substitute).
-            var face = SKFontManager.Default.MatchFamily(key.Family, Style(key.Bold, key.Italic));
+            // MatchFamily returns null for unknown families (FromFamilyName would silently substitute); on macOS it asks
+            // only for installed ones, as a drawing's style names any family.
+            var face = SystemFonts.MatchFamily(key.Family, Style(key.Bold, key.Italic));
             return face is not null && face.GlyphCount > 0 ? face : null;
         });
 

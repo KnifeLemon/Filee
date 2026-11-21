@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Filee.Engines.Cad;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Typesetting;
 using Markdig;
 using Markdig.Extensions.Tables;
 using Markdig.Extensions.TaskLists;
@@ -30,7 +31,7 @@ internal sealed partial class CanvasText
         ["Consolas", "Menlo", "JetBrains Mono", "DejaVu Sans Mono", "Liberation Mono", "Courier New"];
 
     private static readonly Lazy<SKTypeface> Monospace = new(() =>
-        MonospaceFamilies.Select(f => SKFontManager.Default.MatchFamily(f)).FirstOrDefault(t => t is { GlyphCount: > 0 })
+        MonospaceFamilies.Select(f => SystemFonts.MatchFamily(f)).FirstOrDefault(t => t is { GlyphCount: > 0 })
         ?? CadFonts.Resolve(null, false, false));
 
     /// <summary>Deepest nesting of lists and quotes laid out; deeper blocks are left out.</summary>
