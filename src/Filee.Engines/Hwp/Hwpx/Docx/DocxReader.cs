@@ -83,6 +83,9 @@ internal sealed partial class DocxReader
     /// <summary>Lines in table cells snap to the grid too (settings w:compat/w:adjustLineHeightInTable).</summary>
     private bool _gridInTables;
 
+    /// <summary>The font table's other names (HDocument.FontAlternates), for fonts that stand for a symbol font.</summary>
+    private IReadOnlyDictionary<string, string> _fontAlternates = new Dictionary<string, string>();
+
     /// <summary>Reading the header for the first page only, which becomes a text box (see <see cref="HSection.FirstPageHeader"/>).</summary>
     private bool _inFirstPageHeader;
 
@@ -262,6 +265,7 @@ internal sealed partial class DocxReader
         var document = new HDocument { Title = Title(), LeftOut = _leftOut, WordLineHeights = true };
         Kinsoku(settings, document);
         FontAlternates(RelatedPart(main, "/fontTable")?.Xml.Root, document);
+        _fontAlternates = document.FontAlternates;
         // Word's default tab stops: every half inch unless the settings say otherwise.
         document.DefaultTabStop = HwpxUnits.FromTwips(Twips(settings?.Element(W + "defaultTabStop"), "val") is > 0 and var interval ? interval : 720);
         var body = main.Xml.Root?.Element(W + "body") ?? throw new InvalidDataException("word/document.xml has no body.");
@@ -547,6 +551,19 @@ internal sealed partial class DocxReader
         foreach (var (language, (start, end)) in rules)
             document.Kinsoku.Add(new HKinsoku(language.Length > 0 ? language : null, start, end));
     }
+
+    /// <summary>
+    /// A symbol font's name for <paramref name="font"/>: the font, or its other name in the font table when that is a
+    /// symbol font and the font isn't ("Wingdings-Regular" with altName Wingdings, as PDF converters write them).
+    /// </summary>
+    private string? SymbolFont(string? font) =>
+        font is not null && !SymbolFonts.IsSymbolFont(font) && _fontAlternates.TryGetValue(font.Trim(), out var alternate) && SymbolFonts.IsSymbolFont(alternate)
+            ? alternate
+            : font;
+
+    /// <summary>The run's format with its font's symbol-font other name in its place (see <see cref="SymbolFont"/>).</summary>
+    private HCharFormat SymbolAlternate(HCharFormat format) =>
+        SymbolFont(format.Font) is { } font && !ReferenceEquals(font, format.Font) ? format with { Font = font } : format;
 
     /// <summary>The font table's other names (w:altName), which Word draws with when a font is not installed.</summary>
     private static void FontAlternates(XElement? fonts, HDocument document)
@@ -1186,7 +1203,7 @@ internal sealed partial class DocxReader
                 if (ShowsText())
                 {
                     // Text typed in Wingdings & co. ("þ" for ☑) becomes the Unicode characters it shows.
-                    foreach (var text in SymbolFonts.Runs(child.Value, format))
+                    foreach (var text in SymbolFonts.Runs(child.Value, SymbolAlternate(format)))
                         builder.Add(text);
                 }
                 else if (NumberResult() is { } number && (number.Shown?.Length ?? 0) < 32)
@@ -1226,11 +1243,13 @@ internal sealed partial class DocxReader
                 break;
             case "sym":
                 // Insert → Symbol: a code of the font in w:font (☑ is F052 in Wingdings 2), in Unicode where known.
-                if (ShowsText() && int.TryParse(Attr(child, "char"), System.Globalization.NumberStyles.HexNumber, null, out var code))
+                // The font stays with the run, for the layout to draw the code in where it is installed.
+                if (ShowsText() && int.TryParse(Attr(child, "char"), System.Globalization.NumberStyles.HexNumber, null, out var code) && code is > 0 and <= 0xFFFF)
                 {
-                    builder.Add(SymbolFonts.Map(Attr(child, "font"), code) is { } symbol
-                        ? new HText(symbol, SymbolFonts.WithoutSymbolFont(format))
-                        : new HText(BulletText(((char)code).ToString()), format));
+                    var symbolFont = SymbolFont(Attr(child, "font"));
+                    var codeText = ((char)code).ToString();
+                    var text = SymbolFonts.Map(symbolFont, code) ?? BulletText(codeText);
+                    builder.Add(new HText(text, symbolFont is { Length: > 0 } && text.Length == 1 ? SymbolFonts.Drawn(format, symbolFont, codeText) : format));
                 }
                 break;
             case "fldChar":
@@ -1428,7 +1447,25 @@ internal sealed partial class DocxReader
         return note;
     }
 
-    /// <summary>Counts text a section or cell writes top to bottom (w:textDirection), which is set horizontally.</summary>
+    /// <summary>How a cell's text runs (w:textDirection; the strict names too): top to bottom East Asian style, or bottom to top.</summary>
+    private static HTextFlow TextFlow(XElement? properties) => Val(properties?.Element(W + "textDirection")) switch
+    {
+        "tbRl" or "tbRlV" or "tbLrV" or "tb" or "tbV" => HTextFlow.Vertical,
+        "btLr" => HTextFlow.Up,
+        _ => HTextFlow.Horizontal,
+    };
+
+    /// <summary>How a text box's text runs (wps:bodyPr vert), as DrawingML names it.</summary>
+    internal static HTextFlow DrawingTextFlow(string? vert) => vert switch
+    {
+        "vert" => HTextFlow.Down,
+        "vert270" => HTextFlow.Up,
+        "eaVert" or "mongolianVert" => HTextFlow.Vertical,
+        "wordArtVert" or "wordArtVertRtl" => HTextFlow.Stacked,
+        _ => HTextFlow.Horizontal,
+    };
+
+    /// <summary>Counts text a section writes top to bottom (w:textDirection), which is set horizontally.</summary>
     private void CountVerticalText(XElement? properties)
     {
         if (Val(properties?.Element(W + "textDirection")) is "tbRl" or "btLr" or "tbRlV" or "tbLrV")

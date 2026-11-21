@@ -539,4 +539,33 @@ public class MarkdownTests(EngineFixture fx) : IClassFixture<EngineFixture>
             paragraph.Format = new HParaFormat(Align: HAlign.Left, RightToLeft: true);
         Assert.Contains("|---:|---:|\n", MarkdownWriter.Write(document, _ => null));
     }
+
+    [Fact]
+    public void A_heading_that_is_all_bold_is_written_without_bold_markup()
+    {
+        // Word headings are often bold runs in a bold style: "# Memo", as Pandoc writes it, not "# **Memo**".
+        HParagraph Heading(params HInline[] inlines)
+        {
+            var heading = new HParagraph { HeadingLevel = 1 };
+            heading.Inlines.AddRange(inlines);
+            return heading;
+        }
+        var bold = new HCharFormat(Bold: true);
+        var link = new HLink("https://example.com/");
+        link.Content.Add(new HText("link", bold));
+        var section = new HSection();
+        section.Blocks.Add(Heading(new HText("Memo", bold)));
+        section.Blocks.Add(Heading(new HText("Bold ", bold), link, new HText(" ", default)));
+        section.Blocks.Add(Heading(new HText("Part ", bold), new HText("plain", default)));
+        section.Blocks.Add(new HParagraph { Inlines = { new HText("Body", bold) } });
+        var document = new HDocument();
+        document.Sections.Add(section);
+
+        var lines = MarkdownWriter.Write(document, _ => null).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        Assert.Equal("# Memo", lines[0]);
+        Assert.Equal("# Bold [link](<https://example.com/>)", lines[1].TrimEnd());
+        Assert.Equal("# **Part** plain", lines[2]);
+        Assert.Equal("**Body**", lines[3]);
+    }
 }

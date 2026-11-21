@@ -1,7 +1,9 @@
 // DOCX graphic objects: DrawingML pictures, text boxes (wps), groups and drawing canvases, plus legacy VML
 // (w:pict / w:object) used by older documents and as the fallback of mc:AlternateContent. Charts are read from their
 // chart part (ChartReader) and become a picture of the chart for the writers that carries the chart for the renderer;
-// those ChartReader doesn't draw are left out and counted.
+// those ChartReader doesn't draw are left out and counted. SmartArt is read from the drawing Word saves with it (the
+// diagram's dsp:drawing part, through the slide reader) and becomes a picture of it for the writers that carries the
+// drawing for the renderer; SmartArt without one is left out and counted.
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -29,6 +31,9 @@ internal sealed partial class DocxReader
     private XElement? _theme;
 
     private Slides.DrawingColors? _chartColors;
+
+    /// <summary>The slide reader that reads the SmartArt drawings, over this package; made for the first diagram.</summary>
+    private Slides.PptxSlideReader? _diagrams;
     private readonly ChartBudget _charts = new();
 
     private IEnumerable<HInline> Drawing(XElement drawing)
@@ -92,8 +97,8 @@ internal sealed partial class DocxReader
                 foreach (var inline in Group(obj, width, height, anchor, groupTransform))
                     yield return inline;
             }
-            // Charts ChartReader doesn't draw and SmartArt have no picture in the document part to fall back on: the
-            // renderer says so.
+            // Charts ChartReader doesn't draw and SmartArt without the drawing Word saves with it have no picture in the
+            // document part to fall back on: the renderer says so.
             else if (obj.Name == Chart + "chart")
             {
                 if (ChartPicture(obj, width, height, anchor) is { } chart)
@@ -103,7 +108,10 @@ internal sealed partial class DocxReader
             }
             else if (obj.Name == Dgm + "relIds")
             {
-                _leftOut.Add(HLeftOutKind.SmartArt);
+                if (SmartArtPicture(obj, width, height, anchor) is { } smartArt)
+                    yield return smartArt;
+                else
+                    _leftOut.Add(HLeftOutKind.SmartArt);
             }
         }
     }
@@ -174,6 +182,40 @@ internal sealed partial class DocxReader
         File.WriteAllBytes(path, png);
         _media[$"chart|{path}"] = path;
         return new HImage(path) { Width = width, Height = height, Anchor = anchor, Chart = drawn };
+    }
+
+    /// <summary>
+    /// SmartArt as the drawing Word saved with it (the data part's dsp:dataModelExt names it): a picture of it for the
+    /// writers that carries the drawing for the renderer; null when there is none.
+    /// </summary>
+    private HImage? SmartArtPicture(XElement relIds, int width, int height, HAnchor? anchor)
+    {
+        if (relIds.Parent is not { } graphicData || width <= 0 || height <= 0)
+            return null;
+        Slides.SlideDeck? deck;
+        try
+        {
+            _diagrams ??= Slides.PptxSlideReader.ForDiagrams(Slides.SlidePackage.Borrow(_package));
+            // Points are HWPUNIT / 100.
+            deck = _diagrams.Diagram(_part.Path, graphicData, width / 100f, height / 100f);
+        }
+        catch (InvalidDataException)
+        {
+            return null;
+        }
+        if (deck is null)
+            return null;
+        // 150 dpi, at most 4000 pixels a side (as a chart's picture).
+        var dpi = Math.Min(150f, 4000 * 72f / Math.Max(deck.Width, deck.Height));
+        using var bitmap = Slides.SlideOutput.ToBitmaps(deck, dpi).FirstOrDefault();
+        using var png = bitmap?.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+        if (png is null)
+            return null;
+        Directory.CreateDirectory(_mediaFolder);
+        var path = Path.Combine(_mediaFolder, $"docx-smartart-{_media.Count + 1}.png");
+        File.WriteAllBytes(path, png.ToArray());
+        _media[$"smartart|{path}"] = path;
+        return new HImage(path) { Width = width, Height = height, Anchor = anchor, Drawing = deck };
     }
 
     private HImage? Picture(XElement pic, int width, int height, HAnchor? anchor)
@@ -306,9 +348,8 @@ internal sealed partial class DocxReader
         var warp = Attr(bodyPr?.Element(A + "prstTxWarp"), "prst");
         if (warp is not null || Attr(bodyPr, "fromWordArt") is "1" or "true")
             box.TextArt = new HTextArt(warp is not (null or "textNoShape"), TextOpacity(content));
-        // Text written top to bottom (turned, or East Asian vertical) is set horizontally in the box: the note says so.
-        if (Attr(bodyPr, "vert") is "vert" or "vert270" or "eaVert" or "wordArtVert" or "wordArtVertRtl" or "mongolianVert")
-            _leftOut.Add(HLeftOutKind.VerticalText);
+        // Text written top to bottom (turned, or East Asian vertical) is turned into the box.
+        box.TextFlow = DrawingTextFlow(Attr(bodyPr, "vert"));
         ReadTextBoxContent(content, box.Blocks);
         return box;
     }
@@ -646,15 +687,18 @@ internal sealed partial class DocxReader
             }
             else if (shape.Element(V + "textbox") is { } textbox && textbox.Element(W + "txbxContent") is { } content)
             {
-                // A VML text box written top to bottom (layout-flow: vertical or vertical-ideographic) is set horizontally.
-                if (VmlStyle((string?)textbox.Attribute("style")).GetValueOrDefault("layout-flow") is { } flow && flow.StartsWith("vertical", StringComparison.Ordinal))
-                    _leftOut.Add(HLeftOutKind.VerticalText);
+                // A VML text box written top to bottom (layout-flow: vertical or vertical-ideographic; bottom to top with
+                // mso-layout-flow-alt: bottom-to-top) is turned into the box.
+                var textStyle = VmlStyle((string?)textbox.Attribute("style"));
+                var vertical = textStyle.GetValueOrDefault("layout-flow") is { } flow && flow.StartsWith("vertical", StringComparison.Ordinal);
                 var box = new TextBoxBuilder(width, height, anchor)
                 {
                     Fill = VmlFill(shape),
                     Line = VmlLine(shape),
                 }.Build();
                 (box.Transform, box.ZOrder, box.OuterMargin) = (transform, zOrder, distance);
+                if (vertical)
+                    box.TextFlow = textStyle.GetValueOrDefault("mso-layout-flow-alt") == "bottom-to-top" ? HTextFlow.Up : HTextFlow.Vertical;
                 ReadTextBoxContent(content, box.Blocks);
                 yield return box;
             }

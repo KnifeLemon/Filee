@@ -1797,6 +1797,8 @@
   "sheet_studio.apply_fix": "套用建議版面配置",
   "sheet_studio.add_region": "+ 新增另一個範圍",
   "sheet_studio.region_name": "{0} · 範圍 {1}",
+  "sheet_studio.drawn_by_builtin": "預覽由 Filee 內建的試算表列印繪製",
+  "sheet_studio.drawn_by_libreoffice": "預覽由 LibreOffice 繪製",
 
   "whats_new.title": "Filee {0} 新功能",
   "whats_new.previous": "上一頁",

@@ -357,6 +357,75 @@ public class DocxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Paragraph_borders_and_shading_survive_docx_to_model_to_docx()
+    {
+        // Two paragraphs in one box (Word joins paragraphs with the same borders) with a line between them, the
+        // distances to the text and a background; then a paragraph with only a bottom rule.
+        const string Box = "<w:pBdr><w:top w:val=\"single\" w:sz=\"12\" w:space=\"4\" w:color=\"C00000\"/><w:left w:val=\"double\" w:sz=\"6\" w:space=\"4\" w:color=\"auto\"/>" +
+                           "<w:bottom w:val=\"single\" w:sz=\"12\" w:space=\"4\" w:color=\"C00000\"/><w:right w:val=\"dashed\" w:sz=\"8\" w:space=\"4\" w:color=\"0070C0\"/>" +
+                           "<w:between w:val=\"dotted\" w:sz=\"4\" w:space=\"1\" w:color=\"00B050\"/></w:pBdr><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"FFF2CC\"/>";
+        var source = new DocxBuilder();
+        source.Paragraph(P(R("상자 첫 문단"), Box))
+            .Paragraph(P(R("상자 둘째 문단"), Box))
+            .Paragraph(P(R("밑줄만"), "<w:pBdr><w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"1\" w:color=\"auto\"/></w:pBdr>"));
+        var sourcePath = source.Save(Path.Combine(fx.NewFolder(), "borders.docx"));
+
+        var written = Path.Combine(Path.GetDirectoryName(sourcePath)!, "written.docx");
+        DocxWriter.Write(ReadBack(sourcePath), written);
+        ValidPackage(written);
+
+        var paragraphs = Body(written).Descendants(W + "p").ToList();
+        foreach (var boxed in paragraphs.Take(2))
+        {
+            var pPr = boxed.Element(W + "pPr")!;
+            var borders = pPr.Element(W + "pBdr")!;
+            Assert.Equal(["top", "left", "bottom", "right", "between"], borders.Elements().Select(e => e.Name.LocalName));
+            Assert.Equal("C00000", (string?)borders.Element(W + "top")!.Attribute(W + "color"));
+            Assert.Equal("12", (string?)borders.Element(W + "top")!.Attribute(W + "sz"));
+            Assert.Equal("4", (string?)borders.Element(W + "top")!.Attribute(W + "space"));
+            Assert.Equal("double", (string?)borders.Element(W + "left")!.Attribute(W + "val"));
+            Assert.Equal("dashed", (string?)borders.Element(W + "right")!.Attribute(W + "val"));
+            Assert.Equal("dotted", (string?)borders.Element(W + "between")!.Attribute(W + "val"));
+            Assert.Equal("FFF2CC", (string?)pPr.Element(W + "shd")!.Attribute(W + "fill"));
+        }
+        var rule = paragraphs[2].Element(W + "pPr")!.Element(W + "pBdr")!;
+        Assert.Equal("bottom", Assert.Single(rule.Elements()).Name.LocalName);
+        Assert.Null(paragraphs[2].Element(W + "pPr")!.Element(W + "shd"));
+
+        // Read back: the same box again.
+        var again = Paragraphs(ReadBack(written).Sections[0].Blocks).ToList();
+        var box = again[0].Format.Layout!.Border!;
+        Assert.Equal("#FFF2CC", box.Fill);
+        Assert.Equal(HBorderStyle.Dot, box.Between!.Value.Style);
+        Assert.Equal(400, box.Offsets.Top);
+        Assert.Equal(HBorderStyle.Solid, again[2].Format.Borders!.Value.Bottom.Style);
+    }
+
+    [Fact]
+    public void A_quote_bar_and_borders_of_the_model_are_written_without_a_source_box()
+    {
+        // A Markdown block quote (bar on the left) and a paragraph with borders but no source box (RTF, ODT, slides ...).
+        var quote = new HParagraph { Format = new HParaFormat(LeftBar: new HBorder(HBorderStyle.Solid, 0.5, "#808080")) };
+        quote.Inlines.Add(new HText("인용", default));
+        var boxed = new HParagraph { Format = new HParaFormat(Borders: HBorders.Empty with { Top = HBorder.Thin, Bottom = HBorder.Thin }) };
+        boxed.Inlines.Add(new HText("위아래 선", default));
+        var section = new HSection();
+        section.Blocks.Add(quote);
+        section.Blocks.Add(boxed);
+        var document = new HDocument();
+        document.Sections.Add(section);
+
+        var written = Path.Combine(fx.NewFolder(), "model.docx");
+        DocxWriter.Write(document, written);
+        ValidPackage(written);
+
+        var paragraphs = Body(written).Descendants(W + "p").ToList();
+        var bar = Assert.Single(paragraphs[0].Element(W + "pPr")!.Element(W + "pBdr")!.Elements());
+        Assert.Equal(("left", "6", "808080"), (bar.Name.LocalName, (string?)bar.Attribute(W + "space"), (string?)bar.Attribute(W + "color")));
+        Assert.Equal(["top", "bottom"], paragraphs[1].Element(W + "pPr")!.Element(W + "pBdr")!.Elements().Select(e => e.Name.LocalName));
+    }
+
+    [Fact]
     public void A_write_that_fails_leaves_no_temporary_file()
     {
         // A picture another program holds open when the package is written: the write fails, and leaves nothing.

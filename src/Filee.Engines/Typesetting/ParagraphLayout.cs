@@ -119,6 +119,23 @@ internal sealed partial class ParagraphLayouter
     private IReadOnlyDictionary<string, string>? _alternates;
 
     /// <summary>
+    /// The fonts the style template fills in where a document of another format names none (StyleResolver.Faces): a
+    /// font resolved for one of these names counts as a substitute (ResolvedFont.Substitute), so a Korean or Japanese
+    /// template font doesn't turn the text's backslashes into ₩ or ¥.
+    /// </summary>
+    public IReadOnlySet<string>? TemplateFaces
+    {
+        get => _templateFaces;
+        set
+        {
+            _templateFaces = value;
+            _resolved.Clear();
+        }
+    }
+
+    private IReadOnlySet<string>? _templateFaces;
+
+    /// <summary>
     /// Word's distance between default tab stops (HDocument.DefaultTabStop), in HWPUNIT, measured from the margin;
     /// null: 한글's 40 pt from the left indent.
     /// </summary>
@@ -291,6 +308,8 @@ internal sealed partial class ParagraphLayouter
             format = format with { Left = (format.Left ?? 0) + startInset, Right = (format.Right ?? 0) + endInset };
         }
         var items = Itemize(source, language, BidiAlgorithm.Levels(text, rightToLeft, source.RightToLeftRuns()));
+        // The room a display equation breaks into lines to fit (ParagraphLayout.Equations.cs).
+        _equationRoom = width - ((format.Left ?? 0) + (format.Right ?? 0)) / 100f;
         var (advances, starts) = Measure(source, items);
 
         var breaking = format.Layout?.Breaking;
@@ -508,7 +527,11 @@ internal sealed partial class ParagraphLayouter
 
     /// <summary>Text shaped in one go, or a tab or line break.</summary>
     /// <param name="Level">Bidirectional embedding level: odd is right to left.</param>
-    private sealed record Item(int Start, int Length, ItemKind Kind, TextStyle Style, ResolvedFont Font, UnicodeScript Script, int Level, string? Link)
+    /// <param name="Drawn">
+    /// The paragraph's text with symbol-font codes (ParagraphText.Drawn) when the item draws them in their symbol font.
+    /// </param>
+    private sealed record Item(int Start, int Length, ItemKind Kind, TextStyle Style, ResolvedFont Font, UnicodeScript Script, int Level, string? Link,
+        string? Drawn = null)
     {
         public int End => Start + Length;
 
@@ -524,6 +547,12 @@ internal sealed partial class ParagraphLayouter
             foreach (var (start, length, style) in source.Styles(span, language))
             {
                 var fontLanguage = style.Language.Length > 0 ? style.Language : language;
+                // Codes of a symbol font that is installed and has them: drawn in it, as Word draws them.
+                if (style.Symbol is { } symbol && source.Drawn is { } drawn && SymbolFace(symbol, style.Style, drawn, start, length) is { } symbolFont)
+                {
+                    Split(text, new FontRun(start, length, symbolFont), style, levels, span.Link, items, drawn);
+                    continue;
+                }
                 var primary = Font(style.Family, style.Style, fontLanguage);
                 foreach (var run in _fonts.Fallback(text, start, length, primary, style.Style, fontLanguage))
                     Split(text, run, style, levels, span.Link, items);
@@ -532,8 +561,21 @@ internal sealed partial class ParagraphLayouter
         return items;
     }
 
+    /// <summary>The installed font <paramref name="family"/> when it has a glyph for each of the codes; else null.</summary>
+    private ResolvedFont? SymbolFace(string family, FontStyle style, string drawn, int start, int length)
+    {
+        if (_fonts.Find(family, style) is not { Face.Cff2: false } font)
+            return null;
+        for (var i = start; i < start + length; i++)
+        {
+            if (!char.IsSurrogate(drawn[i]) && !font.Face.Has(drawn[i]))
+                return null;
+        }
+        return font;
+    }
+
     /// <summary>Splits a font run into items of one kind, level and script.</summary>
-    private static void Split(string text, FontRun run, TextStyle style, int[] levels, string? link, List<Item> items)
+    private static void Split(string text, FontRun run, TextStyle style, int[] levels, string? link, List<Item> items, string? drawn = null)
     {
         var scripts = new UnicodeScript[run.Length];
         var current = UnicodeScript.Common;
@@ -557,7 +599,7 @@ internal sealed partial class ParagraphLayouter
                            levels[i + 1] != levels[i] || scripts[i + 1 - run.Start] != scripts[i - run.Start] && !char.IsLowSurrogate(text[i + 1]);
             if (!boundary)
                 continue;
-            items.Add(new Item(itemStart, i + 1 - itemStart, kind, style, run.Font, scripts[itemStart - run.Start], levels[itemStart], link));
+            items.Add(new Item(itemStart, i + 1 - itemStart, kind, style, run.Font, scripts[itemStart - run.Start], levels[itemStart], link, drawn));
             itemStart = i + 1;
         }
     }
@@ -578,6 +620,8 @@ internal sealed partial class ParagraphLayouter
             _resolved[key] = font = _fonts.Resolve(Alternate(family, style), style, language)
                                     ?? _fonts.Resolve(null, style, language)
                                     ?? throw new InvalidOperationException("No installed font can draw the document's text.");
+            if (family is not null && _templateFaces is { } template && template.Contains(family.Trim()))
+                _resolved[key] = font = font with { Substitute = true };
         }
         return font;
     }
@@ -601,7 +645,7 @@ internal sealed partial class ParagraphLayouter
     private static readonly FontFeature[] NoKerning = [new("kern", 0)];
 
     private ShapedRun Shape(string text, Item item, int start, int length) =>
-        _shaper.Shape(item.Font.Font, text, start, length, new ShapeOptions(
+        _shaper.Shape(item.Font.Font, item.Drawn ?? text, start, length, new ShapeOptions(
             item.RightToLeft ? TextDirection.RightToLeft : TextDirection.LeftToRight,
             item.Script == UnicodeScript.Common ? null : item.Script,
             item.Style.Language.Length > 0 ? item.Style.Language : null,
@@ -1251,7 +1295,8 @@ internal sealed partial class ParagraphLayouter
     private (float Height, float Baseline, float TextHeight) LineHeight(List<Part> parts, Settings settings, TextStyle mark, ParagraphText source)
     {
         var rule = settings.LineHeight;
-        var fromFont = settings.FontLineHeight || rule.Rule == HLineHeightRule.Multiple;
+        // Word's "at least" is at least the font's line, as its single spacing measures it, not the font size.
+        var fromFont = settings.FontLineHeight || rule.Rule == HLineHeightRule.Multiple || WordLineHeights && rule.Rule == HLineHeightRule.AtLeast;
         float objectAscent = 0, objectDescent = 0, textAscent = 0, textDescent = 0;
         // Other formats' multiple spaces text and equations, not pictures: their extent apart.
         float mathAscent = 0, mathDescent = 0;
@@ -1277,9 +1322,9 @@ internal sealed partial class ParagraphLayouter
             if (part.Item.Kind != ItemKind.Text)
                 continue;
             // 한글's line height follows the font size alone; raised or lowered text takes room only with font metrics.
-            var (a, d) = Extent(part.Item.Style, Measured(part.Item, settings.Language), fromFont);
+            var (a, d) = SymbolExtent(part.Item, fromFont) ?? Extent(part.Item.Style, Measured(part.Item, settings.Language), fromFont);
             var rise = fromFont ? part.Item.Style.Rise : 0;
-            if (Symbols(part, source.Text))
+            if (part.Item.Style.Symbol is null && Symbols(part, source.Text))
             {
                 symbolAscent = Math.Max(symbolAscent, a + rise);
                 symbolDescent = Math.Max(symbolDescent, d - rise);

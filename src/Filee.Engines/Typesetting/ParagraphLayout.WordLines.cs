@@ -1,6 +1,11 @@
 // The height of Word's lines (HDocument.WordLineHeights: models read from DOCX and DOC).
 //
-// - A font's line is its Win ascent and descent (OS/2 usWinAscent, usWinDescent), as before.
+// - A font's line is its Win ascent and descent (OS/2 usWinAscent, usWinDescent) and Windows' external leading above
+//   them (FontMetrics.ExternalLeading: the hhea line gap less what the Win metrics reach beyond the hhea ascender and
+//   descender), as GDI gives Word a font's height: 12 pt Times New Roman or Arial is 13.8 pt (2355 of 2048 units), not
+//   13.3; Calibri, Cambria and Segoe UI have none (their Win metrics already reach past the hhea line gap). The
+//   typographic metrics and the USE_TYPO_METRICS bit play no part. Not rounded (13.799 pt; whether Word rounds to
+//   twips or pixels isn't measured).
 // - An East Asian font (one for a Chinese, Japanese or Korean code page, OS/2 ulCodePageRange1) gets 30% more, half
 //   above the text and half below: a single line of 12 pt SimSun is 15.6 pt in Word, not 12, its text 1.8 pt below the
 //   line's top (#356: 23.4 pt at 1.5 lines). Microsoft YaHei and Malgun Gothic, whose Win metrics are 1.33 em, get
@@ -10,13 +15,20 @@
 // - A math font (Cambria Math, with a MATH table) has Win metrics that make room for big operators (5.6 em); Word gives
 //   its text, and a paragraph mark in it, the typographic height (1.17 em).
 // - A character another font draws because the named one lacks it counts with the named font's height, as Word
-//   measures the fonts the runs name. Symbols (☑ read from Wingdings 2's F052, drawn in another font) count only on a
-//   line without other text.
+//   measures the fonts the runs name. Characters read from a symbol font (w:sym, text in Wingdings: TextStyle.Symbol)
+//   count with the symbol font: drawn in it where it is installed, else with its Win metrics (SymbolFontHeights), so a
+//   20 pt ☑ from Wingdings 2's F052 is 21.1 pt high on every system. Other symbols (☑ typed as Unicode, drawn in a
+//   fallback font that is often much taller) count only on a line without other text.
+// - "At least" (w:lineRule="atLeast") is at least the line single spacing gives the fonts, not the font size: "at least
+//   12 pt" keeps 12 pt Times New Roman's 13.8 pt. Extra room goes below the text, as a multiple's does.
 // - Word's document grid (HLineHeight.GridPitch, set for the body's paragraphs that snap to it): a line's text takes
 //   whole grid lines, the text in their middle; the multiple is of that height.
 //
-// Choices (not measured in Word): the grid's extra room goes half above and half below like the East Asian leading;
-// lines in headers, footers, notes and text boxes don't snap (DocxReader.SnapToGrid).
+// Choices (not measured in Word: no reporter file has a grid that adds room and Word's PDF): the grid's extra room goes
+// half above and half below, like the East Asian leading. The grid sets the lines per page of the section's text
+// (ECMA-376 17.6.5 docGrid, 17.3.1.32 snapToGrid), so only the body's lines snap: headers, footers, notes and text
+// boxes, which those lines don't count, keep their fonts' lines (DocxReader.SnapToGrid). Table cells snap only with
+// w:adjustLineHeightInTable.
 
 using System.Globalization;
 using Filee.Engines.Hwp.Hwpx;
@@ -82,11 +94,24 @@ internal sealed partial class ParagraphLayouter
         ["맑은 고딕"] = 1.33f,
     };
 
+    /// <summary>
+    /// Win ascent and descent (em) of the symbol fonts, for when another font draws their characters: Word measures the
+    /// symbol font.
+    /// </summary>
+    private static readonly Dictionary<string, (float Ascent, float Descent)> SymbolFontHeights = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Wingdings"] = (1841 / 2048f, 432 / 2048f),
+        ["Wingdings 2"] = (1727 / 2048f, 432 / 2048f),
+        ["Wingdings 3"] = (1900 / 2048f, 432 / 2048f),
+        ["Webdings"] = (1638 / 2048f, 410 / 2048f),
+        ["Symbol"] = (2059 / 2048f, 450 / 2048f),
+    };
+
     /// <summary>Lines take the height Word gives their fonts (HDocument.WordLineHeights).</summary>
     public bool WordLineHeights { get; set; }
 
     /// <summary>Ascent and descent of a style's line in Word (see the notes at the top).</summary>
-    private static (float Ascent, float Descent) WordExtent(TextStyle style, ResolvedFont font, FontMetrics metrics)
+    internal static (float Ascent, float Descent) WordExtent(TextStyle style, ResolvedFont font, FontMetrics metrics)
     {
         var scale = style.Size / metrics.UnitsPerEm;
         var (ascent, descent) = metrics.Math
@@ -102,9 +127,29 @@ internal sealed partial class ParagraphLayouter
             (ascent, descent, eastAsian) = (ascent * fit, descent * fit, true);
         }
         if (!eastAsian)
-            return (ascent, descent);
+        {
+            // Windows' external leading, above the text; East Asian fonts have their own leading instead (SimSun's 0.14 em
+            // line gap doesn't add to its 1.3 em line), and a math font's typographic height holds its line gap.
+            return metrics.Math || metrics.WinAscent <= 0 && metrics.WinDescent <= 0
+                ? (ascent, descent)
+                : (ascent + metrics.ExternalLeading * scale, descent);
+        }
         var leading = (ascent + descent) * EastAsianLeading / 2;
         return (ascent + leading, descent + leading);
+    }
+
+    /// <summary>
+    /// A Word item of symbol-font characters (TextStyle.Symbol): the symbol font's line where it draws them, else the
+    /// symbol font's known Win metrics; null for other items and formats.
+    /// </summary>
+    private (float Ascent, float Descent)? SymbolExtent(Item item, bool fromFont)
+    {
+        if (!WordLineHeights || !fromFont || item.Style.Symbol is not { } symbol)
+            return null;
+        // Measured as the symbol font itself, not as the text font it stands in for (宋体's East Asian height).
+        if (item.Drawn is not null)
+            return Extent(item.Style with { Family = symbol }, item.Font, fromFont);
+        return SymbolFontHeights.TryGetValue(symbol, out var em) ? (em.Ascent * item.Style.Size, em.Descent * item.Style.Size) : null;
     }
 
     /// <summary>

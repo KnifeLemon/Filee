@@ -591,6 +591,9 @@ internal sealed class HCell
 
     /// <summary>The cell's preferred width (Word w:tcW); null when it gives none. Only the layout engine uses it.</summary>
     public HPreferredWidth? Width { get; set; }
+
+    /// <summary>How the cell's text runs (Word w:textDirection, 한글 textDirection). Read for layout only.</summary>
+    public HTextFlow TextFlow { get; set; }
     public List<HBlock> Blocks { get; } = [];
 }
 
@@ -854,6 +857,13 @@ internal sealed class HImage(string path) : HObject
     /// null for a picture. Read for layout only.
     /// </summary>
     public Charts.Chart? Chart { get; set; }
+
+    /// <summary>
+    /// SmartArt (DOCX dgm:relIds) as the drawing Word saved with it, one slide the object's size that the renderer draws
+    /// with the slide renderer instead of the picture, which is a picture of it for the writers; null for a picture.
+    /// Read for layout only.
+    /// </summary>
+    public Slides.SlideDeck? Drawing { get; set; }
 }
 
 /// <summary>A box with its own paragraphs (DOCX text box, 한글 글상자).</summary>
@@ -883,6 +893,9 @@ internal sealed class HTextBox : HObject
 
     public HInsets Padding { get; set; } = new(283, 283, 283, 283);
     public HVerticalAlign VerticalAlign { get; set; }
+
+    /// <summary>How the box's text runs (wps:bodyPr vert, VML layout-flow, 한글 textDirection). Read for layout only.</summary>
+    public HTextFlow TextFlow { get; set; }
     public List<HBlock> Blocks { get; } = [];
 
     /// <summary>The box is WordArt (a Word watermark ...): how its text is drawn; null = as paragraphs. Read for layout only.</summary>
@@ -996,8 +1009,9 @@ internal readonly record struct HLineSpacing(HLineSpacingKind Kind, int Value);
 /// </param>
 /// <param name="LineSpacing">Line spacing in 한글's terms, as the writers write it (Word spacing converted).</param>
 /// <param name="Layout">
-/// Rendering detail the writers do not write (the source's own line rule, borders, line breaking ...). It takes no
-/// part in equality: formats that differ only here are written alike. <see cref="SameLayout"/> compares it too.
+/// Rendering detail the writers do not write (the source's own line rule, borders, line breaking ...), but for the
+/// paragraph's box, which the DOCX and RTF writers write. It takes no part in equality: formats that differ only here
+/// are written alike in HWPX. <see cref="SameLayout"/> compares it too.
 /// </param>
 /// <param name="LeftBar">A line down the paragraph's left side (a block quote), joined up with the next paragraph's.</param>
 /// <param name="Fill">Background colour behind the paragraph ("#RRGGBB").</param>

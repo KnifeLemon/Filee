@@ -1797,6 +1797,8 @@
   "sheet_studio.apply_fix": "Aplicar disposição sugerida",
   "sheet_studio.add_region": "+ Adicionar outra região",
   "sheet_studio.region_name": "{0} · região {1}",
+  "sheet_studio.drawn_by_builtin": "Pré-visualização desenhada pela impressão de folhas de cálculo integrada do Filee",
+  "sheet_studio.drawn_by_libreoffice": "Pré-visualização desenhada pelo LibreOffice",
 
   "whats_new.title": "Novidades do Filee {0}",
   "whats_new.previous": "Anterior",

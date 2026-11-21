@@ -1,7 +1,8 @@
 // Equations in a paragraph's lines, and Word's equation numbers on Filee's own route.
 //
 // - An equation is laid out once (MathLayout) at its size, its own or else its text's, in its colour: 한글's at one size
-//   (MathMode.Fixed), Word's and TeX's as display formulas (m:oMathPara, $$…$$) or inline ones (MathMode.Text).
+//   (MathMode.Fixed), Word's and TeX's as display formulas (m:oMathPara, $$…$$) or inline ones (MathMode.Text). A
+//   display formula wider than the paragraph's column is broken into lines (MathLayout, Word's rule).
 // - Word's equation numbers ("E#(1)", a model read from Word): the reader keeps the number of a one-line equation in a
 //   text box placed for rhwp (DocxReader.NumberBox), which the page composer hands over instead (Number). The lines of
 //   an equation array each with their own number ("a&=b#(1)" in every line) keep them in the equation. On this route
@@ -34,8 +35,11 @@ internal sealed partial class ParagraphLayouter
     /// <summary>A number's glyphs, from its left edge (x = 0) and the equation's baseline, and its advance.</summary>
     private sealed record EquationNumber(IReadOnlyList<PlacedRun> Runs, float Width);
 
-    /// <summary>An equation laid out, with its numbers.</summary>
-    private sealed record LaidEquation(EquationBox Box, IReadOnlyList<EquationNumber> Numbers);
+    /// <summary>An equation laid out, with its numbers, for a column <c>Room</c> wide (a display formula breaks to fit).</summary>
+    private sealed record LaidEquation(EquationBox Box, IReadOnlyList<EquationNumber> Numbers, float Room);
+
+    /// <summary>The width of the column the paragraph being laid out has, inside its indents.</summary>
+    private float _equationRoom;
 
     private readonly Dictionary<HEquation, LaidEquation> _equations = new(ReferenceEqualityComparer.Instance);
 
@@ -44,18 +48,20 @@ internal sealed partial class ParagraphLayouter
 
     private LaidEquation Laid(HEquation equation)
     {
-        if (_equations.TryGetValue(equation, out var laid))
+        // Word's and TeX's equations (models of other formats) are set as display or inline formulas, 한글's at one size.
+        var mode = !WordEquations ? MathMode.Fixed : equation.Display ? MathMode.Display : MathMode.Text;
+        var room = _equationRoom;
+        // A display formula is laid out again in a column of another width (it may break differently).
+        if (_equations.TryGetValue(equation, out var laid) && (mode != MathMode.Display || laid.Room == room))
             return laid;
         var size = (equation.Size ?? equation.Format.Size ?? 1000) / 100f;
         var color = ParagraphText.Color(equation.Color ?? equation.Format.Color) ?? SKColors.Black;
         var axis = size * MathLayout.Axis;
-        // Word's and TeX's equations (models of other formats) are set as display or inline formulas, 한글's at one size.
-        var mode = !WordEquations ? MathMode.Fixed : equation.Display ? MathMode.Display : MathMode.Text;
         if (_equations.Count > 10_000)
             _equations.Clear();
         if (_numbers.TryGetValue(equation, out var number))
         {
-            laid = new LaidEquation(_math.Layout(equation.Math, size, color, mode), [Placed(number, -axis)]);
+            laid = new LaidEquation(_math.Layout(equation.Math, size, color, mode, room), [Placed(number, -axis)], room);
         }
         else if (WordEquations && LineNumbers(equation.Math) is var (pile, numbers))
         {
@@ -68,11 +74,11 @@ internal sealed partial class ParagraphLayouter
                 if (numbers[i] is { } line)
                     placed.Add(Placed(new HText(EquationScript.Linear(line), format), baselines[i] - axis));
             }
-            laid = new LaidEquation(box, placed);
+            laid = new LaidEquation(box, placed, room);
         }
         else
         {
-            laid = new LaidEquation(_math.Layout(equation.Math, size, color, mode), []);
+            laid = new LaidEquation(_math.Layout(equation.Math, size, color, mode, room), [], room);
         }
         return _equations[equation] = laid;
     }
@@ -104,7 +110,11 @@ internal sealed partial class ParagraphLayouter
     {
         var paragraph = new HParagraph { Format = new HParaFormat(Align: HAlign.Left, Before: 0, After: 0) };
         paragraph.Inlines.Add(new HText(number.Text, number.Format));
-        if (Layout(paragraph, 10_000).Lines is not [var line, ..])
+        // Laid out while the equation's paragraph is: its column stays the equations'.
+        var room = _equationRoom;
+        var lines = Layout(paragraph, 10_000).Lines;
+        _equationRoom = room;
+        if (lines is not [var line, ..])
             return new EquationNumber([], 0);
         var ink = Ink(line.Runs);
         var down = ink.IsEmpty ? 0 : middle - ink.MidY;

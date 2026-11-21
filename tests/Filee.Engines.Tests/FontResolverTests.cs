@@ -8,8 +8,8 @@ namespace Filee.Engines.Tests;
 
 public class FontResolverTests
 {
-    private const string Latin = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,;:!?'\"()-“”‘’…";
-    private const string Hangul = "한글문서대한민국섞인장입니다";
+    private const string Latin = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,;:!?\\~'\"()-“”‘’…";
+    private const string Hangul = "가한글문서대한민국섞인장입니다";
     private const string Han = "改造我们的学习这是一个测试文档说话国家和会时间漢字辻";
     private const string Kana = "日本語のテキストあいうえおアイウエオ";
     private const string Cyrillic = "АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЩЭЮЯабвгдежзиклмнопрстуфхцчшщэюя";
@@ -183,6 +183,33 @@ public class FontResolverTests
         Assert.All(resolver.Fallback(chinese, 0, chinese.Length, primary, FontStyle.Regular), r => Assert.Equal("Microsoft YaHei", r.Font.Family));
         // A part of the paragraph: the language still comes from the whole text.
         Assert.Equal("Yu Gothic", Assert.Single(resolver.Fallback(japanese, 8, 1, primary, FontStyle.Regular)).Font.Family);
+    }
+
+    [Fact]
+    public void A_backslash_stays_a_backslash_unless_the_document_named_the_korean_font()
+    {
+        var fonts = Computer();
+        var resolver = new FontResolver(fonts);
+        const string text = "한글 \\alpha ~x";
+
+        // Markdown names no font: the Korean default draws the Hangul, a Latin font the backslash (Malgun's is ₩).
+        var substitute = resolver.Resolve(null, FontStyle.From(bold: false, italic: true), "ko")!;
+        Assert.True(substitute.Substitute);
+        var runs = resolver.Fallback(text, 0, text.Length, substitute, FontStyle.From(bold: false, italic: true));
+        Assert.Contains(("\\", "Segoe UI"), Describe(text, runs));
+        Assert.Equal("Malgun Gothic", Describe(text, runs)[0].Family);
+
+        // A document that names 맑은 고딕 for the run gets the ₩ Word shows.
+        var named = resolver.Find("맑은 고딕", FontStyle.Regular)!;
+        Assert.False(named.Substitute);
+        Assert.Equal([(text, "Malgun Gothic")], Describe(text, resolver.Fallback(text, 0, text.Length, named, FontStyle.Regular)));
+
+        // A tilde after a Japanese fallback font (Yu Gothic: ~ is ‾ in the old code page) goes to a Latin font too.
+        const string japanese = "あい~";
+        var latin = resolver.Find("Consolas", FontStyle.Regular)!;
+        Assert.Equal([("あい", "Yu Gothic"), ("~", "Consolas")], Describe(japanese, resolver.Fallback(japanese, 0, japanese.Length, latin, FontStyle.Regular)));
+        Assert.True(FontResolver.DrawsAsCurrency(fonts.Family("Yu Gothic")[0], '\\'));
+        Assert.False(FontResolver.DrawsAsCurrency(fonts.Family("Segoe UI")[0], '\\'));
     }
 
     [Fact]

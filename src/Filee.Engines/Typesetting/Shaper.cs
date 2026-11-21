@@ -140,10 +140,16 @@ internal sealed class ShapedRun
 /// The font is for a Chinese, Japanese or Korean code page (OS/2 ulCodePageRange1 bits 17–21: 932, 936, 949, 950, 1361).
 /// </param>
 /// <param name="Math">The font has a MATH table (Cambria Math): its Win metrics reach far out for big operators.</param>
+/// <param name="ExternalLeading">
+/// Windows' external leading (GDI's tmExternalLeading), as the OpenType spec gives it under usWinAscent: the hhea line
+/// gap less what the Win metrics reach beyond the hhea ascender and descender, at least 0. Times New Roman's is 87 of
+/// 2048 units, Calibri's 0. The fsSelection USE_TYPO_METRICS bit doesn't change it.
+/// </param>
 internal sealed record FontMetrics(
     int UnitsPerEm, int Ascender, int Descender, int LineGap, int WinAscent, int WinDescent, int XHeight, int CapHeight,
     int UnderlinePosition, int UnderlineThickness, int StrikeoutPosition, int StrikeoutThickness,
-    int SuperscriptYOffset, int SuperscriptYSize, int SubscriptYOffset, int SubscriptYSize, bool EastAsian = false, bool Math = false);
+    int SuperscriptYOffset, int SuperscriptYSize, int SubscriptYOffset, int SubscriptYSize, bool EastAsian = false, bool Math = false,
+    int ExternalLeading = 0);
 
 /// <summary>Shapes runs with HarfBuzz and caches the results; one per layout job (not thread-safe).</summary>
 internal sealed class Shaper : IDisposable
@@ -207,7 +213,7 @@ internal sealed class Shaper : IDisposable
             Get(OpenTypeMetricsTag.UnderlineOffset), Get(OpenTypeMetricsTag.UnderlineSize),
             Get(OpenTypeMetricsTag.StrikeoutOffset), Get(OpenTypeMetricsTag.StrikeoutSize),
             Get(OpenTypeMetricsTag.SuperScriptEmYOffset), Get(OpenTypeMetricsTag.SuperScriptEmYSize),
-            Get(OpenTypeMetricsTag.SubScriptEmYOffset), Get(OpenTypeMetricsTag.SubScriptEmYSize), hb.EastAsian, hb.Math);
+            Get(OpenTypeMetricsTag.SubScriptEmYOffset), Get(OpenTypeMetricsTag.SubScriptEmYSize), hb.EastAsian, hb.Math, hb.ExternalLeading);
     }
 
     private static ShapedRun Run(HarfBuzzFont hb, ShapeKey key, IReadOnlyList<FontFeature>? features)
@@ -344,7 +350,11 @@ internal sealed class Shaper : IDisposable
         /// <summary>See <see cref="FontMetrics.Math"/>.</summary>
         public bool Math => _math ??= HasTable("MATH");
 
+        /// <summary>See <see cref="FontMetrics.ExternalLeading"/>; read from the hhea and OS/2 tables on first use.</summary>
+        public int ExternalLeading => _externalLeading ??= WindowsLeading();
+
         private bool? _eastAsian, _math;
+        private int? _externalLeading;
 
         private bool HasTable(string tag)
         {
@@ -360,6 +370,21 @@ internal sealed class Shaper : IDisposable
             if (os2.Length < 82 || BinaryPrimitives.ReadUInt16BigEndian(os2) < 1)
                 return false;
             return (BinaryPrimitives.ReadUInt32BigEndian(os2[78..]) & EastAsianCodePages) != 0;
+        }
+
+        private int WindowsLeading()
+        {
+            using var hheaTable = _face.ReferenceTable(Tag.Parse("hhea"));
+            using var os2Table = _face.ReferenceTable(Tag.Parse("OS/2"));
+            var hhea = hheaTable.AsSpan();
+            var os2 = os2Table.AsSpan();
+            // hhea ascender, descender and lineGap at 4, 6 and 8; OS/2 usWinAscent and usWinDescent at 74 and 76.
+            if (hhea.Length < 10 || os2.Length < 78)
+                return 0;
+            int ascender = BinaryPrimitives.ReadInt16BigEndian(hhea[4..]), descender = BinaryPrimitives.ReadInt16BigEndian(hhea[6..]);
+            int lineGap = BinaryPrimitives.ReadInt16BigEndian(hhea[8..]);
+            int winAscent = BinaryPrimitives.ReadUInt16BigEndian(os2[74..]), winDescent = BinaryPrimitives.ReadUInt16BigEndian(os2[76..]);
+            return System.Math.Max(0, lineGap - (winAscent + winDescent - (ascender - descender)));
         }
 
         public void Dispose()

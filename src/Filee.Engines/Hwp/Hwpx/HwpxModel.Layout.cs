@@ -28,6 +28,11 @@ namespace Filee.Engines.Hwp.Hwpx;
 /// <param name="ComplexSize">Size of complex-script characters (Word w:szCs), 1/100 pt; null = the run's size.</param>
 /// <param name="ComplexBold">Complex-script characters are bold (Word w:bCs; w:b does not reach them); null = as the run.</param>
 /// <param name="ComplexItalic">Complex-script characters are italic (Word w:iCs); null = as the run.</param>
+/// <param name="Symbol">
+/// The font and codes a run's characters were read from (Word w:sym, text in Wingdings &amp; co.): the run holds their
+/// Unicode characters in the text font, and the layout draws the codes in this font where it is installed. Only the run
+/// itself has it: <see cref="Over"/> doesn't pass it on.
+/// </param>
 internal sealed record HCharLayout(
     HLanguageSlots? Slots = null,
     HWordFonts? WordFonts = null,
@@ -40,7 +45,8 @@ internal sealed record HCharLayout(
     bool? ComplexScript = null,
     int? ComplexSize = null,
     bool? ComplexBold = null,
-    bool? ComplexItalic = null)
+    bool? ComplexItalic = null,
+    HSymbol? Symbol = null)
 {
     /// <summary>This layout with the members it leaves open taken from <paramref name="baseline"/>.</summary>
     public HCharLayout Over(HCharLayout? baseline) => baseline is null ? this : new HCharLayout(
@@ -55,8 +61,14 @@ internal sealed record HCharLayout(
         ComplexScript ?? baseline.ComplexScript,
         ComplexSize ?? baseline.ComplexSize,
         ComplexBold ?? baseline.ComplexBold,
-        ComplexItalic ?? baseline.ComplexItalic);
+        ComplexItalic ?? baseline.ComplexItalic,
+        Symbol);
 }
+
+/// <summary>Characters of a symbol font as the document stores them (see <see cref="HCharLayout.Symbol"/>).</summary>
+/// <param name="Font">The font the codes are in ("Wingdings 2").</param>
+/// <param name="Codes">One code per UTF-16 character of the run's text: F020–F0FF for a symbol font (Word's w:char).</param>
+internal sealed record HSymbol(string Font, string Codes);
 
 /// <summary>한글's seven language slots (글꼴 언어): each character takes the properties of the slot its script falls into.</summary>
 internal enum HLanguage
@@ -432,6 +444,29 @@ internal enum HArcKind
     Chord,
 }
 
+// ───────────────────────── Vertical text ─────────────────────────
+
+/// <summary>How the text of a table cell or text box runs (VerticalText draws it). Read for layout only.</summary>
+internal enum HTextFlow
+{
+    Horizontal,
+
+    /// <summary>
+    /// East Asian vertical writing: top to bottom, the next line to the left, CJK characters upright and other text
+    /// turned 90° clockwise (Word tbRl, 한글 세로쓰기, DrawingML eaVert, VML layout-flow vertical).
+    /// </summary>
+    Vertical,
+
+    /// <summary>Turned 90° clockwise, every character with it (DrawingML vert).</summary>
+    Down,
+
+    /// <summary>Turned 270°: bottom to top, the next line to the right (Word btLr, DrawingML vert270).</summary>
+    Up,
+
+    /// <summary>Every character upright, one below the other (DrawingML wordArtVert, 한글 영문 세움).</summary>
+    Stacked,
+}
+
 // ───────────────────────── What the renderer can't draw ─────────────────────────
 
 /// <summary>
@@ -443,7 +478,7 @@ internal enum HLeftOutKind
     /// <summary>A chart (DOCX c:chart, HWPX hp:chart): nothing of it is drawn.</summary>
     Chart,
 
-    /// <summary>SmartArt (DOCX dgm:relIds): nothing of it is drawn.</summary>
+    /// <summary>SmartArt (DOCX dgm:relIds) without the drawing Word saves with it: nothing of it is drawn.</summary>
     SmartArt,
 
     /// <summary>An embedded (OLE or ODF) object without a saved picture to draw.</summary>
@@ -465,8 +500,8 @@ internal enum HLeftOutKind
     FormulaAsText,
 
     /// <summary>
-    /// Vertical text (a table cell, text box or section written top to bottom; a DOCX text box's wps:bodyPr vert or VML
-    /// layout-flow), set horizontally. Not counted.
+    /// Vertical text the renderer sets horizontally (a section written top to bottom, a header or note, ODT writing
+    /// modes); vertical cells and text boxes are drawn (HTextFlow). Not counted.
     /// </summary>
     VerticalText,
 

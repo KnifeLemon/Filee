@@ -5,7 +5,7 @@
 //                        \titlepg);
 //  * RtfReader.Tables.cs table rows (\trowd ... \cell ... \row), nested tables, merged cells, borders and shading of
 //                        cells and paragraphs, lists (\listtable, \ls) and pictures;
-//  * RtfReader.Shapes.cs pictures in drawing objects (\shp) and pictures' properties;
+//  * RtfReader.Shapes.cs pictures and text boxes in drawing objects (\shp) and pictures' properties;
 //  * RtfReader.Fonts.cs  the fonts the text is set in, for the missing-font notice;
 //  * RtfReader.Lexer.cs  tokens.
 //
@@ -262,6 +262,10 @@ internal sealed partial class RtfReader
                     Flush();
                     if (_groups.Count == 0)
                         break; // a stray closing brace after the document
+                    // The document's group ends: its last paragraph (no \par after it, as Filee writes it) keeps the
+                    // properties it has in there.
+                    if (_groups.Count == 1 && _g.Story == _body)
+                        EndParagraph(_body, force: false);
                     var closing = _g;
                     _g = _groups.Pop();
                     _skipFallback = 0;
@@ -529,8 +533,12 @@ internal sealed partial class RtfReader
             case "sv" when _g.Dest == Dest.Shape && _g.Shape is { } valued:
                 StartShapeValue(valued);
                 return true;
-            case "shprslt" when _g.Shape is { Picture: not null }:
-                // A picture shape read from its properties: the result is another copy of it, for programs without shapes.
+            case "shptxt" when _g.Dest == Dest.Shape && _g.Shape is { } holder:
+                StartShapeText(holder);
+                return true;
+            case "shprslt" when _g.Shape is { Picture: not null } or { Text: not null }:
+                // A picture shape or a text box read from the shape itself: the result is another copy of it, for
+                // programs without shapes.
                 _g.Dest = Dest.Skip;
                 return true;
             case "shppict" or "shp" or "shprslt" or "object" or "result" or "upr" or "ud":
@@ -933,7 +941,7 @@ internal sealed partial class RtfReader
             MarkFormat = Format(_g.Char),
             PageBreakBefore = para.PageBreakBefore || story.PageBreak,
             HeadingLevel = Heading(para),
-            List = ListOf(para),
+            List = ListOf(para, _g.Char),
         };
         story.PageBreak = false;
         paragraph.Inlines.AddRange(story.Inlines);

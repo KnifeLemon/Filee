@@ -1777,6 +1777,8 @@
   "sheet_studio.apply_fix": "सुझाया गया लेआउट लागू करें",
   "sheet_studio.add_region": "+ दूसरा क्षेत्र जोड़ें",
   "sheet_studio.region_name": "{0} · क्षेत्र {1}",
+  "sheet_studio.drawn_by_builtin": "पूर्वावलोकन Filee के बिल्ट-इन शीट प्रिंटर ने बनाया",
+  "sheet_studio.drawn_by_libreoffice": "पूर्वावलोकन LibreOffice ने बनाया",
 
   "whats_new.title": "Filee {0} में नया क्या है",
   "whats_new.previous": "पिछला",

@@ -1776,6 +1776,8 @@
   "sheet_studio.apply_fix": "Önerilen düzeni uygula",
   "sheet_studio.add_region": "+ Başka bölge ekle",
   "sheet_studio.region_name": "{0} · bölge {1}",
+  "sheet_studio.drawn_by_builtin": "Önizleme Filee'nin yerleşik tablo yazdırmasıyla çizildi",
+  "sheet_studio.drawn_by_libreoffice": "Önizleme LibreOffice ile çizildi",
   "whats_new.title": "Filee {0} yenilikleri",
   "whats_new.previous": "Önceki",
   "whats_new.next": "Sonraki",

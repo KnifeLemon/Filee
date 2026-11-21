@@ -11,7 +11,11 @@
 //   rules (Korean default fonts in Chinese or Japanese text, one consistent font for Russian or Arabic text).
 // - Fallback: a run is split per grapheme cluster into pieces each drawn by one font: the run's own font when it has
 //   every character of the cluster, else a font for the cluster's script, else the platform's fallback. Punctuation
-//   and spaces stay with their neighbours' font when it has them.
+//   and spaces stay with their neighbours' font when it has them. Korean and Japanese fonts draw U+005C as ₩ or ¥
+//   (and Japanese ones U+007E as an overline), from their legacy code pages: a backslash or tilde keeps that look only
+//   in the font the document named for the run; any other font of theirs (a substitute, a fallback, the language's
+//   default or the style template's font for text that names none, as Markdown's) gives way to a Latin font, so code
+//   and formulas keep their backslashes.
 // - Variable and CFF2 fonts: a variable font counts as its default instance (no instancer yet); a CFF2 font is used
 //   only when no other font for its script is installed, because the PDF writer can't subset it (FontFace).
 
@@ -26,6 +30,12 @@ namespace Filee.Engines.Typesetting;
 /// <param name="SyntheticItalic">Italic was asked for and the family has no italic face (slant the outlines).</param>
 internal sealed record ResolvedFont(FontFace Face, bool SyntheticBold = false, bool SyntheticItalic = false)
 {
+    /// <summary>
+    /// Not the font the document named (a replacement for a missing one, the language's default or the style template's
+    /// font for text that names none): its legacy currency glyphs for \ and ~ are not what the document asked for.
+    /// </summary>
+    public bool Substitute { get; init; }
+
     /// <summary>The font file (read on first use).</summary>
     public PageFont Font => Face.Font;
 
@@ -119,19 +129,21 @@ internal sealed class FontResolver
             var names = generic.EndsWith("monospace", StringComparison.Ordinal)
                 ? FontNames.Monospace.Concat(FontSubstitution.Preferred(language, false))
                 : FontSubstitution.Preferred(language, generic is "serif" or "ui-serif");
-            return First(names, style) ?? First(FontSubstitution.Preferred("", false), style);
+            return Substituted(First(names, style) ?? First(FontSubstitution.Preferred("", false), style));
         }
         var found = Find(family, style);
         if (found is { Face.Cff2: false })
             return found;
         // A missing monospaced font (code) keeps its columns with an installed one.
         if (FontNames.IsMonospace(family) && First(FontNames.Monospace, style) is { } monospaced)
-            return monospaced;
+            return Substituted(monospaced);
         var script = FontSubstitution.Script(family) is { Length: > 0 } own ? own : language;
-        return First(FontSubstitution.Preferred(script, FontSubstitution.IsSerif(family)), style)
+        return Substituted(First(FontSubstitution.Preferred(script, FontSubstitution.IsSerif(family)), style))
             ?? found
-            ?? First(FontSubstitution.Preferred("", FontSubstitution.IsSerif(family)), style);
+            ?? Substituted(First(FontSubstitution.Preferred("", FontSubstitution.IsSerif(family)), style));
     }
+
+    private static ResolvedFont? Substituted(ResolvedFont? font) => font is null ? null : font with { Substitute = true };
 
     /// <summary>
     /// Document-wide replacements by (slot, face): Korean default fonts in Chinese or Japanese text, fonts that lack
@@ -213,6 +225,8 @@ internal sealed class FontResolver
             var cluster = Math.Max(1, StringInfo.GetNextTextElementLength(text.AsSpan(position, end - position)));
             Needed(text.AsSpan(position, cluster), needed);
             var font = Choose(needed, primary, previous, used, style, language, serif);
+            if (needed is [var only] && (font != primary || primary.Substitute) && DrawsAsCurrency(font.Face, only))
+                font = Plain(only, primary, used, style, serif) ?? font;
             if (!used.Contains(font))
                 used.Add(font);
             if (runs.Count > 0 && runs[^1].Font == font)
@@ -262,6 +276,37 @@ internal sealed class FontResolver
                 return font;
         }
         return partial ?? primary;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="face"/> may draw <paramref name="codePoint"/> as a currency sign or an overline, as fonts
+    /// made for the Korean and Japanese code pages do: \ as ₩ in Korean fonts and ¥ in Japanese ones, ~ as ‾ in Japanese
+    /// ones. Told from the coverage (Hangul, kana), since the glyph keeps the code point either way.
+    /// </summary>
+    internal static bool DrawsAsCurrency(FontFace face, int codePoint) => codePoint switch
+    {
+        '\\' => face.Has(0xAC00) || face.Has(0x3042),
+        '~' => face.Has(0x3042) && !face.Has(0xAC00),
+        _ => false,
+    };
+
+    /// <summary>
+    /// A font that draws <paramref name="codePoint"/> (\ or ~) as itself: the primary font or one already used when they
+    /// do, else the first installed Latin font that has it; null when none does.
+    /// </summary>
+    private ResolvedFont? Plain(int codePoint, ResolvedFont primary, List<ResolvedFont> used, FontStyle style, bool serif)
+    {
+        foreach (var font in used.Prepend(primary))
+        {
+            if (font.Face.Has(codePoint) && !DrawsAsCurrency(font.Face, codePoint))
+                return font;
+        }
+        foreach (var name in FontSubstitution.Preferred("", serif))
+        {
+            if (Find(name, style) is { Face.Cff2: false } font && font.Face.Has(codePoint) && !DrawsAsCurrency(font.Face, codePoint))
+                return font;
+        }
+        return null;
     }
 
     /// <summary>Installed fonts to try for a script, best first.</summary>

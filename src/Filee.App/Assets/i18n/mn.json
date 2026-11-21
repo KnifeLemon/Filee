@@ -1775,6 +1775,8 @@
   "sheet_studio.apply_fix": "Санал болгосон загварыг хэрэглэх",
   "sheet_studio.add_region": "+ Өөр муж нэмэх",
   "sheet_studio.region_name": "{0} · муж {1}",
+  "sheet_studio.drawn_by_builtin": "Урьдчилан харагдацыг Filee-ийн суурилагдсан хүснэгт хэвлэгч зурсан",
+  "sheet_studio.drawn_by_libreoffice": "Урьдчилан харагдацыг LibreOffice зурсан",
   "whats_new.title": "Filee {0}-ийн шинэ боломжууд",
   "whats_new.previous": "Өмнөх",
   "whats_new.next": "Дараах",

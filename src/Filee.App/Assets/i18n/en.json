@@ -1797,6 +1797,8 @@
   "sheet_studio.apply_fix": "Apply suggested layout",
   "sheet_studio.add_region": "+ Add another region",
   "sheet_studio.region_name": "{0} · region {1}",
+  "sheet_studio.drawn_by_builtin": "Preview drawn by Filee's built-in sheet printer",
+  "sheet_studio.drawn_by_libreoffice": "Preview drawn by LibreOffice",
 
   "whats_new.title": "What's new in Filee {0}",
   "whats_new.previous": "Previous",

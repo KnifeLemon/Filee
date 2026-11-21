@@ -146,7 +146,10 @@ internal sealed partial class RtfWriter
             sb.Append($"\\s{Number(style.Style)}\\outlinelevel{Number(style.Style - 1)}");
         sb.Append(InTable(depth));
         if (paragraph.List is { Numbered: true } list)
+        {
             sb.Append($"\\ls{Number(ListNumber(list.Numbering))}\\ilvl{Number(Math.Clamp(list.Level, 0, 8))}");
+            KeepMarker(list, style);
+        }
 
         // Right to left, the model's Align, Left and Right name the start and end side; RTF's \ql, \li ... are the
         // left and right ones, and \lin / \rin the start and end.
@@ -253,6 +256,25 @@ internal sealed partial class RtfWriter
         var width = Math.Clamp((int)Math.Round(border.WidthMm / 25.4 * 1440), 1, 75);
         var color = ColorIndex(border.Color);
         return $"{style}\\brdrw{Number(width)}{(color > 0 ? $"\\brdrcf{Number(color)}" : "")}";
+    }
+
+    /// <summary>
+    /// The format each list level's number is drawn in (its first item's), written into the level's \listlevel: Word
+    /// draws a number in the paragraph mark's format with the level's over it. Its font and colour go into their tables
+    /// here, while the body is written, as the tables come before the body in the file.
+    /// </summary>
+    private readonly Dictionary<(HNumbering Numbering, int Level), (Chars Chars, int Font)> _markers = [];
+
+    private void KeepMarker(HListRef list, StyleBase style)
+    {
+        var level = Math.Clamp(list.Level, 0, 8);
+        if (_markers.ContainsKey((list.Numbering, level)))
+            return;
+        var marker = list.MarkerFormat ?? (level < list.Numbering.Levels.Count ? list.Numbering.Levels[level].MarkerFormat : null);
+        if (marker is not { } format)
+            return;
+        var chars = Resolve(format, style);
+        _markers[(list.Numbering, level)] = (chars, FontIndex(chars.Latin, 0));
     }
 
     // ───────────────────────── Character formatting ─────────────────────────
@@ -711,6 +733,52 @@ internal sealed partial class RtfWriter
                 sb.Append("\\trautofit1");
             sb.Append(PreferredWidth("tr", sizing.Width));
         }
+        if (table.Float is { } anchor)
+            sb.Append(TablePosition(anchor, table.FloatDistance));
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// A floating table's place (Word w:tblpPr): what it is measured from (\tph*, \tpv*), its offsets (\tposx, \tposnegx
+    /// ...) or alignment (\tposxc, \tposyb ...), the distance text keeps from it (\tdfrmtxt*) and whether other floating
+    /// tables may overlap it (\tabsnoovrlp).
+    /// </summary>
+    private static string TablePosition(HAnchor anchor, HInsets distance)
+    {
+        var sb = new StringBuilder(anchor.HorizontalRelativeTo switch
+        {
+            "PAPER" => "\\tphpg",
+            "PAGE" => "\\tphmrg",
+            _ => "\\tphcol",
+        });
+        sb.Append(anchor.VerticalRelativeTo switch
+        {
+            "PAPER" => "\\tpvpg",
+            "PAGE" => "\\tpvmrg",
+            _ => "\\tpvpara",
+        });
+        var x = Twips(anchor.HorizontalOffset);
+        sb.Append(anchor.HorizontalOffset != 0 ? x < 0 ? $"\\tposnegx{Number(x)}" : $"\\tposx{Number(x)}" : anchor.HorizontalAlign switch
+        {
+            "CENTER" => "\\tposxc",
+            "RIGHT" => "\\tposxr",
+            "INSIDE" => "\\tposxi",
+            "OUTSIDE" => "\\tposxo",
+            _ => "\\tposx0",
+        });
+        var y = Twips(anchor.VerticalOffset);
+        sb.Append(anchor.VerticalOffset != 0 ? y < 0 ? $"\\tposnegy{Number(y)}" : $"\\tposy{Number(y)}" : anchor.VerticalAlign switch
+        {
+            "CENTER" => "\\tposyc",
+            "BOTTOM" => "\\tposyb",
+            "INSIDE" => "\\tposyin",
+            "OUTSIDE" => "\\tposyout",
+            _ => "\\tposy0",
+        });
+        sb.Append($"\\tdfrmtxtLeft{Number(Twips(distance.Left))}\\tdfrmtxtRight{Number(Twips(distance.Right))}")
+          .Append($"\\tdfrmtxtTop{Number(Twips(distance.Top))}\\tdfrmtxtBottom{Number(Twips(distance.Bottom))}");
+        if (!anchor.AllowOverlap)
+            sb.Append("\\tabsnoovrlp");
         return sb.ToString();
     }
 

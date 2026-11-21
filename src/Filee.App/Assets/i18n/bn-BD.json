@@ -1775,6 +1775,8 @@
   "sheet_studio.apply_fix": "প্রস্তাবিত লেআউট প্রয়োগ করুন",
   "sheet_studio.add_region": "+ আরেকটি অঞ্চল যোগ করুন",
   "sheet_studio.region_name": "{0} · অঞ্চল {1}",
+  "sheet_studio.drawn_by_builtin": "প্রিভিউটি Filee-এর বিল্ট-ইন শিট প্রিন্টার দিয়ে আঁকা",
+  "sheet_studio.drawn_by_libreoffice": "প্রিভিউটি LibreOffice দিয়ে আঁকা",
   "whats_new.title": "ফাইলি {0}-এ নতুন কী আছে",
   "whats_new.previous": "পূর্ববর্তী",
   "whats_new.next": "পরবর্তী",

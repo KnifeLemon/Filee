@@ -71,7 +71,7 @@ public sealed class MathPolishTests : IDisposable
     [InlineData("\\overset{a}{\\underset{b}{X}}", "\\overset{a}{\\underset{b}{X}}", "limits(X)_(b)^(a)")]
     [InlineData("a\\overset{n}{=}b", "a\\overset{n}{=}b", "a limits(=)^(n) b")]
     [InlineData("\\underset{x\\in A}{\\max}f", "\\underset{x\\in A}{\\max}f", null)]
-    [InlineData("A\\xrightarrow[g]{f}B", "A\\xrightarrow[{g}]{f}B", "A limits(→)_(g)^(f) B")]
+    [InlineData("A\\xrightarrow[g]{f}B", "A\\xrightarrow[{g}]{f}B", "A stretch(→)_(g)^(f) B")]
     [InlineData("A\\xleftarrow{f}B", "A\\xleftarrow{f}B", null)]
     public void Stacked_content_is_written_stacked(string tex, string written, string? typst)
     {

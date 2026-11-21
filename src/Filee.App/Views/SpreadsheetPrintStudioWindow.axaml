@@ -71,6 +71,8 @@
             <ProgressBar IsIndeterminate="True" Width="180" />
             <TextBlock Text="{DynamicResource sheet_studio.rendering}" />
           </StackPanel>
+          <TextBlock HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,-18" Classes="caption"
+                     Text="{Binding PreviewEngine}" IsVisible="{Binding HasPreviewEngine}" TextTrimming="CharacterEllipsis" />
         </Grid>
         <Border Grid.Row="1" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SubtleBorderBrush}"
                 Background="{DynamicResource SurfaceBrush}" Padding="10">

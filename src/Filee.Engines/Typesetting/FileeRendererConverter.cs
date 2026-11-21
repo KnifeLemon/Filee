@@ -11,8 +11,9 @@
 // presentations or spreadsheets, the engine leaves those files to it (its edge would win on cost otherwise).
 //
 // Its edges are Checked: before a file is converted, FirstUnsupported looks through it for what the layout engine
-// doesn't draw yet (OLE objects, charts other than the DrawingML ones ChartReader draws, vertical text, form controls
-// and ActiveX controls, SmartArt), and such a file takes the route
+// doesn't draw yet (OLE objects, charts other than the DrawingML ones ChartReader draws, sections written vertically
+// (vertical cells and text boxes are drawn), form controls and ActiveX controls, SmartArt without the drawing Word saves
+// with it), and such a file takes the route
 // it would take without the engine (JobQueue). An HWP is looked through as the HWPX package it becomes; a deck by
 // SlideCapabilities (charts, effects, ...). Pictures of document pages go on from the PDF through PDFium, which applies
 // the image options; pictures of slides are drawn directly, with the image options applied here.
@@ -163,9 +164,18 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
             long scanned = 0;
             var referencesCharts = false;
             List<string?>? charts = null;
+            // SmartArt is drawn from the drawing part Word saves with each diagram's data part.
+            var (smartArt, diagramData, diagramDrawings) = (false, 0, 0);
             foreach (var entry in package.Entries)
             {
                 var name = entry.FullName;
+                if (markers == WordMarkers && WordDiagramPart().Match(name) is { Success: true } diagram)
+                {
+                    if (diagram.Groups[1].Value.Equals("data", StringComparison.OrdinalIgnoreCase))
+                        diagramData++;
+                    else
+                        diagramDrawings++;
+                }
                 if (!name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) || (scanned += entry.Length) > MaxScannedBytes
                     || package.BytesRead > MaxScannedBytes)
                     continue;
@@ -181,6 +191,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
                 // An HWPX's OOXML chart parts (c:chart inside) are looked at through the hp:chart that names them.
                 if (markers == HwpxMarkers && ChartSpaceRoot().IsMatch(xml))
                     continue;
+                smartArt |= markers == WordMarkers && WordSmartArt().IsMatch(xml);
                 foreach (var (pattern, feature) in markers)
                 {
                     // ODT objects are drawn when each is a chart OdfChartReader draws, HWPX charts when ChartReader draws their part.
@@ -190,6 +201,8 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
                 }
                 referencesCharts |= markers == WordMarkers && WordChart().IsMatch(xml);
             }
+            if (smartArt && diagramDrawings < Math.Max(1, diagramData))
+                return "SmartArt";
             // Charts are drawn when every chart part is one ChartReader draws.
             return referencesCharts && (charts is null || charts.Any(c => c is not null)) ? "OLE objects and charts" : null;
         }
@@ -322,7 +335,6 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     [
         (WordOle(), "OLE objects and charts"),
         (WordVertical(), "vertical text"),
-        (WordSmartArt(), "SmartArt"),
         (WordControl(), "form controls"),
     ];
 
@@ -485,7 +497,8 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     [GeneratedRegex(@"<(\w+):default\b.*?</\1:default>", RegexOptions.Singleline)]
     private static partial Regex HwpxDefaultBranch();
 
-    [GeneratedRegex(@"textDirection=""VERT")]
+    /// <summary>A section written top to bottom (hp:secPr textDirection); vertical cells and text boxes are drawn.</summary>
+    [GeneratedRegex(@"<\w+:secPr\b[^>]*?\stextDirection=""VERT")]
     private static partial Regex HwpxVertical();
 
     [GeneratedRegex(@"<\w+:(?:btn|checkBtn|radioBtn|comboBox|listBox|edit|scrollBar)\b")]
@@ -504,9 +517,13 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     [GeneratedRegex(@"^word/charts/chart(?:Ex)?\d*\.xml$", RegexOptions.IgnoreCase)]
     private static partial Regex WordChartPart();
 
-    /// <summary>Vertical text: a section or table cell (w:textDirection), a text box (wps:bodyPr vert, VML layout-flow).</summary>
-    [GeneratedRegex(@"<w:textDirection w:val=""(?:tbRl|btLr|tbRlV|tbLrV)""|<wps:bodyPr\b[^>]*?\svert=""(?:vert|vert270|eaVert|wordArtVert|wordArtVertRtl|mongolianVert)""|layout-flow:\s*vertical")]
+    /// <summary>A section written top to bottom (w:textDirection in w:sectPr); vertical cells and text boxes are drawn.</summary>
+    [GeneratedRegex(@"<w:sectPr\b(?:[^<]|<(?!/w:sectPr>))*?<w:textDirection w:val=""(?:tbRl|btLr|tbRlV|tbLrV)""")]
     private static partial Regex WordVertical();
+
+    /// <summary>A SmartArt part of a Word package: a diagram's data (data1.xml) or the drawing Word saves of it (drawing1.xml).</summary>
+    [GeneratedRegex(@"^word/diagrams/(data|drawing)\d*\.xml$", RegexOptions.IgnoreCase)]
+    private static partial Regex WordDiagramPart();
 
     /// <summary>An ActiveX control (w:control in a w:object), drawn only as the picture Word saved of it.</summary>
     [GeneratedRegex(@"<w:control\b")]

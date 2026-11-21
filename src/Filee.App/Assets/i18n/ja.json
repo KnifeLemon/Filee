@@ -1777,6 +1777,8 @@
   "sheet_studio.apply_fix": "推奨レイアウトを適用",
   "sheet_studio.add_region": "+ 別の範囲を追加",
   "sheet_studio.region_name": "{0} · 範囲 {1}",
+  "sheet_studio.drawn_by_builtin": "プレビューは Filee 内蔵の表計算印刷で描画",
+  "sheet_studio.drawn_by_libreoffice": "プレビューは LibreOffice で描画",
 
   "whats_new.title": "Filee {0} の新機能",
   "whats_new.previous": "前へ",

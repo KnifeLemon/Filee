@@ -1,11 +1,12 @@
-// How high the layout engine makes the lines of Word documents (ParagraphLayout.WordLines.cs): East Asian fonts' extra
-// leading, a named East Asian font that isn't installed, display equations with "multiple" spacing and the document
-// grid (issue #356). Laid out with the Noto fonts of build/fetch-fonts.ps1 (RepositoryFonts), so every computer measures
-// the same; without them the tests skip.
+// How high the layout engine makes the lines of Word documents (ParagraphLayout.WordLines.cs): Windows' external
+// leading, East Asian fonts' extra leading, a named East Asian font that isn't installed, symbol fonts, "at least"
+// spacing, display equations with "multiple" spacing and the document grid (issue #356). Laid out with the Noto fonts
+// of build/fetch-fonts.ps1 (RepositoryFonts), so every computer measures the same; without them the tests skip.
 
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Rendering;
 using Filee.Engines.Typesetting;
+using SkiaSharp;
 using static Filee.Engines.Tests.DocxBuilder;
 
 namespace Filee.Engines.Tests;
@@ -127,15 +128,131 @@ public sealed class WordLineHeightLayoutTests(EngineFixture fx) : IClassFixture<
     }
 
     [Fact]
-    public async Task A_symbol_does_not_make_its_line_taller_than_the_text()
+    public async Task A_unicode_symbol_does_not_make_its_line_taller_than_the_text()
     {
-        // ☑ (Wingdings 2's F052) read as Unicode and drawn in another font: Word measured the symbol font, no taller than
-        // the text, so the line keeps the text's grid line.
+        // ☑ typed as Unicode and drawn in a fallback font, often a much taller one: the line keeps the text's height.
         NeedFonts(RepositoryFonts.Latin);
-        const string Box = "<w:r><w:rPr><w:rFonts w:ascii=\"Wingdings 2\" w:hAnsi=\"Wingdings 2\"/><w:sz w:val=\"40\"/></w:rPr><w:sym w:font=\"Wingdings 2\" w:char=\"F052\"/></w:r>";
-        var page = await LayoutAsync(new DocxBuilder { Styles = Styles }.Paragraph(P(Box + R("Checked")) + P(R("Next"))));
+        var page = await LayoutAsync(new DocxBuilder { Styles = Styles }.Paragraph(P(R("☑", "<w:sz w:val=\"40\"/>") + R("Checked")) + P(R("Next"))));
 
         Assert.Equal(WinHeight(RepositoryFonts.Latin, 10), Baseline(page, "Next") - Baseline(page, "Checked"), 0.05f);
+    }
+
+    [Fact]
+    public async Task A_symbol_from_a_symbol_font_counts_with_that_fonts_height()
+    {
+        // ☑ from Wingdings 2's F052 at 20 pt: Word measures Wingdings 2 (Win ascent 1727, descent 432 of 2048), drawn in it
+        // where it is installed and with its metrics where another font draws ☑. Before, the line had the text's height.
+        NeedFonts(RepositoryFonts.Latin);
+        const string Box = "<w:r><w:rPr><w:sz w:val=\"40\"/></w:rPr><w:sym w:font=\"Wingdings 2\" w:char=\"F052\"/></w:r>";
+        var page = await LayoutAsync(new DocxBuilder { Styles = Styles }.Paragraph(P(Box + R("Checked")) + P(R("Next"))));
+
+        Assert.Equal(72 + 1727 * 20 / 2048f, Baseline(page, "Checked"), 0.05f);
+        Assert.Equal(432 * 20 / 2048f + WinAscent(RepositoryFonts.Latin, 10), Baseline(page, "Next") - Baseline(page, "Checked"), 0.05f);
+    }
+
+    [Fact]
+    public async Task A_sym_is_drawn_and_measured_in_its_own_font_where_it_is_installed()
+    {
+        // w:sym w:font names the font Word draws the code in; the run's text font is SimSun here (not installed: an East
+        // Asian font measured at Word's 1.3 em), which the © must not take its height from.
+        NeedFonts(RepositoryFonts.Latin, RepositoryFonts.Chinese);
+        var page = await LayoutAsync(new DocxBuilder { Styles = Styles }.Paragraph(P(
+            "<w:r><w:rPr><w:rFonts w:ascii=\"SimSun\" w:hAnsi=\"SimSun\"/></w:rPr><w:sym w:font=\"Noto Sans\" w:char=\"00A9\"/></w:r>" + R(" 2026")) +
+            P(R("Next"))));
+
+        var run = page.Items.OfType<GlyphItem>().Select(i => i.Run).First(r => r.Text.Contains('©', StringComparison.Ordinal));
+        Assert.Equal(RepositoryFonts.Latin, run.Font.Typeface.FamilyName);
+        Assert.Equal(WinHeight(RepositoryFonts.Latin, 10), Baseline(page, "Next") - Baseline(page, "©"), 0.02f);
+    }
+
+    [Fact]
+    public async Task Wingdings_codes_are_drawn_in_wingdings_where_it_is_installed()
+    {
+        Assert.SkipUnless(SystemFonts.Instance.Family("Wingdings 2").Count > 0 && SystemFonts.Instance.Family("Wingdings").Count > 0,
+            "Wingdings isn't installed");
+        // "Wingdings2" (as PDF converters write it) is Wingdings 2; "WP Wingdings" with altName Wingdings is Wingdings.
+        var docx = new DocxBuilder
+        {
+            Styles = Styles,
+            FontTable = "<w:font w:name=\"WP Wingdings\"><w:altName w:val=\"Wingdings\"/><w:charset w:val=\"02\"/></w:font>",
+        }.Paragraph(P(
+            "<w:r><w:sym w:font=\"Wingdings 2\" w:char=\"F052\"/></w:r>" + R(" one ") +
+            R("R", "<w:rFonts w:ascii=\"Wingdings2\" w:hAnsi=\"Wingdings2\"/>") + R(" two ") +
+            R("þ", "<w:rFonts w:ascii=\"WP Wingdings\" w:hAnsi=\"WP Wingdings\"/>") + R(" three")));
+        var path = docx.Save(Path.Combine(fx.NewFolder(), "case.docx"));
+        var document = await DocumentReaders.ReadAsync(path, "docx", fx.NewFolder(), Token);
+        var page = new PageComposer(new FontResolver(), _shaper, document.Kinsoku, StyleResolver.FromTemplate()).Compose(document, Token).Pages[0];
+
+        var runs = page.Items.OfType<GlyphItem>().Select(i => i.Run).Where(r => r.Text == "☑").ToList();
+        Assert.Equal(["Wingdings 2", "Wingdings 2", "Wingdings"], runs.Select(r => r.Font.Typeface.FamilyName));
+        // Each a real glyph of the font (not .notdef), its text still ☑ for copying and search.
+        Assert.All(runs, r => Assert.NotEqual(0, r.Glyphs[0]));
+    }
+
+    [Fact]
+    public void Windows_external_leading_goes_above_latin_text()
+    {
+        // Times New Roman's metrics: Win 1825 + 443, hhea line gap 87 of 2048 units, all of it external leading. Word's
+        // single line of 12 pt Times New Roman is 13.8 pt, Win metrics alone 13.3.
+        var times = new FontMetrics(2048, 1825, -443, 87, 1825, 443, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ExternalLeading: 87);
+        var style = new TextStyle("Times New Roman", FontStyle.Regular, 12, 1, 0, 0, 12, SKColors.Black, null, false, false, "");
+        var (ascent, descent) = ParagraphLayouter.WordExtent(style, Face("Times New Roman"), times);
+        Assert.Equal(13.8f, ascent + descent, 0.005f);
+        Assert.Equal((1825 + 87) * 12 / 2048f, ascent, 0.001f);
+
+        // An East Asian font has Word's 30 % leading instead of its line gap (SimSun: 1.0 em Win, 0.14 em gap).
+        var simSun = new FontMetrics(256, 220, -36, 36, 220, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, EastAsian: true, ExternalLeading: 36);
+        var (a, d) = ParagraphLayouter.WordExtent(style with { Family = "SimSun" }, Face("SimSun"), simSun);
+        Assert.Equal(15.6f, a + d, 0.005f);
+
+        static ResolvedFont Face(string family) => new(new FontFace(family, 400, false, _ => true));
+    }
+
+    [Fact]
+    public void External_leading_is_read_from_the_font_tables()
+    {
+        NeedFonts(RepositoryFonts.Latin);
+        // Noto Sans: hhea line gap 0.
+        Assert.Equal(0, _shaper.Metrics(_fonts.Font(RepositoryFonts.Latin)).ExternalLeading);
+        Assert.SkipUnless(SystemFonts.Instance.Family("Times New Roman") is [_, ..], "Times New Roman isn't installed");
+        var metrics = _shaper.Metrics(FontResolver.Match(SystemFonts.Instance.Family("Times New Roman"), FontStyle.Regular).Face.Font);
+        Assert.Equal(87 * metrics.UnitsPerEm / 2048, metrics.ExternalLeading);
+    }
+
+    [Fact]
+    public async Task At_least_compares_with_the_fonts_line_not_its_size()
+    {
+        // 10 pt Noto Sans is 15.2 pt high: "at least 10 pt" keeps that height (it was 10 pt, the font size); "at least
+        // 20 pt" is 20 pt.
+        NeedFonts(RepositoryFonts.Latin);
+        async Task<float> Pitch(int twips)
+        {
+            var spacing = $"<w:spacing w:line=\"{twips}\" w:lineRule=\"atLeast\"/>";
+            var page = await LayoutAsync(new DocxBuilder { Styles = Styles }.Paragraph(P(R("Least one"), spacing) + P(R("Least two"), spacing)));
+            return Baseline(page, "Least two") - Baseline(page, "Least one");
+        }
+
+        Assert.Equal(WinHeight(RepositoryFonts.Latin, 10), await Pitch(200), 0.05f);
+        Assert.Equal(20, await Pitch(400), 0.05f);
+    }
+
+    [Fact]
+    public async Task Headers_footers_and_notes_do_not_snap_to_the_grid()
+    {
+        // The grid sets the body's lines per page; headers, footers and notes keep their font's lines.
+        NeedFonts(RepositoryFonts.Latin);
+        var docx = new DocxBuilder { Styles = Styles };
+        var header = docx.Header(P(R("Head one")) + P(R("Head two")));
+        var footer = docx.Footer(P(R("Foot one")) + P(R("Foot two")));
+        docx.Footnotes("<w:footnote w:id=\"1\">" + P(R("Note one")) + P(R("Note two")) + "</w:footnote>");
+        docx.SectionProperties = $"<w:headerReference w:type=\"default\" r:id=\"{header}\"/><w:footerReference w:type=\"default\" r:id=\"{footer}\"/>" + Grid;
+        var page = await LayoutAsync(docx.Paragraph(P(R("Body one") + "<w:r><w:footnoteReference w:id=\"1\"/></w:r>") + P(R("Body two"))));
+
+        var line = WinHeight(RepositoryFonts.Latin, 10);
+        Assert.Equal(18, Baseline(page, "Body two") - Baseline(page, "Body one"), 0.05f);
+        Assert.Equal(line, Baseline(page, "Head two") - Baseline(page, "Head one"), 0.05f);
+        Assert.Equal(line, Baseline(page, "Foot two") - Baseline(page, "Foot one"), 0.05f);
+        Assert.Equal(line, Baseline(page, "Note two") - Baseline(page, "Note one"), 0.05f);
     }
 
     private void NeedFonts(params string[] families) =>

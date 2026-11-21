@@ -6,7 +6,8 @@
 //   stroked; lines with dashes, caps, joins, double lines and arrowheads (the line shortened under a pointed head).
 // - Text: the frame's paragraphs laid out by the layout engine (ParagraphLayouter: shaping, font fallback, bidi, line
 //   breaking, tabs, alignment) in the text rectangle less its insets, in columns, anchored at the top, middle or bottom,
-//   unwrapped when the frame doesn't wrap, turned for vertical frames. Text turns with its shape but isn't mirrored
+//   unwrapped when the frame doesn't wrap, turned for vertical frames (East Asian vertical text with its CJK characters
+//   upright, stacked text with all of them: VerticalText). Text turns with its shape but isn't mirrored
 //   (PowerPoint turns it upside down for a vertically flipped shape).
 // - Tables: rows as high as their content needs at least, cells' fills, text and borders, merged cells over their span.
 // - Charts: drawn by ChartDrawer in the shape's box, turned with it.
@@ -52,21 +53,25 @@ internal sealed class SlideRenderer : IDisposable
         return pages;
     }
 
-    public PageContent Render(SlideDeck deck, Slide slide)
+    /// <param name="withBackground">Draw the slide's background (white without one); false for a drawing over a page (SmartArt in a document).</param>
+    public PageContent Render(SlideDeck deck, Slide slide, bool withBackground = true)
     {
         var page = new PageContent(deck.Width, deck.Height);
         var area = new SKRect(0, 0, deck.Width, deck.Height);
-        page.Draw(canvas =>
+        if (withBackground)
         {
-            using var white = new SKPaint { Color = SKColors.White };
-            canvas.DrawRect(area, white);
-            if (slide.Background is { } background)
+            page.Draw(canvas =>
             {
-                using var path = new SKPath();
-                path.AddRect(area);
-                SlidePaint.Fill(canvas, path, background, area, _images);
-            }
-        });
+                using var white = new SKPaint { Color = SKColors.White };
+                canvas.DrawRect(area, white);
+                if (slide.Background is { } background)
+                {
+                    using var path = new SKPath();
+                    path.AddRect(area);
+                    SlidePaint.Fill(canvas, path, background, area, _images);
+                }
+            });
+        }
         foreach (var element in slide.Elements)
             Element(page, element, SKMatrix.Identity);
         return page;
@@ -317,6 +322,9 @@ internal sealed class SlideRenderer : IDisposable
         var (width, height) = frame.Direction == TextDirection.Horizontal ? (content.Width, content.Height) : (content.Height, content.Width);
         var layer = new PageContent(Math.Max(1, width), Math.Max(1, height));
         Lay(layer, frame, width, height);
+        // East Asian vertical text stands its CJK characters (stacked text all of them) upright again.
+        if (frame.Direction == TextDirection.Down)
+            layer = VerticalText.Stand(layer, frame.Upright);
         var place = frame.Direction switch
         {
             TextDirection.Down => SKMatrix.CreateTranslation(content.Right, content.Top).PreConcat(SKMatrix.CreateRotationDegrees(90)),

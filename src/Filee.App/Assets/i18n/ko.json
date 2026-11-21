@@ -1797,6 +1797,8 @@
   "sheet_studio.apply_fix": "권장 레이아웃 적용",
   "sheet_studio.add_region": "+ 다른 영역 추가",
   "sheet_studio.region_name": "{0} · 영역 {1}",
+  "sheet_studio.drawn_by_builtin": "Filee 내장 시트 인쇄로 그린 미리 보기",
+  "sheet_studio.drawn_by_libreoffice": "LibreOffice로 그린 미리 보기",
 
   "whats_new.title": "Filee {0}의 새 기능",
   "whats_new.previous": "이전",

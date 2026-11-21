@@ -1797,6 +1797,8 @@
   "sheet_studio.apply_fix": "Áp dụng bố cục đề xuất",
   "sheet_studio.add_region": "+ Thêm vùng khác",
   "sheet_studio.region_name": "{0} · vùng {1}",
+  "sheet_studio.drawn_by_builtin": "Bản xem trước do chức năng in bảng tính tích hợp của Filee vẽ",
+  "sheet_studio.drawn_by_libreoffice": "Bản xem trước do LibreOffice vẽ",
 
   "whats_new.title": "Có gì mới trong Filee {0}",
   "whats_new.previous": "Trước",
