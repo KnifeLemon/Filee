@@ -1,4 +1,5 @@
-// Tray visibility and the template icon follow the macOS menu bar preferences without changing other platforms.
+// Tray visibility, the template icon and the tooltip follow the macOS menu bar preferences without changing other
+// platforms.
 
 using Avalonia;
 using Avalonia.Controls;
@@ -113,6 +114,59 @@ public sealed class TrayServiceTests
                 var tray = Assert.Single(TrayIcon.GetIcons(app)!);
                 Assert.False(MacOSProperties.GetIsTemplateIcon(tray));
                 Assert.NotNull(tray.Icon);
+            }
+            finally
+            {
+                nonMacService.Dispose();
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Mac_menu_bar_icon_has_no_tooltip_and_other_trays_keep_theirs()
+    {
+        TestServices.EnsureInitialized("en");
+        var app = Application.Current!;
+        var directory = Directory.CreateTempSubdirectory("filee-tray-tooltip-").FullName;
+        try
+        {
+            var store = new UserDataStore(directory);
+            store.Load();
+            var service = new TrayService(store, AppHost.Get<ILocalizer>(), new IconPlatform { SupportsDockVisibility = true },
+                AppHost.Get<WindowService>(), AppHost.Get<UpdateService>());
+            try
+            {
+                service.Create(app);
+                var tray = Assert.Single(TrayIcon.GetIcons(app)!);
+                Assert.Equal("", tray.ToolTipText);
+
+                // Pausing used to change the text, which macOS 27.2 could leave on screen far from the icon (#1193).
+                store.Settings.Paused = true;
+                store.SaveSettings();
+                Assert.Equal("", tray.ToolTipText);
+            }
+            finally
+            {
+                service.Dispose();
+            }
+
+            store.Settings.Paused = false;
+            store.SaveSettings();
+            var nonMacService = new TrayService(store, AppHost.Get<ILocalizer>(), new IconPlatform(),
+                AppHost.Get<WindowService>(), AppHost.Get<UpdateService>());
+            try
+            {
+                nonMacService.Create(app);
+                var tray = Assert.Single(TrayIcon.GetIcons(app)!);
+                Assert.False(string.IsNullOrEmpty(tray.ToolTipText));
+
+                store.Settings.Paused = true;
+                store.SaveSettings();
+                Assert.Equal(AppHost.Get<ILocalizer>()["triggers.paused"], tray.ToolTipText);
             }
             finally
             {
