@@ -349,8 +349,9 @@ internal static class OdsBuilder
     /// <param name="encrypted">Declares content.xml as encrypted in the manifest, as password-protected files do.</param>
     /// <param name="pageStyles">Children of office:automatic-styles in styles.xml (page layouts).</param>
     /// <param name="masterStyles">Children of office:master-styles (master pages with headers and footers).</param>
+    /// <param name="media">More files of the package (pictures), by path.</param>
     public static string Save(string path, string automaticStyles, string tables, string styles = "", string? settings = null, bool encrypted = false,
-        string pageStyles = "", string masterStyles = "")
+        string pageStyles = "", string masterStyles = "", IReadOnlyDictionary<string, byte[]>? media = null)
     {
         using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
         Add(zip, "mimetype", "application/vnd.oasis.opendocument.spreadsheet", CompressionLevel.NoCompression);
@@ -361,6 +362,11 @@ internal static class OdsBuilder
             $"<office:automatic-styles>{pageStyles}</office:automatic-styles><office:master-styles>{masterStyles}</office:master-styles></office:document-styles>");
         if (settings is not null)
             Add(zip, "settings.xml", OpcWriter.Declaration + settings);
+        foreach (var (name, bytes) in media ?? new Dictionary<string, byte[]>())
+        {
+            using var stream = zip.CreateEntry(name).Open();
+            stream.Write(bytes);
+        }
         Add(zip, "META-INF/manifest.xml", OpcWriter.Declaration +
             "<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.3\">" +
             "<manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"application/vnd.oasis.opendocument.spreadsheet\"/>" +

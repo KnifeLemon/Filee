@@ -405,6 +405,83 @@ public class SpreadsheetPrintStudioTests
         }
     }
 
+    [AvaloniaFact]
+    public async Task An_xlsb_opens_in_the_studio_and_prints_with_the_built_in_printer()
+    {
+        TestServices.EnsureInitialized();
+        var folder = Directory.CreateTempSubdirectory("filee-sheet-studio-xlsb-").FullName;
+        try
+        {
+            var service = new SpreadsheetPrintService([new SheetPrintConverter(), new PdfSharpConverter()]);
+            var source = Path.Combine(folder, "book.xlsb");
+            WriteBinaryWorkbook(source, rows: 120);
+            var workbook = service.Inspect(source);
+            Assert.True(SpreadsheetPrintBinary.Handles(workbook));
+            Assert.Equal(("Data", "A1:A120"), (workbook.Sheets[0].Name, workbook.Sheets[0].UsedRange));
+
+            var loc = AppHost.Get<ILocalizer>();
+            using var vm = new SpreadsheetPrintStudioViewModel(source, service, loc, AppHost.Get<UserDataStore>());
+            await vm.Initialization;
+            await WaitUntilAsync(() => vm.Pages.Count > 0, TimeSpan.FromSeconds(20));
+            Assert.False(vm.HasNotice);
+
+            var output = Path.Combine(folder, "book.pdf");
+            await vm.ExportAsync(output);
+            Assert.True(File.Exists(output));
+            Assert.Equal(vm.Pages.Count, PdfSharp.Pdf.IO.PdfReader.Open(output, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import).PageCount);
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    /// <summary>An Excel binary workbook ([MS-XLSB] BIFF12 records) of one sheet "Data" with numbers in column A.</summary>
+    private static void WriteBinaryWorkbook(string path, int rows)
+    {
+        static byte[] Record(int type, params byte[][] fields)
+        {
+            var data = fields.SelectMany(field => field).ToArray();
+            var header = new List<byte>();
+            header.Add((byte)(type < 128 ? type : (type & 0x7F) | 0x80));
+            if (type >= 128)
+                header.Add((byte)(type >> 7));
+            for (var size = data.Length; ; size >>= 7)
+            {
+                header.Add((byte)(size > 0x7F ? (size & 0x7F) | 0x80 : size));
+                if (size <= 0x7F)
+                    break;
+            }
+            return [.. header, .. data];
+        }
+        static byte[] U32(int value) => BitConverter.GetBytes(value);
+        static byte[] Text(string value) => [.. U32(value.Length), .. Encoding.Unicode.GetBytes(value)];
+        var sheet = new List<byte>();
+        sheet.AddRange(Record(129)); // BrtBeginSheet
+        sheet.AddRange(Record(145)); // BrtBeginSheetData
+        for (var row = 0; row < rows; row++)
+        {
+            sheet.AddRange(Record(0, U32(row), U32(0), BitConverter.GetBytes((ushort)300), [0, 0, 0], U32(0))); // BrtRowHdr
+            sheet.AddRange(Record(5, U32(0), U32(0), BitConverter.GetBytes(row + 1.0))); // BrtCellReal
+        }
+        sheet.AddRange(Record(146));
+        sheet.AddRange(Record(130));
+        var parts = new Dictionary<string, byte[]>
+        {
+            ["[Content_Types].xml"] = Encoding.UTF8.GetBytes("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"bin\" ContentType=\"application/vnd.ms-excel.sheet.binary.macroEnabled.main\"/></Types>"),
+            ["_rels/.rels"] = Encoding.UTF8.GetBytes("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.bin\"/></Relationships>"),
+            ["xl/_rels/workbook.bin.rels"] = Encoding.UTF8.GetBytes("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.bin\"/></Relationships>"),
+            ["xl/workbook.bin"] = [.. Record(131), .. Record(156, U32(0), U32(1), Text("rId1"), Text("Data")), .. Record(132)], // BrtBeginBook, BrtBundleSh, BrtEndBook
+            ["xl/worksheets/sheet1.bin"] = [.. sheet],
+        };
+        using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
+        foreach (var (name, bytes) in parts)
+        {
+            using var stream = zip.CreateEntry(name).Open();
+            stream.Write(bytes);
+        }
+    }
+
     private static HashSet<string> WorkFolders() => Directory.Exists(JobQueue.DefaultWorkRoot)
         ? Directory.GetDirectories(JobQueue.DefaultWorkRoot).ToHashSet(StringComparer.Ordinal)
         : [];

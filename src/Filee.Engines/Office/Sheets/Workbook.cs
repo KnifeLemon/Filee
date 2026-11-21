@@ -117,6 +117,18 @@ internal sealed class Worksheet(string name)
     /// <summary>The chart of a chart sheet (<see cref="Workbook.ChartSheets"/>), printed alone on one page; null for a worksheet.</summary>
     public Charts.Chart? Chart { get; set; }
 
+    /// <summary>
+    /// Where a chart sheet's chart is anchored (its absolute anchor: points from the corner of the area inside the
+    /// margins, and its size), or null. <see cref="Drawings"/> over the chart are placed in the same space.
+    /// </summary>
+    public (double X, double Y, double Width, double Height)? ChartAnchor { get; set; }
+
+    /// <summary>
+    /// The chart sheet's chart is sized to the window and fills the page (XLSX sheetView zoomToFit); otherwise a chart
+    /// clearly smaller than the page prints at its own size and place.
+    /// </summary>
+    public bool ChartFillsPage { get; set; }
+
     public void Set(int row, int column, SheetCell cell)
     {
         if (!Rows.TryGetValue(row, out var cells))

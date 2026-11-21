@@ -9,6 +9,9 @@
 // printer doesn't draw yet (charts, text in shapes, form controls: SheetCapabilities) goes to LibreOffice when it is
 // installed, as in a normal conversion; without it the pages are printed all the same and the region carries the
 // printer's notice, which the studio shows.
+//
+// An Excel binary workbook (.xlsb) can't be rewritten that way: Filee's own sheet printer prints it from what it reads,
+// with the region's settings put on the sheet (SpreadsheetPrintBinary), whichever engine is chosen.
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -205,6 +208,21 @@ public sealed class SpreadsheetPrintService(IReadOnlyList<IConverter> converters
         SpreadsheetWorkbookInfo workbook, SpreadsheetPrintRegion region, CancellationToken cancellationToken,
         IProgress<double>? progress = null)
     {
+        if (SpreadsheetPrintBinary.Handles(workbook))
+        {
+            var work = CreateWorkFolder();
+            try
+            {
+                var pdf = Path.Combine(work, "sheet.pdf");
+                var said = await Task.Run(() => SpreadsheetPrintBinary.Print(workbook, region, pdf, progress, cancellationToken), cancellationToken);
+                return (pdf, work, said);
+            }
+            catch
+            {
+                TryDelete(work);
+                throw;
+            }
+        }
         IConverter engine = Engine switch
         {
             SpreadsheetPrintEngine.BuiltIn => _sheetPrinter!,

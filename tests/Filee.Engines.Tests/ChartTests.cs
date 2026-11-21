@@ -638,10 +638,12 @@ public sealed class ChartTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("charts", SheetCapabilities.FirstUnsupported(path, "xlsx"));
         Assert.Empty(XlsxReader.Read(path).ChartSheets);
 
-        // A shape placed over the chart isn't printed with it.
+        // A shape placed over the chart is printed with it (SheetObjectTests); one with text in it is named.
         var shape = "<xdr:absoluteAnchor><xdr:pos x=\"0\" y=\"0\"/><xdr:ext cx=\"1270000\" cy=\"1270000\"/><xdr:sp><xdr:nvSpPr><xdr:cNvPr id=\"3\" name=\"Box\"/><xdr:cNvSpPr/></xdr:nvSpPr>" +
-                    "<xdr:spPr><a:prstGeom prst=\"rect\"/><a:solidFill><a:srgbClr val=\"FF0000\"/></a:solidFill></xdr:spPr></xdr:sp><xdr:clientData/></xdr:absoluteAnchor>";
-        Assert.Equal("shapes", SheetCapabilities.FirstUnsupported(Save(ChartSheetBook(Columns(), over: shape)), "xlsx"));
+                    "<xdr:spPr><a:prstGeom prst=\"rect\"/><a:solidFill><a:srgbClr val=\"FF0000\"/></a:solidFill></xdr:spPr>{0}</xdr:sp><xdr:clientData/></xdr:absoluteAnchor>";
+        Assert.Null(SheetCapabilities.FirstUnsupported(Save(ChartSheetBook(Columns(), over: shape.Replace("{0}", "", StringComparison.Ordinal))), "xlsx"));
+        Assert.Equal("text in shapes", SheetCapabilities.FirstUnsupported(Save(ChartSheetBook(Columns(),
+            over: shape.Replace("{0}", "<xdr:txBody><a:bodyPr/><a:p><a:r><a:t>Note</a:t></a:r></a:p></xdr:txBody>", StringComparison.Ordinal))), "xlsx"));
     }
 
     [Fact]

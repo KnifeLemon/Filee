@@ -120,10 +120,13 @@ internal sealed class SheetPageRenderer
         DrawHeaderFooter(content, fields, (float)width, (float)height, header: true);
         if (Sheet.Chart is { } chart)
         {
-            // A chart sheet: the chart fills the page inside the margins.
+            // A chart sheet: the chart fills the page inside the margins, or keeps its own size and place.
             _charts ??= new ChartFonts(_fonts.Resolver, _fonts.Shaper);
             var (marginLeft, marginTop) = ((float)setup.LeftMargin, (float)setup.TopMargin);
-            ChartDrawer.Draw(content, chart, new SKRect(marginLeft, marginTop, marginLeft + areaWidth, marginTop + areaHeight), _charts);
+            var printable = new SKRect(marginLeft, marginTop, marginLeft + areaWidth, marginTop + areaHeight);
+            var (box, place) = ChartSheetBox(printable);
+            ChartDrawer.Draw(content, chart, box, _charts);
+            DrawOverChart(content, place, printable);
             DrawHeaderFooter(content, fields, (float)width, (float)height, header: false);
             return content;
         }
@@ -812,6 +815,52 @@ internal sealed class SheetPageRenderer
         }
     }
 
+    // ───────────────────────── Chart sheets ─────────────────────────
+
+    /// <summary>
+    /// Where a chart sheet's chart prints in <paramref name="printable"/>, and how its anchor's space (points) maps onto
+    /// the page. The chart fills the page (Excel's "use full page") unless the sheet isn't sized to the window and the
+    /// chart's anchor is clearly smaller than the page and inside it: then it prints at its own size and place.
+    /// </summary>
+    internal (SKRect Box, SKMatrix Place) ChartSheetBox(SKRect printable)
+    {
+        if (Sheet.ChartAnchor is not { } anchor || !(anchor.Width > 0 && anchor.Height > 0) || !double.IsFinite(anchor.X + anchor.Y + anchor.Width + anchor.Height))
+            return (printable, SKMatrix.CreateTranslation(printable.Left, printable.Top));
+        const double Slack = 1;
+        var own = !Sheet.ChartFillsPage && anchor.X + anchor.Width <= printable.Width + Slack && anchor.Y + anchor.Height <= printable.Height + Slack
+            && (anchor.Width < printable.Width * 0.95 || anchor.Height < printable.Height * 0.95);
+        if (own)
+        {
+            var box = SKRect.Create(printable.Left + (float)anchor.X, printable.Top + (float)anchor.Y, (float)anchor.Width, (float)anchor.Height);
+            return (box, SKMatrix.CreateTranslation(printable.Left, printable.Top));
+        }
+        var (sx, sy) = ((float)(printable.Width / anchor.Width), (float)(printable.Height / anchor.Height));
+        // The anchor's corner goes to the printable area's, its size to the area's.
+        var place = SKMatrix.CreateTranslation((float)-anchor.X, (float)-anchor.Y).PostConcat(SKMatrix.CreateScale(sx, sy))
+            .PostConcat(SKMatrix.CreateTranslation(printable.Left, printable.Top));
+        return (printable, place);
+    }
+
+    /// <summary>The pictures and shapes over a chart sheet's chart (its drawing's other anchors and the chart's userShapes).</summary>
+    private void DrawOverChart(PageContent page, SKMatrix place, SKRect printable)
+    {
+        var placed = new List<(SheetDrawing, SKImage?, SKRect)>();
+        foreach (var (drawing, image) in _drawings)
+        {
+            if (drawing is SheetChart || drawing.To is not null || !(drawing.Width >= 0 && drawing.Height >= 0))
+                continue;
+            var rect = place.MapRect(SKRect.Create((float)drawing.OffsetX, (float)drawing.OffsetY, (float)drawing.Width, (float)drawing.Height));
+            if (!float.IsFinite(rect.Width) || !float.IsFinite(rect.Height) || drawing is SheetPicture && (rect.Width <= 0 || rect.Height <= 0))
+                continue;
+            if (drawing.Part is { } part)
+                rect = new SKRect(rect.Left + (float)part.Left * rect.Width, rect.Top + (float)part.Top * rect.Height,
+                    rect.Left + (float)part.Right * rect.Width, rect.Top + (float)part.Bottom * rect.Height);
+            placed.Add((drawing, image, rect));
+        }
+        if (placed.Count > 0)
+            DrawPlaced(page, placed, printable, (place.ScaleX + place.ScaleY) / 2);
+    }
+
     // ───────────────────────── Pictures and shapes ─────────────────────────
 
     private void DrawDrawings(PageContent page, List<Placed> columns, List<Placed> rows, SKRect area)
@@ -841,8 +890,13 @@ internal sealed class SheetPageRenderer
             if (SKRect.Create(rect.MidX - reach, rect.MidY - reach, 2 * reach, 2 * reach).IntersectsWith(area))
                 placed.Add((drawing, image, rect));
         }
-        if (placed.Count == 0)
-            return;
+        if (placed.Count > 0)
+            DrawPlaced(page, placed, area, s);
+    }
+
+    /// <summary>Placed pictures, shapes and charts in drawing order, clipped to <paramref name="area"/>.</summary>
+    private void DrawPlaced(PageContent page, List<(SheetDrawing, SKImage?, SKRect)> placed, SKRect area, float s)
+    {
         // Pictures and shapes in runs between charts, which add their text as text.
         for (var start = 0; start < placed.Count;)
         {

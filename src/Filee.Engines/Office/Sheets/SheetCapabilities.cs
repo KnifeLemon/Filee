@@ -7,12 +7,13 @@
 //    ChartReader doesn't draw, SmartArt, embedded objects, ink, text in shapes, freeform shapes, ...); form controls
 //    (ctrlProp parts, or legacy VML controls); embedded OLE objects. Comments are not printed unless the page setup
 //    asks for them, and are left out of the check.
-//  * XLSB: the same relationships as XLSX, but a visible chart sheet is named (the XLSB reader doesn't print them);
-//    the visible sheets come from the binary workbook part.
+//  * XLSB: the same relationships as XLSX (a chart sheet's drawing is the one its binary part relates to); the
+//    visible sheets come from the binary workbook part.
 //  * XLS: the reader takes no drawing at all, so every object of a visible sheet is named by its OBJ record's type
 //    (charts, pictures, text boxes, shapes, form controls; comments aside), and a visible chart sheet.
-//  * ODS: the reader takes charts OdfChartReader draws (with their frames' replacement pictures) and no other drawing:
-//    pictures, other charts and embedded objects, shapes, text boxes and form controls of a visible table.
+//  * ODS: the reader takes charts OdfChartReader draws (with their frames' replacement pictures) and the pictures and
+//    shapes OdsDrawing draws; other charts and embedded objects, and what OdsDrawing leaves out (text boxes, text in
+//    shapes, freeform shapes, form controls, SVG pictures, ...) of a visible table are named.
 // The parts are read within DocumentLimits; a file that can't be read gets no answer here (null), and the printer
 // then refuses it with the reader's own reason.
 
@@ -88,7 +89,7 @@ internal static partial class SheetCapabilities
         {
             if ((string?)sheet.Attribute("state") is "hidden" or "veryHidden")
                 continue;
-            if (SheetFeature(package, relationships, (string?)sheet.Attribute(R + "id"), theme, chartSheets: true) is { } feature)
+            if (SheetFeature(package, relationships, (string?)sheet.Attribute(R + "id"), theme) is { } feature)
                 return feature;
         }
         return null;
@@ -104,20 +105,19 @@ internal static partial class SheetCapabilities
         var relationships = package.Relationships(workbookPath);
         foreach (var sheet in XlsbReader.ListSheets(package, workbookPath, DocumentLimits.Default))
         {
-            if (sheet.State == 0 && SheetFeature(package, relationships, sheet.RelationshipId, theme, chartSheets: false) is { } feature)
+            if (sheet.State == 0 && SheetFeature(package, relationships, sheet.RelationshipId, theme) is { } feature)
                 return feature;
         }
         return null;
     }
 
     /// <summary>What a visible sheet holds that the printer doesn't draw, from its relationships, without reading its cells.</summary>
-    /// <param name="chartSheets">Chart sheets are printed (XLSX): one is named only when its chart isn't drawn.</param>
-    private static string? SheetFeature(OpcPackage package, Dictionary<string, OpcRelationship> relationships, string? id, XElement? theme, bool chartSheets)
+    private static string? SheetFeature(OpcPackage package, Dictionary<string, OpcRelationship> relationships, string? id, XElement? theme)
     {
         if (id is null || !relationships.TryGetValue(id, out var relationship) || relationship.External)
             return null;
         if (relationship.Type.EndsWith("/chartsheet", StringComparison.Ordinal))
-            return chartSheets ? ChartSheet(package, relationship.Target, theme) : "charts";
+            return ChartSheet(package, relationship.Target, theme);
         if (!relationship.Type.EndsWith("/worksheet", StringComparison.Ordinal))
             return null;
         foreach (var part in package.Relationships(relationship.Target).Values.Where(r => !r.External))
@@ -139,9 +139,13 @@ internal static partial class SheetCapabilities
     /// <summary>What of a chart sheet isn't printed: its chart when ChartReader doesn't draw it, or what is placed over it.</summary>
     private static string? ChartSheet(OpcPackage package, string part, XElement? theme)
     {
-        if (package.Part(part)?.Root is not { } xml)
+        string? drawing;
+        if (part.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
+            drawing = package.TargetOfType(part, "/drawing"); // an XLSB chart sheet's records name the same relationship
+        else if (package.Part(part)?.Root is { } xml)
+            drawing = package.Target(part, (string?)xml.Element(S + "drawing")?.Attribute(R + "id"));
+        else
             return "charts";
-        var drawing = package.Target(part, (string?)xml.Element(S + "drawing")?.Attribute(R + "id"));
         if (drawing is null)
             return "charts";
         return XlsxDrawing.ChartSheet(package, drawing, theme).LeftOut;
@@ -183,6 +187,24 @@ internal static partial class SheetCapabilities
             IgnoreComments = true,
             IgnoreProcessingInstructions = true,
         };
+        // Graphic styles say how shapes are filled (a gradient isn't drawn): the named ones and the default from styles.xml,
+        // the automatic ones from content.xml before its body.
+        XNamespace odfStyle = OdfStyle;
+        var graphics = new Dictionary<string, XElement>(StringComparer.Ordinal);
+        XElement? defaultGraphic = null;
+        if (zip.GetEntry("styles.xml") is { } stylesEntry)
+        {
+            foreach (var element in zip.LoadXml(stylesEntry).Root?.Elements().SelectMany(container => container.Elements()) ?? [])
+            {
+                if ((string?)element.Attribute(odfStyle + "family") != "graphic")
+                    continue;
+                if (element.Name == odfStyle + "default-style")
+                    defaultGraphic = element;
+                else if (element.Name == odfStyle + "style" && (string?)element.Attribute(odfStyle + "name") is { } graphicName)
+                    graphics[graphicName] = element;
+            }
+        }
+        var drawings = new OdsDrawing(zip, read: false, name => graphics.GetValueOrDefault(name), defaultGraphic);
         using var stream = zip.Open(content);
         using var reader = XmlReader.Create(stream, settings);
         // Table styles that hide their table (table:display="false"), from the automatic styles before the body.
@@ -198,6 +220,14 @@ internal static partial class SheetCapabilities
                 continue;
             switch (reader.NamespaceURI, reader.LocalName)
             {
+                case (OdfStyle, "style") when !body && reader.GetAttribute("family", OdfStyle) == "graphic":
+                    {
+                        var graphic = (XElement)XNode.ReadFrom(reader);
+                        skipped = true;
+                        if ((string?)graphic.Attribute(odfStyle + "name") is { } graphicName)
+                            graphics[graphicName] = graphic;
+                        break;
+                    }
                 case (OdfStyle, "style") when !body:
                     style = reader.GetAttribute("family", OdfStyle) == "table" ? reader.GetAttribute("name", OdfStyle) : null;
                     break;
@@ -215,25 +245,30 @@ internal static partial class SheetCapabilities
                         skipped = true;
                     }
                     break;
-                case (OdfDraw, "frame") when body:
+                case (OdfDraw, _) when body:
                     {
-                        // The whole frame: a chart drawn from its data takes its replacement picture with it.
-                        var frame = (XElement)XNode.ReadFrom(reader);
+                        // The whole frame or shape: a chart drawn from its data takes its replacement picture with it.
+                        var drawing = (XElement)XNode.ReadFrom(reader);
                         skipped = true;
-                        if (OdsFrame(zip, frame) is { } inFrame)
-                            return inFrame;
+                        if (Sheets.OdsDrawing.IsObjectFrame(drawing))
+                        {
+                            if (OdsFrame(zip, drawing) is { } inFrame)
+                                return inFrame;
+                        }
+                        else
+                        {
+                            drawings.Read(drawing, 0, 0);
+                            if (drawings.FirstLeftOut is { } feature)
+                                return feature;
+                        }
                         break;
                     }
-                case (OdfDraw, var element) when body:
-                    if (OdsDrawing(zip, element, reader) is { } feature)
-                        return feature;
-                    break;
             }
         }
         return null;
     }
 
-    /// <summary>What a frame in a visible table holds that the printer doesn't draw: nothing for a chart OdfChartReader draws.</summary>
+    /// <summary>What a frame with an embedded object in a visible table holds that the printer doesn't draw: nothing for a chart OdfChartReader draws.</summary>
     private static string? OdsFrame(DocumentPackage zip, XElement frame)
     {
         XNamespace draw = OdfDraw;
@@ -284,20 +319,6 @@ internal static partial class SheetCapabilities
             return false;
         }
     }
-
-    /// <summary>What an element of the drawing namespace in a visible table is, named; null for a frame or another container.</summary>
-    private static string? OdsDrawing(DocumentPackage zip, string element, XmlReader reader) => element switch
-    {
-        // An object's frame also holds its replacement picture, after the object: the object is named first.
-        "object" or "object-ole" => IsChart(zip, reader.GetAttribute("href", XLink)) ? "charts" : "embedded objects",
-        "image" => "pictures",
-        "text-box" => "text boxes",
-        "control" => "form controls",
-        "plugin" or "applet" or "floating-frame" => "embedded objects",
-        "rect" or "ellipse" or "circle" or "line" or "polyline" or "polygon" or "regular-polygon" or "path" or "custom-shape" or "connector"
-            or "measure" or "caption" or "g" => "shapes",
-        _ => null,
-    };
 
     /// <summary>Whether the embedded object at <paramref name="href"/> ("./Object 1") is a chart, from the package manifest.</summary>
     private static bool IsChart(DocumentPackage zip, string? href)

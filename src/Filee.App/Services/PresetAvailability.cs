@@ -182,7 +182,7 @@ public sealed class PresetAvailability
         {
             if (preset.Id == "tool-sheet-studio")
             {
-                if (formats.Count > 0 && formats.All(format => format.Id == "xlsx"))
+                if (formats.Count > 0 && formats.All(format => format.Id is "xlsx" or "xlsb"))
                 {
                     // Filee's own sheet printer prints the studio's pages; LibreOffice only where it's missing.
                     var printer = _catalog.All.FirstOrDefault(converter => converter.Id is "sheet-print" or "libreoffice"
