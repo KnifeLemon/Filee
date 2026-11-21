@@ -685,6 +685,31 @@ public sealed class XpsTests(EngineFixture fx) : IClassFixture<EngineFixture>, I
     }
 
     [Fact]
+    public void Upright_italic_simulation_skews_by_twenty_degrees()
+    {
+        // ECMA-388 §12.1.5: 20°, XPS's own value; other synthetic italics keep the renderer's.
+        Assert.Equal(XpsGlyphs.ItalicSlant, -Math.Tan(20 * Math.PI / 180), 5);
+        Assert.NotEqual(XpsGlyphs.ItalicSlant, GlyphRun.SyntheticSlant);
+
+        // Drawn: the top of an italic "l" lies right of its foot by tan 20° of its height.
+        var builder = new XpsBuilder();
+        var part = builder.Font(TestFont());
+        builder.Page($"<Glyphs FontUri='{part}' FontRenderingEmSize='120' OriginX='40' OriginY='140' UnicodeString='l' StyleSimulations='ItalicSimulation' Fill='#000000'/>",
+            200, 160);
+        using var bitmap = Render(builder);
+        var ink = Ink(bitmap, 0, 0, 200, 160);
+        double Middle(int y)
+        {
+            var columns = Enumerable.Range(0, 200).Where(x => bitmap.GetPixel(x, y).Red < 128).ToList();
+            return columns.Count == 0 ? double.NaN : columns.Average();
+        }
+        var (top, foot) = (ink.Top + 4, ink.Bottom - 4);
+        var lean = Middle(top) - Middle(foot);
+        var expected = Math.Tan(20 * Math.PI / 180) * (foot - top);
+        Assert.InRange(lean, expected * 0.8, expected * 1.2);
+    }
+
+    [Fact]
     public void Color_converted_pictures_are_read_through_their_profile()
     {
         var builder = new XpsBuilder();

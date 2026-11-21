@@ -7,7 +7,11 @@
 // - macOS: a family is asked for only when CoreText lists it as installed. A request for one that isn't can start
 //   CoreText's activation of a font macOS offers for download (Nanum Gothic, which the Korean fallback list names),
 //   and while that waits every other font request of the process waits with it: on a computer nobody answers, the
-//   layout of a short document and unrelated chart reads stood still for minutes.
+//   layout of a short document and unrelated chart reads stood still for minutes. Asks is the check for every font
+//   lookup of Filee by a name a document or setting gives (MatchFamily here); Apple's hidden system faces (".SF NS",
+//   ".AppleSystemUIFont") are never listed and never downloaded, so they are asked for.
+// - Per-character fallback goes through CharacterFallbacks, which keeps answers and stops asking about blocks that have
+//   nothing, so a document full of characters no font has doesn't make one native call per character.
 // - Style, variable and CFF2 flags come from the font's own tables (OS/2, fvar, CFF2), not from what the font
 //   manager reports: DirectWrite lists the named instances of a variable font as faces of their own, but their data
 //   is the whole font, which shapes and draws at its default instance.
@@ -29,9 +33,9 @@ internal sealed class SystemFonts : IFontCollection
     private readonly ConcurrentDictionary<string, IReadOnlyList<FontFace>> _families = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<(string Family, int Weight, bool Italic), FontFace> _fallbacks = new();
 
-    private SystemFonts()
-    {
-    }
+    private readonly CharacterFallbacks _characters;
+
+    private SystemFonts() => _characters = new CharacterFallbacks(Ask);
 
     public static SystemFonts Instance { get; } = new();
 
@@ -40,6 +44,7 @@ internal sealed class SystemFonts : IFontCollection
     {
         Instance._families.Clear();
         Instance._fallbacks.Clear();
+        Instance._characters.Clear();
         _installed = null;
     }
 
@@ -50,7 +55,18 @@ internal sealed class SystemFonts : IFontCollection
     /// Whether <see cref="Family"/> asks the font manager for <paramref name="name"/>: always on Windows and Linux; on
     /// macOS only for a family CoreText lists as installed, by its listed name or the name its fonts give.
     /// </summary>
-    internal static bool Asks(string name) => !OperatingSystem.IsMacOS() || Installed().Contains(name);
+    internal static bool Asks(string name) => !OperatingSystem.IsMacOS() || Listed(Installed(), name);
+
+    /// <summary>Whether <paramref name="name"/> is one of <paramref name="installed"/> or one of Apple's hidden system faces.</summary>
+    internal static bool Listed(IReadOnlySet<string> installed, string name) =>
+        installed.Contains(name) || (name.Length > 1 && name[0] == '.' && name.AsSpan().IndexOfAnyExceptInRange(' ', '~') < 0);
+
+    /// <summary>
+    /// The installed family's face nearest <paramref name="style"/> through Skia's font manager, or null; on macOS only
+    /// for a family <see cref="Asks"/> allows. Not to be disposed (see the top).
+    /// </summary>
+    internal static SKTypeface? MatchFamily(string name, SKFontStyle? style = null) =>
+        Asks(name) ? SKFontManager.Default.MatchFamily(name, style ?? SKFontStyle.Normal) : null;
 
     private static HashSet<string> Installed()
     {
@@ -94,8 +110,15 @@ internal sealed class SystemFonts : IFontCollection
         return faces;
     });
 
-    public FontFace? ForCharacter(int codePoint, FontStyle style, string? language)
+    public FontFace? ForCharacter(int codePoint, FontStyle style, string? language) => _characters.Find(codePoint, style, language);
+
+    /// <summary>Native questions <see cref="Ask"/> has put on this thread (tests count them).</summary>
+    [ThreadStatic]
+    internal static int CharacterQuestions;
+
+    private FontFace? Ask(int codePoint, FontStyle style, string? language)
     {
+        CharacterQuestions++;
         var typeface = SKFontManager.Default.MatchCharacter(null, style.Weight, (int)SKFontStyleWidth.Normal,
             style.Italic ? SKFontStyleSlant.Italic : SKFontStyleSlant.Upright, language is null ? [] : [language], codePoint);
         if (typeface is null || typeface.GetGlyph(codePoint) == 0)

@@ -102,16 +102,88 @@ public class PdfAFontRepairTests(EngineFixture fx) : IClassFixture<EngineFixture
         int Glyph(char c) => sfnt.Typeface.GetGlyph(c);
     }
 
+    [Fact]
+    public void A_code_the_program_has_no_glyph_for_gets_an_empty_glyph_instead_of_notdef()
+    {
+        // The test font is a subset without Q or X: those codes draw .notdef.
+        Assert.Equal(0, PdfATestFonts.Advance('Q'));
+        var path = TrueTypePage(Path.Combine(fx.NewFolder(), "lacking.pdf"), "HiQX", PdfATestFonts.TrueTypeFont(6));
+        Assert.Contains(PdfA2bChecks.Check(File.ReadAllBytes(path)), b => b.StartsWith("6.2.11.8", StringComparison.Ordinal));
+
+        Assert.Equal(PdfArchiveOutcome.Archived, Archive(path, PdfATestFonts.None));
+
+        PdfA2bChecks.Assert2b(path);
+        Assert.Equal("HiQX", Text(path));
+    }
+
+    [Fact]
+    public void A_cid_the_program_has_no_glyph_for_gets_an_empty_glyph_through_the_cid_to_gid_map()
+    {
+        using var sfnt = Filee.Engines.Rendering.PageFont.FromData(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fonts", "FileeTest-TrueType.ttf")));
+        var h = sfnt.Typeface.GetGlyph('H');
+        var beyond = sfnt.Typeface.GlyphCount + 5;
+        var path = PdfAEmbeddingTests.Page(Path.Combine(fx.NewFolder(), "cid-lacking.pdf"), $"BT /F1 24 Tf 72 700 Td <{h:X4}{beyond:X4}0000> Tj ET",
+            "/Font << /F1 5 0 R >>", extra:
+            [
+                "<< /Type /Font /Subtype /Type0 /BaseFont /FileeTest-TrueType /Encoding /Identity-H /DescendantFonts [6 0 R] >>",
+                "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /FileeTest-TrueType /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> " +
+                    $"/CIDToGIDMap /Identity /DW 600 /W [{h} [{PdfATestFonts.Advance('H')}]] /FontDescriptor 7 0 R >>",
+                PdfATestFonts.Descriptor("FileeTest-TrueType", 8, 4),
+                PdfATestFonts.Program(),
+            ]);
+        Assert.Contains(PdfA2bChecks.Check(File.ReadAllBytes(path)), b => b.StartsWith("6.2.11.8", StringComparison.Ordinal));
+
+        Assert.Equal(PdfArchiveOutcome.Archived, Archive(path, PdfATestFonts.None));
+
+        PdfA2bChecks.Assert2b(path);
+    }
+
+    [Fact]
+    public void Glyphs_added_to_a_program_keep_its_tables_in_step()
+    {
+        var sfnt = Filee.Engines.Fonts.SfntFont.Read(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fonts", "FileeTest-TrueType.ttf")));
+        var count = sfnt.GlyphCount;
+
+        var added = PdfAFonts.AddEmptyGlyphs(sfnt, new Dictionary<int, double> { [1] = 600, [2] = 600, [3] = 250 });
+
+        // One glyph a width, at the end; every table that counts glyphs counts them.
+        Assert.Equal(new Dictionary<int, int> { [1] = count, [2] = count, [3] = count + 1 }, added);
+        Assert.Equal(count + 2, sfnt.GlyphCount);
+        Assert.Equal(count + 2, Filee.Engines.Fonts.FontTables.NumberOfMetrics(sfnt.Require("hhea")));
+        Assert.Equal((count + 2) * 4, sfnt.Require("hmtx").Length);
+        var post = sfnt.Require("post");
+        if (System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(post) == 0x00020000)
+            Assert.Equal(count + 2, System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(post.AsSpan(32)));
+        using var font = Filee.Engines.Rendering.PageFont.FromData(sfnt.Write());
+        Assert.Equal(count + 2, font.Typeface.GlyphCount);
+    }
+
+    [Fact]
+    public void Widths_of_a_unicode_cmap_are_kept_where_the_cid_is_known_without_the_cmap()
+    {
+        // W gives CIDs only the default width: every code has it.
+        Assert.Equal(1000, PdfAFonts.UnicodeWidth('가', [], 1000, halfWidth: false));
+        Assert.Equal(1000, PdfAFonts.UnicodeWidth('A', new Dictionary<int, double> { [5000] = 1000 }, 1000, halfWidth: false));
+        // Printable ASCII: CID code − 31 (A is CID 34), else DW; backslash, tilde and half-width CMaps unknown.
+        Dictionary<int, double> proportional = new() { [1] = 250, [34] = 640 };
+        Assert.Equal(640, PdfAFonts.UnicodeWidth('A', proportional, 1000, halfWidth: false));
+        Assert.Equal(250, PdfAFonts.UnicodeWidth(' ', proportional, 1000, halfWidth: false));
+        Assert.Equal(1000, PdfAFonts.UnicodeWidth('B', proportional, 1000, halfWidth: false));
+        Assert.Null(PdfAFonts.UnicodeWidth('\\', proportional, 1000, halfWidth: false));
+        Assert.Null(PdfAFonts.UnicodeWidth('A', proportional, 1000, halfWidth: true));
+        Assert.Null(PdfAFonts.UnicodeWidth('가', proportional, 1000, halfWidth: false));
+    }
+
     // ---- predefined Unicode CMaps
 
     /// <summary>A page drawing UTF-16 <paramref name="text"/> with a CID font that isn't embedded, through a predefined CMap.</summary>
-    private static string PredefinedPage(string path, string text, string cmap, string baseFont, string ordering) =>
+    private static string PredefinedPage(string path, string text, string cmap, string baseFont, string ordering, string widths = "[1 [500]]") =>
         PdfAEmbeddingTests.Page(path, $"BT /F1 24 Tf 72 700 Td <{Convert.ToHexString(System.Text.Encoding.BigEndianUnicode.GetBytes(text))}> Tj ET",
             "/Font << /F1 5 0 R >>", extra:
             [
                 $"<< /Type /Font /Subtype /Type0 /BaseFont /{baseFont}-{cmap} /Encoding /{cmap} /DescendantFonts [6 0 R] >>",
                 $"<< /Type /Font /Subtype /CIDFontType0 /BaseFont /{baseFont} /CIDSystemInfo << /Registry (Adobe) /Ordering ({ordering}) /Supplement 2 >> " +
-                    "/DW 1000 /W [1 [500]] /FontDescriptor 7 0 R >>",
+                    $"/DW 1000 /W {widths} /FontDescriptor 7 0 R >>",
                 $"<< /Type /FontDescriptor /FontName /{baseFont} /Flags 4 /FontBBox [0 -120 1000 880] /ItalicAngle 0 /Ascent 880 /Descent -120 " +
                     "/CapHeight 700 /StemV 80 >>",
             ]);
@@ -136,6 +208,25 @@ public class PdfAFontRepairTests(EngineFixture fx) : IClassFixture<EngineFixture
             Assert.Equal("/CIDFontType2", cidFont.Elements.GetName("/Subtype"));
         }
         Assert.Equal(text, Text(path));
+    }
+
+    [Fact]
+    public void A_unicode_cmap_font_keeps_the_ascii_widths_the_pdf_gives()
+    {
+        string[] families = ["Malgun Gothic", "Noto Sans CJK KR", "Noto Sans KR", "NanumGothic", "Gulim", "Batang"];
+        Assert.SkipUnless(families.Any(f => SystemFonts.Instance.Family(f).Count > 0), $"None of {string.Join(", ", families)} is installed");
+        var path = PredefinedPage(Path.Combine(fx.NewFolder(), "cjk-widths.pdf"), "가A", "UniKS-UCS2-H", "HYGoThic-Medium", "Korea1", "[34 [640]]");
+
+        Assert.Equal(PdfArchiveOutcome.Archived, Archive(path, SystemFonts.Instance));
+
+        PdfA2bChecks.Assert2b(path);
+        using var document = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        var cidFont = (PdfDictionary)V(((PdfArray)V(Font(document).Elements["/DescendantFonts"])!).Elements[0])!;
+        var widths = ((PdfArray)V(cidFont.Elements["/W"])!).Elements.Select(V).ToList();
+        var at = widths.FindIndex(e => e is PdfInteger { Value: 'A' });
+        Assert.True(at >= 0);
+        var width = ((PdfArray)widths[at + 1]!).Elements[0] switch { PdfInteger i => i.Value, PdfReal r => r.Value, _ => 0 };
+        Assert.InRange(width, 639, 641); // 640 at the program's units
     }
 
     [Fact]

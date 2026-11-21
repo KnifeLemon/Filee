@@ -2594,11 +2594,12 @@ each paragraph keeps its place on the page instead of joining a document's flow.
   function-based and mesh shadings are drawn into pictures and become gradient fills where they look like a linear or
   radial gradient over the whole shape; tiling patterns repeating upright become tiled picture fills (`a:tile`, the
   cell's PNG at 96 dpi). Soft masks of one colour or one shading are alphas and alpha gradients; other mask groups are
-  drawn into a picture of their alpha or luminosity, which pictures take into their own alpha. Multiply / Darken over
-  text put the shape under that text; other blend modes are drawn (over the page's colour where nothing else is under
-  them).
-- **Not rebuilt yet**: form fields and annotations, blend modes against pictures and text (other than Multiply /
-  Darken over text), text inside pattern cells, vertical CJK writing. PDF → DOCX stays the route for a document that
+  drawn into a picture of their alpha or luminosity (through the transfer function TR, a light backdrop BC outside the
+  group's box too), which pictures take into their own alpha. Multiply / Darken over text put the shape under that
+  text; other blend modes, blended pictures and Multiply / Darken over pictures are drawn over their backdrop: the
+  page's colour, and the pictures, text and graphics painted before them there, drawn into the same picture (up to 64
+  blends a page; the text stays a text box under it).
+- **Not rebuilt yet**: form fields and annotations, text inside pattern cells, vertical CJK writing. PDF → DOCX stays the route for a document that
   should flow.
 
 **Pictures of the pages** (preset option *Pictures of the pages*, `PdfOptions.SlidePictures`) makes the earlier
@@ -2900,10 +2901,13 @@ next.
     ToUnicode map, Identity-encoded Type 0 fonts CIDFontType2 with a CIDToGIDMap (CIDs through their ToUnicode map, or
     as glyph IDs for a TrueType CIDFont found by its own name). A CID font with a predefined Unicode CMap
     (`Uni*-UCS2-*`, `Uni*-UTF16-*`) becomes Identity-H / -V with its codes as CIDs, from an installed CJK font of its
-    script (its widths then the installed font's). A font listed but never drawn is left as it is;
+    script (the PDF's widths where a code's CID is known without the CMap file: DW everywhere, printable ASCII; else
+    the installed font's). A font listed but never drawn is left as it is;
   - **TrueType fonts the PDF embedded itself are repaired** (`PdfAFontRepair`): widths that differ from the program
     go into the program's advances (the text keeps its places), encodings PDF/A forbids become a symbolic font with a
-    (3,0) cmap of the glyphs the codes drew, and fonts without ToUnicode get one (encoding names or the font's cmap);
+    (3,0) cmap of the glyphs the codes drew, codes and CIDs drawn that the program has no glyph for get an empty glyph
+    of their width (not .notdef, 6.2.11.4.1 / 6.2.11.8), and fonts without ToUnicode get one (encoding names or the
+    font's cmap);
   - JavaScript, launch and the other forbidden actions (also in `/Next` chains, open actions, outlines), every `AA`,
     the actions of fields and widgets, XFA, `NeedAppearances`, embedded files, alternate presentations, `PresSteps`,
     `Requirements`, `Collection`, other `Perms` than UR3/DocMDP, XMP of pages and pictures; optional-content
@@ -3367,8 +3371,8 @@ output's SVG writer.
   name) and read by Filee's SFNT parser before Skia sees them; `Indices` (glyph, advance, offsets, cluster maps),
   `UnicodeString` (with the `{}` escape), BidiLevel (odd: right to left), IsSideways (each glyph turned about its top
   centre, vertical advances from vmtx or the OS/2 ascender and descender; still text in the PDF), StyleSimulations
-  (bold and italic drawn synthetically; emboldened glyphs' own advances 2 % of the em wider, sideways italics skewed by
-  20° about their top centre, M5.13 / M5.14), FontRenderingEmSize, OriginX / OriginY. A run with a solid colour whose clips are rectangles is a
+  (bold and italic drawn synthetically; emboldened glyphs' own advances 2 % of the em wider, italics skewed by 20°,
+  sideways ones about their top centre, M5.13 / M5.14), FontRenderingEmSize, OriginX / OriginY. A run with a solid colour whose clips are rectangles is a
   glyph item of the page model (the PDF writer subsets its font and maps its text); others are drawn by
   `XpsPainter` as text blobs of the whole font. A run whose font is missing or damaged (also: its glyphs can't be
   subset for the PDF) draws its text with an installed font.

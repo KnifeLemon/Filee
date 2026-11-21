@@ -26,8 +26,11 @@
 //   drew, more than MaxShapes shapes on one page) is drawn into transparent pictures of the page's graphics (Skia),
 //   line widths and dashes as the transformation they were drawn under makes them.
 // - Blend modes: Multiply and Darken over text painted before them (a highlight) put the shape or picture under that
-//   text, which then shows through as it does in the PDF; the other modes are drawn, blended with the graphics drawn
-//   into the same picture and, where nothing else on the slide is under them, with the page's colour. A picture under a soft mask other than a constant alpha gets the mask in its own alpha.
+//   text, which then shows through as it does in the PDF. The other modes, blended pictures, and Multiply / Darken over
+//   anything else painted before them are drawn over their backdrop (Backdrops): the page's colour and, where earlier
+//   pictures, text or shapes lie under them, those drawn again into the same picture under the blend, which then
+//   covers them there (the text stays a text box underneath). A picture under a soft mask other than a constant alpha
+//   gets the mask in its own alpha.
 //   Rules and shading of a ruled table are the table's own borders and fills, so they are not repeated as shapes.
 // - Clipping: a clipping rectangle crops the pictures and rectangles it cuts (srcRect, a smaller rectangle); another
 //   clipping path is a picture's custom geometry and is intersected with a shape's outline; strokes it cuts are drawn.
@@ -37,8 +40,8 @@
 // - Speaker notes: the contents of the page's comment annotations (sticky notes, free text, highlights and other
 //   text markup), top to bottom, with their author.
 //
-// Not rebuilt (left for later): form fields, the appearance of annotations, blend modes against pictures and text
-// (other than Multiply / Darken over text), text inside pattern cells, vertical CJK writing.
+// Not rebuilt (left for later): form fields, the appearance of annotations, text inside pattern cells, vertical CJK
+// writing. Blends past MaxBackdrops a page see only their own picture's graphics.
 
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
@@ -295,7 +298,7 @@ internal sealed partial class PdfDocumentReader
         Blended(entries);
 
         var backdrop = background is null ? SKColors.White : SKColor.Parse(background);
-        items.AddRange(Stacked(entries.OrderBy(e => e.Order).ToList(), width, height, dpi, backdrop, budget, cancellationToken));
+        items.AddRange(Stacked(entries.OrderBy(e => e.Order).ToList(), drawing, width, height, dpi, backdrop, budget, cancellationToken));
         return new PdfSlidePage(width, height, background, items, notes);
     }
 
@@ -348,18 +351,13 @@ internal sealed partial class PdfDocumentReader
     /// <summary>
     /// The entries in order as slide items: drawn paints gather into pictures, each one put where its first paint is.
     /// A paint joins the last picture unless something put after that picture overlaps it (it would end up under
-    /// that); after <see cref="MaxGraphicsPictures"/> pictures it joins the last one anyway. A drawn paint with a blend
-    /// mode that no item painted before it overlaps is blended with <paramref name="page"/> (the slide's background).
+    /// that); after <see cref="MaxGraphicsPictures"/> pictures it joins the last one anyway. Blended paints are drawn
+    /// over their backdrop (see <see cref="Backdrops"/>).
     /// </summary>
-    private List<PdfSlideItem> Stacked(List<Entry> entries, double width, double height, int dpi, SKColor page, DocumentBudget budget,
-        CancellationToken cancellationToken)
+    private List<PdfSlideItem> Stacked(List<Entry> entries, PdfSlideDrawing drawing, double width, double height, int dpi, SKColor page,
+        DocumentBudget budget, CancellationToken cancellationToken)
     {
-        for (var i = 0; i < entries.Count; i++)
-        {
-            if (entries[i] is { Item: null, Paint: { Blend: not SKBlendMode.SrcOver } blended, Area: var area }
-                && !entries.Take(i).Any(o => o.Item is { } item && Shown(item).IntersectsWith(area)))
-                entries[i] = entries[i] with { Paint = blended with { Backdrop = page } };
-        }
+        Backdrops(entries, drawing, page, new SKRect(0, 0, (float)width, (float)height));
 
         // Too many shapes (a chart of bars): their paints are drawn instead.
         if (entries.Count(e => e.Item is PdfSlideShape) > MaxShapes)
@@ -389,16 +387,129 @@ internal sealed partial class PdfDocumentReader
             groups.Add((slots.Count, [entry], []));
             slots.Add(null);
         }
+        using var cache = new PdfRasterCache();
         foreach (var (slot, paints, _) in groups)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (DrawGraphics(paints, width, height, dpi, cancellationToken) is { } picture)
+            if (DrawGraphics(paints, width, height, dpi, cache, cancellationToken) is { } picture)
             {
                 budget.Object();
                 slots[slot] = picture;
             }
         }
         return [.. slots.OfType<PdfSlideItem>()];
+    }
+
+    /// <summary>Blended paints that get the page's earlier paints drawn under them, on one page at most.</summary>
+    internal const int MaxBackdrops = 64;
+
+    /// <summary>Earlier paints drawn under blended ones, on one page at most.</summary>
+    internal const int MaxBackdropPaints = 50_000;
+
+    /// <summary>
+    /// What blended paints are drawn over, as the PDF blends them with what is under them:
+    /// <list type="bullet">
+    /// <item>A blended picture is drawn (a picture shape can't blend), unless it is a Multiply or Darken one that
+    /// nothing painted before it lies under (blending with the white page changes nothing). So is a Multiply or Darken
+    /// shape over something painted before it.</item>
+    /// <item>A drawn blended paint that no slide item painted before it overlaps is blended with <paramref name="page"/>
+    /// (the slide's background) and the graphics of its own picture.</item>
+    /// <item>One over earlier pictures, text or shapes gets the page colour and everything painted before it there (its
+    /// <see cref="PdfPaint.Below"/>) drawn under it inside its own picture, which then covers those items where it
+    /// paints. Up to <see cref="MaxBackdrops"/> paints and <see cref="MaxBackdropPaints"/> earlier paints a page; past
+    /// that a blend sees only its own picture's graphics.</item>
+    /// </list>
+    /// </summary>
+    private static void Backdrops(List<Entry> entries, PdfSlideDrawing drawing, SKColor page, SKRect pageBox)
+    {
+        var converted = new HashSet<PdfPaint>(ReferenceEqualityComparer.Instance);
+        var (backdrops, paints) = (0, 0);
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            if (entry.Paint is not { Blend: not SKBlendMode.SrcOver } blended)
+                continue;
+            if (entry.Item is PdfSlideShape or PdfSlidePicture)
+            {
+                var shown = Shown(entry.Item);
+                var under = entries.Take(i).Any(o => (o.Item is { } item ? Shown(item) : o.Area).IntersectsWith(shown));
+                if (blended.Blend is SKBlendMode.Multiply or SKBlendMode.Darken && !under)
+                    continue;
+                // A path made into several shapes is drawn once.
+                if (!converted.Add(blended))
+                {
+                    entries.RemoveAt(i--);
+                    continue;
+                }
+                var area = entry.Area.IsEmpty ? shown : entry.Area;
+                if (blended.Clip is { } clip)
+                    area.Intersect(clip.Bounds);
+                area.Intersect(pageBox);
+                entries[i] = entry = new Entry(entry.Order, null, blended, area);
+            }
+            if (entry.Item is not null)
+                continue;
+            var box = entry.Area;
+            if (!entries.Take(i).Any(o => o.Item is { } item && Shown(item).IntersectsWith(box)))
+            {
+                entries[i] = entry with { Paint = blended with { Backdrop = page } };
+                continue;
+            }
+            if (backdrops >= MaxBackdrops || paints >= MaxBackdropPaints)
+                continue;
+            var below = Below(drawing, entry.Order, box, pageBox, MaxBackdropPaints - paints);
+            if (below is null)
+                continue;
+            backdrops++;
+            paints += below.Count;
+            entries[i] = entry with { Paint = blended with { Backdrop = page, Below = below } };
+        }
+    }
+
+    /// <summary>
+    /// The paints and glyphs painted before <paramref name="order"/> that reach into <paramref name="box"/>, in paint
+    /// order; null when there are more than <paramref name="room"/>.
+    /// </summary>
+    private static List<PdfPaint>? Below(PdfSlideDrawing drawing, int order, SKRect box, SKRect page, int room)
+    {
+        var below = new List<PdfPaint>();
+        foreach (var paint in drawing.Paints)
+        {
+            if (paint.Order >= order)
+                break;
+            if (Reach(paint, page).IntersectsWith(box))
+                below.Add(paint);
+        }
+        foreach (var letter in drawing.Letters)
+        {
+            if (letter.Order >= order)
+                break;
+            var area = letter.Area;
+            if (letter.Clip is { } clip)
+                area.Intersect(clip.Bounds);
+            if (area.IntersectsWith(box))
+                below.Add(letter);
+        }
+        if (below.Count > room)
+            return null;
+        below.Sort((a, b) => a.Order.CompareTo(b.Order));
+        return below;
+    }
+
+    /// <summary>The box a paint can paint in on the slide.</summary>
+    private static SKRect Reach(PdfPaint paint, SKRect page)
+    {
+        var area = paint switch
+        {
+            PdfPaintedPath path => SKRect.Inflate(path.Outline.Bounds, path.Stroke is null ? 0 : path.LineWidth, path.Stroke is null ? 0 : path.LineWidth),
+            PdfPaintedImage image => image.Matrix.MapRect(SKRect.Create(0, 0, 1, 1)),
+            PdfPaintedShading shading => ShadingBox(shading) ?? PictureBox(shading.Fill) ?? page,
+            PdfPaintedGlyph glyph => glyph.Area,
+            _ => page,
+        };
+        if (paint.Clip is { } clip)
+            area.Intersect(clip.Bounds);
+        return area;
     }
 
     // ───────────────────────── Text ─────────────────────────
@@ -885,31 +996,11 @@ internal sealed partial class PdfDocumentReader
     /// <summary>A stencil mask as a PNG of its colour, transparent where it paints nothing; null when it can't be read.</summary>
     private string? Stencil(PdfPaintedImage image)
     {
-        if (image.Image is not { } mask || !mask.TryGetBytesAsMemory(out var memory))
+        if (image.Image is not { } mask)
             return null;
-        var (width, height) = (mask.WidthInSamples, mask.HeightInSamples);
-        var row = (width + 7) / 8;
-        if (width <= 0 || height <= 0 || (long)width * height > MaxGraphicsPixels || memory.Length < (long)row * height)
+        using var bitmap = PdfSlideRaster.Stencil(mask, image.MaskColor);
+        if (bitmap is null)
             return null;
-        // Samples of 0 paint, or of 1 with the decode array [1 0].
-        var paintsOne = mask.Decode is [> 0.5, ..];
-        var bytes = memory.Span;
-        using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
-        var pixels = bitmap.GetPixelSpan();
-        var color = image.MaskColor;
-        for (var y = 0; y < height; y++)
-        {
-            for (var x = 0; x < width; x++)
-            {
-                var bit = (bytes[y * row + x / 8] >> (7 - x % 8)) & 1;
-                var offset = (y * width + x) * 4;
-                var paint = bit == 1 == paintsOne;
-                pixels[offset] = color.Red;
-                pixels[offset + 1] = color.Green;
-                pixels[offset + 2] = color.Blue;
-                pixels[offset + 3] = paint ? color.Alpha : (byte)0;
-            }
-        }
         var file = NewMediaPath("png");
         using (var encoded = bitmap.Encode(SKEncodedImageFormat.Png, 100))
         using (var output = File.Create(file))
@@ -1417,7 +1508,7 @@ internal sealed partial class PdfDocumentReader
     /// <paramref name="paints"/> drawn in their order into a transparent PNG over the part of the page they cover, at
     /// <paramref name="dpi"/> (less for a large area); null when they cover nothing.
     /// </summary>
-    private PdfSlidePicture? DrawGraphics(List<Entry> paints, double width, double height, int dpi, CancellationToken cancellationToken)
+    private PdfSlidePicture? DrawGraphics(List<Entry> paints, double width, double height, int dpi, PdfRasterCache cache, CancellationToken cancellationToken)
     {
         var page = new SKRect(0, 0, (float)width, (float)height);
         var area = SKRect.Empty;
@@ -1442,7 +1533,7 @@ internal sealed partial class PdfDocumentReader
             canvas.Clear(SKColors.Transparent);
             canvas.Scale((float)scale);
             canvas.Translate(-area.Left, -area.Top);
-            PdfSlideRaster.Draw(canvas, paints.Select(p => p.Paint!), cancellationToken: cancellationToken);
+            PdfSlideRaster.Draw(canvas, paints.Select(p => p.Paint!), cancellationToken: cancellationToken, pictures: true, cache: cache);
         }
 
         var file = NewMediaPath("png");

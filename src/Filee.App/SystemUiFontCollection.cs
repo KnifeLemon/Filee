@@ -8,6 +8,10 @@
 // that family ends the chain: it takes it for a collection's "nothing found" answer (Avalonia 12.1.4,
 // FontManager.TryMatchCharacter). Here the default font is a real answer, so it comes back under an alias that only this
 // collection reads. Without it, Arabic on Windows 11 skipped Segoe UI for the embedded Noto Sans Arabic.
+//
+// On macOS a family the chain names but CoreText doesn't list (the Windows names, Noto Sans CJK TC) is not asked for:
+// SystemFonts.Asks, the check every lookup by name goes through (asking CoreText for a family macOS only offers for
+// download can hold up every font request of the process).
 
 using System.Collections;
 using System.Diagnostics.CodeAnalysis;
@@ -50,22 +54,38 @@ internal sealed class SystemUiFontCollection : IFontCollection
     }
 
     public bool TryGetGlyphTypeface(string familyName, FontStyle style, FontWeight weight, FontStretch stretch,
-        [NotNullWhen(true)] out GlyphTypeface? glyphTypeface) =>
-        System.TryGetGlyphTypeface(Unaliased(familyName), style, weight, stretch, out glyphTypeface);
+        [NotNullWhen(true)] out GlyphTypeface? glyphTypeface)
+    {
+        glyphTypeface = null;
+        return Installed(familyName, out var name) && System.TryGetGlyphTypeface(name, style, weight, stretch, out glyphTypeface);
+    }
 
-    public bool TryGetFamilyTypefaces(string familyName, [NotNullWhen(true)] out IReadOnlyList<Typeface>? familyTypefaces) =>
-        System.TryGetFamilyTypefaces(Unaliased(familyName), out familyTypefaces);
+    public bool TryGetFamilyTypefaces(string familyName, [NotNullWhen(true)] out IReadOnlyList<Typeface>? familyTypefaces)
+    {
+        familyTypefaces = null;
+        return Installed(familyName, out var name) && System.TryGetFamilyTypefaces(name, out familyTypefaces);
+    }
 
     public bool TryCreateSyntheticGlyphTypeface(GlyphTypeface glyphTypeface, FontStyle style, FontWeight weight, FontStretch stretch,
         [NotNullWhen(true)] out GlyphTypeface? syntheticGlyphTypeface) =>
         System.TryCreateSyntheticGlyphTypeface(glyphTypeface, style, weight, stretch, out syntheticGlyphTypeface);
 
     public bool TryGetNearestMatch(string familyName, FontStyle style, FontWeight weight, FontStretch stretch,
-        [NotNullWhen(true)] out GlyphTypeface? glyphTypeface) =>
-        System.TryGetNearestMatch(Unaliased(familyName), style, weight, stretch, out glyphTypeface);
+        [NotNullWhen(true)] out GlyphTypeface? glyphTypeface)
+    {
+        glyphTypeface = null;
+        return Installed(familyName, out var name) && System.TryGetNearestMatch(name, style, weight, stretch, out glyphTypeface);
+    }
 
     private static string Unaliased(string familyName) =>
         familyName.EndsWith(Alias, StringComparison.Ordinal) ? familyName[..^Alias.Length] : familyName;
+
+    /// <summary>The family's name without the alias, and whether the font manager may be asked for it (SystemFonts.Asks).</summary>
+    internal static bool Installed(string familyName, out string name)
+    {
+        name = Unaliased(familyName);
+        return Filee.Engines.Typesetting.SystemFonts.Asks(name);
+    }
 
     public IEnumerator<FontFamily> GetEnumerator() => Enumerable.Empty<FontFamily>().GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
