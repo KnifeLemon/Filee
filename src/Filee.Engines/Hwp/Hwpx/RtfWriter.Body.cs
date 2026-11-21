@@ -129,6 +129,14 @@ internal sealed partial class RtfWriter
             o.Close();
             o.Raw(" ");
         }
+        if (story == Story.Note && _annotationMark)
+        {
+            // An annotation's text starts with its mark.
+            _annotationMark = false;
+            o.Open();
+            o.Control("\\chatn");
+            o.Close();
+        }
         Inlines(paragraph.Inlines, state, style, story, depth);
         o.Control(mark);
         o.Line();
@@ -385,15 +393,25 @@ internal sealed partial class RtfWriter
                 case HShape shape:
                     Shape(shape);
                     break;
+                case HCommentStart start:
+                    CommentStart(start, story);
+                    break;
+                case HComment comment:
+                    Comment(comment, story);
+                    break;
+                case HDeletion deletion:
+                    Deletion(deletion, state, style);
+                    break;
             }
         }
     }
 
     /// <summary>A group with the formatting of <paramref name="format"/> where it differs from the paragraph mark's.</summary>
-    private void Run(HCharFormat format, RunState state, StyleBase style, Action content)
+    /// <param name="words">Control words of the run's own (a deletion's), after its style and before its formatting.</param>
+    private void Run(HCharFormat format, RunState state, StyleBase style, Action content, string words = "")
     {
         _out.Open();
-        _out.Control(Difference(state.Chars, Resolve(format, style)));
+        _out.Control(RunWords(format) + words + Difference(state.Chars, Resolve(format, style)));
         content();
         _out.Close();
     }

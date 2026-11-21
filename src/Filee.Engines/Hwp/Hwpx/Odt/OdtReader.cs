@@ -5,7 +5,7 @@
 // frames with pictures or text, simple shapes, footnotes and endnotes, links, bookmarks and page number fields.
 //
 // Split over partial files: this one walks the package and the text, OdtReader.Styles resolves formatting and
-// OdtReader.Objects reads tables, frames and shapes. The package is read within DocumentLimits (Documents/
+// OdtReader.Objects reads tables, frames and shapes, OdtReader.Revisions annotations and tracked changes. The package is read within DocumentLimits (Documents/
 // DocumentPackage), the model within DocumentBudget and a count of text characters (MaxPartBytes); encrypted
 // (password-protected) packages are refused.
 
@@ -103,6 +103,7 @@ internal sealed partial class OdtReader
                    ?? throw new InvalidDataException("The file is not an OpenDocument text (no office:text).");
         var styles = Load("styles.xml");
         LoadStyles(styles, content);
+        LoadChanges(text);
         NotesConfiguration(styles?.Root?.Element(Office + "styles"));
         DefaultTabs();
         _document.Title = Load("meta.xml")?.Root?.Element(Office + "meta")?.Element(Dc + "title")?.Value is { } title && title.Trim().Length > 0 ? title.Trim() : null;
@@ -418,6 +419,11 @@ internal sealed partial class OdtReader
                 // Objects anchored to the page are children of the text itself: they go with the next paragraph.
                 sink.Pending.AddRange(Objects(element, new TextProps(), null));
             }
+            else if (name == Text + "change-start" || name == Text + "change-end")
+            {
+                // A tracked insertion of whole paragraphs.
+                ChangeMark(element, new TextProps(), [], new TextState());
+            }
             // Otherwise: declarations, forms, tracked changes (the deleted text), soft page breaks: nothing to show.
         }
     }
@@ -548,7 +554,14 @@ internal sealed partial class OdtReader
                 continue;
             }
             if (name.Namespace == Office)
-                continue; // annotations (comments) and their ends
+            {
+                // Annotations (comments) and their ends.
+                if (name.LocalName == "annotation")
+                    Annotation(element, output);
+                else if (name.LocalName == "annotation-end")
+                    AnnotationEnd(element, output);
+                continue;
+            }
             if (name.Namespace != Text)
             {
                 Inlines(element, text, output, state); // extensions: their text
@@ -560,16 +573,16 @@ internal sealed partial class OdtReader
                     {
                         var spaces = Math.Clamp(Int(Attr(element, Text + "c")) ?? 1, 1, MaxSpaces);
                         Characters(spaces);
-                        output.Add(new HText(new string(' ', spaces), CharFormat(text)));
+                        output.Add(new HText(new string(' ', spaces), Format(text)));
                     }
                     state.Space = false;
                     break;
                 case "tab":
-                    output.Add(new HTab(CharFormat(text)));
+                    output.Add(new HTab(Format(text)));
                     state.Space = false;
                     break;
                 case "line-break":
-                    output.Add(new HLineBreak(CharFormat(text)));
+                    output.Add(new HLineBreak(Format(text)));
                     state.Space = false;
                     break;
                 case "span":
@@ -619,7 +632,10 @@ internal sealed partial class OdtReader
                 case "ruby":
                     Inlines(element.Element(Text + "ruby-base") ?? new XElement("none"), text, output, state);
                     break;
-                case "bookmark-end" or "soft-page-break" or "change" or "change-start" or "change-end" or "reference-mark"
+                case "change" or "change-start" or "change-end":
+                    ChangeMark(element, text, output, state);
+                    break;
+                case "bookmark-end" or "soft-page-break" or "reference-mark"
                     or "reference-mark-start" or "reference-mark-end" or "toc-mark" or "toc-mark-start" or "toc-mark-end"
                     or "alphabetical-index-mark" or "alphabetical-index-mark-start" or "alphabetical-index-mark-end"
                     or "user-index-mark" or "user-index-mark-start" or "user-index-mark-end" or "ruby-text":
@@ -652,7 +668,7 @@ internal sealed partial class OdtReader
         if (sb.Length == 0)
             return;
         Characters(sb.Length);
-        output.Add(new HText(sb.ToString(), CharFormat(text)));
+        output.Add(new HText(sb.ToString(), Format(text)));
     }
 
     /// <summary>

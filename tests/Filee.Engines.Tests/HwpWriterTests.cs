@@ -49,6 +49,27 @@ public class HwpWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
             var blocks = section.Blocks.Concat(section.Headers.SelectMany(h => h.Blocks)).Concat(section.Footers.SelectMany(f => f.Blocks));
             foreach (var paragraph in Paragraphs(blocks))
             {
+                // The HWP writer leaves tracked changes out (the text as it reads with them made): deleted text goes,
+                // and inserted text joins the text around it again.
+                paragraph.Inlines.RemoveAll(i => i is HDeletion);
+                for (var i = paragraph.Inlines.Count - 1; i > 0; i--)
+                {
+                    if (paragraph.Inlines[i] is HText after and not HEquation && paragraph.Inlines[i - 1] is HText before and not HEquation
+                        && before.Format == after.Format && (before.Format.Layout?.Inserted ?? after.Format.Layout?.Inserted) is not null)
+                    {
+                        var inserted = before.Format.Layout?.Inserted ?? after.Format.Layout?.Inserted;
+                        paragraph.Inlines[i - 1] = new HText(before.Text + after.Text, before.Format with { Layout = (before.Format.Layout ?? new HCharLayout()) with { Inserted = inserted } });
+                        paragraph.Inlines.RemoveAt(i);
+                    }
+                }
+                for (var i = 0; i < paragraph.Inlines.Count; i++)
+                {
+                    if (paragraph.Inlines[i] is HText { Format.Layout: { Inserted: not null } layout } text and not HEquation)
+                    {
+                        var cleared = layout with { Inserted = null };
+                        paragraph.Inlines[i] = new HText(text.Text, text.Format with { Layout = cleared == new HCharLayout() ? null : cleared });
+                    }
+                }
                 if (paragraph.List?.Numbering.Levels is not { } levels)
                     continue;
                 while (levels.Count > 1 && levels[^1].Text.Length == 0)

@@ -41,7 +41,8 @@ internal sealed partial class HwpxReader
     /// A click-here field (누름틀) nobody has filled in (dirty="0"): its text is the guide 한글 shows on screen in place
     /// of the content, and doesn't print.
     /// </param>
-    private sealed record OpenField(string? Id, string? Target, bool Guide);
+    /// <param name="Comment">A memo's comment, placed where the field ends.</param>
+    private sealed record OpenField(string? Id, string? Target, bool Guide, HComment? Comment = null);
 
     /// <summary>Text that is in the file but not on the printed page: tracked deletions, and for layout click-here guides.</summary>
     private bool Hidden => _deleted || _fields.Exists(f => f.Guide);
@@ -63,7 +64,9 @@ internal sealed partial class HwpxReader
             return Nesting.PlainParagraphs(subList, "p", "t");
         // Fields, highlighting and tracked deletions do not reach into or out of a nested paragraph list.
         var (fields, untracked, markpen, deleted) = (_fields, _untrackedFields, _markpen, _deleted);
+        var (inserted, deletion) = (_inserted, (_deletionRevision, _deletion, _deletionParagraph));
         (_fields, _untrackedFields, _markpen, _deleted) = ([], 0, null, false);
+        (_inserted, _deletionRevision, _deletion, _deletionParagraph) = (null, null, null, null);
         _depth++;
         try
         {
@@ -78,6 +81,7 @@ internal sealed partial class HwpxReader
         finally
         {
             (_fields, _untrackedFields, _markpen, _deleted) = (fields, untracked, markpen, deleted);
+            (_inserted, (_deletionRevision, _deletion, _deletionParagraph)) = (inserted, deletion);
             _depth--;
         }
         return blocks;
@@ -201,7 +205,8 @@ internal sealed partial class HwpxReader
         private readonly System.Text.StringBuilder _joined = new();
         private HCharFormat _joinedFormat;
 
-        private bool Joins(HCharFormat before, HCharFormat format) => _keepLayoutRuns ? before.SameLayout(format) : before == format;
+        private bool Joins(HCharFormat before, HCharFormat format) =>
+            (_keepLayoutRuns ? before.SameLayout(format) : before == format) && before.Layout?.Inserted == format.Layout?.Inserted;
 
         /// <summary>Adds text, joined to the previous text when it has the same format.</summary>
         public void AddText(string text, HCharFormat format)
@@ -465,6 +470,8 @@ internal sealed partial class HwpxReader
                 builder.Count(value.Length, text: !Hidden);
                 if (!Hidden)
                     builder.AddText(value, Highlighted(format));
+                else if (_deleted)
+                    AddDeleted(builder, new HText(value, format));
                 continue;
             }
             if (node is not XElement element)
@@ -475,6 +482,8 @@ internal sealed partial class HwpxReader
                     builder.Count(8);
                     if (!Hidden)
                         builder.Add(new HTab(Highlighted(format)));
+                    else if (_deleted)
+                        AddDeleted(builder, new HTab(format));
                     break;
                 case "lineBreak" or "columnBreak":
                     builder.Count(1);
@@ -503,16 +512,20 @@ internal sealed partial class HwpxReader
                     _markpen = null;
                     break;
                 case "deleteBegin":
-                    _deleted = true;
+                    DeleteBegin(element);
                     break;
                 case "deleteEnd":
-                    _deleted = false;
+                    DeleteEnd();
                     break;
                 case "titleMark":
                     builder.Count(8);
                     break; // title marks only feed a table of contents
-                case "insertBegin" or "insertEnd":
-                    break; // inserted text is shown as it is
+                case "insertBegin":
+                    _inserted = Revision(element);
+                    break; // inserted text is shown as it is, marked as inserted
+                case "insertEnd":
+                    _inserted = null;
+                    break;
                 default:
                     Skip(element);
                     break;
@@ -520,7 +533,7 @@ internal sealed partial class HwpxReader
         }
     }
 
-    private HCharFormat Highlighted(HCharFormat format) => _markpen is null ? format : format with { Shade = _markpen };
+    private HCharFormat Highlighted(HCharFormat format) => Inserted(_markpen is null ? format : format with { Shade = _markpen });
 
     // ───────────────────────── Controls ─────────────────────────
 
@@ -664,7 +677,14 @@ internal sealed partial class HwpxReader
         }
         // Other fields (click-here, date, file name, ...) keep their result text, which follows until fieldEnd.
         var guide = _forLayout && Attr(control, "type") == "CLICK_HERE" && Attr(control, "dirty") is "0" or "false";
-        _fields.Add(new OpenField(Attr(control, "id"), target, guide));
+        // A memo (메모): a comment on the text up to the field's end.
+        HComment? memo = null;
+        if (Attr(control, "type") == "MEMO" && !Hidden)
+        {
+            memo = Memo(control);
+            builder.Add(new HCommentStart(memo));
+        }
+        _fields.Add(new OpenField(Attr(control, "id"), target, guide, memo));
         if (target is not null)
             builder.OpenLink(target);
     }
@@ -686,6 +706,8 @@ internal sealed partial class HwpxReader
         _fields.RemoveAt(index);
         if (field.Target is not null)
             builder.CloseLink();
+        if (field.Comment is { } memo)
+            builder.Add(memo);
     }
 
     /// <summary>

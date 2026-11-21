@@ -8,7 +8,8 @@
 //                         how text is escaped;
 //  * RtfWriter.Body.cs    paragraphs, character formatting, links, bookmarks, fields, notes and tables;
 //  * RtfWriter.Objects.cs pictures (PNG and JPEG as they are, EMF and WMF as metafiles, others as PNG), text boxes
-//                         and shapes.
+//                         and shapes;
+//  * RtfWriter.Revisions.cs character styles, annotations (comments) and tracked changes.
 //
 // The body is written first, into a temporary file beside the output, because the font, colour and list tables that
 // come before it fill as the body uses them. The file is ASCII: other characters are \uN followed by the same
@@ -426,6 +427,7 @@ internal sealed partial class RtfWriter
 
         StyleSheet();
         ListTables();
+        RevisionTable();
         Information();
 
         // Document settings: the first section's page, the default tab interval, notes.
@@ -479,6 +481,7 @@ internal sealed partial class RtfWriter
             o.Raw($"heading {Number(level)};");
             o.Close();
         }
+        CharacterStyleSheet();
         o.Close();
         o.Line();
     }

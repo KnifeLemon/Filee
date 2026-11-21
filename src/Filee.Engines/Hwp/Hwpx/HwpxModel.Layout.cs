@@ -3,7 +3,8 @@
 // Values keep the meaning the source gave them: a Word "multiple" line rule stays a multiple of the font's line
 // height instead of becoming a 한글 percentage, 한글's seven language slots stay seven, Word's four run fonts stay
 // four. The writers keep using the members of HCharFormat / HParaFormat that hold the 한글 approximations, so
-// nothing here changes a written file. Lengths are HWPUNIT, sizes 1/100 pt, like the rest of the model.
+// nothing here changes a written file, but for a run's character style and tracked insertion (HCharLayout.Style and
+// Inserted), which only the DOCX and RTF writers write. Lengths are HWPUNIT, sizes 1/100 pt, like the rest of the model.
 
 namespace Filee.Engines.Hwp.Hwpx;
 
@@ -42,6 +43,16 @@ namespace Filee.Engines.Hwp.Hwpx;
 /// In vertical text the run is set across in one character's room (Word w:eastAsianLayout w:vert, 縦中横), squeezed to
 /// an em where it is wider.
 /// </param>
+/// <param name="Style">
+/// The character style the run is in, by its name (Word w:rStyle, RTF \cs, ODF's named text style): the run's
+/// formatting is already resolved, so it is only the style's name, which the DOCX and RTF writers write (with a style of
+/// that name and no properties of its own). Only the run itself has it.
+/// </param>
+/// <param name="Inserted">
+/// The run was inserted while changes were tracked, by whom and when (Word w:ins, RTF \revised, ODF text:insertion,
+/// 한글 hp:insertBegin): the DOCX and RTF writers write it as an insertion; the others write the text as it is. Only the
+/// run itself has it. Deleted text is an <see cref="HDeletion"/>.
+/// </param>
 internal sealed record HCharLayout(
     HLanguageSlots? Slots = null,
     HWordFonts? WordFonts = null,
@@ -57,7 +68,9 @@ internal sealed record HCharLayout(
     bool? ComplexItalic = null,
     HSymbol? Symbol = null,
     string? NamedFonts = null,
-    bool? Across = null)
+    bool? Across = null,
+    string? Style = null,
+    HRevision? Inserted = null)
 {
     /// <summary>This layout with the members it leaves open taken from <paramref name="baseline"/>.</summary>
     public HCharLayout Over(HCharLayout? baseline) => baseline is null ? this : new HCharLayout(
@@ -75,7 +88,9 @@ internal sealed record HCharLayout(
         ComplexItalic ?? baseline.ComplexItalic,
         Symbol,
         NamedFonts,
-        Across ?? baseline.Across);
+        Across ?? baseline.Across,
+        Style,
+        Inserted);
 
     /// <summary>Whether the run named <paramref name="family"/> itself (<see cref="NamedFonts"/>).</summary>
     public bool Named(string? family) =>

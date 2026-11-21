@@ -455,9 +455,12 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
             HText t => t.Text,
             HTab => "<tab>",
             HLineBreak => "<br>",
+            HDeletion deletion => $"<del {HDocumentWalker.Text(deletion.Content)}>",
             _ => "?",
         });
-        Assert.Equal(["굵게", "보통", "형광", " 묶음 빈칸 고정", "<tab>", "탭", "<br>", "둘째 줄넣은 글하이­픈"], texts);
+        // The tracked deletion keeps its text for the DOCX and RTF writers; the insertion is a run of its own, marked.
+        Assert.NotNull(formatted.Inlines.OfType<HText>().Single(t => t.Text == "넣은 글").Format.Layout?.Inserted);
+        Assert.Equal(["굵게", "보통", "형광", " 묶음 빈칸 고정", "<tab>", "탭", "<br>", "둘째 줄", "<del 지운 글>", "넣은 글", "하이­픈"], texts);
         var bold = ((HText)formatted.Inlines[0]).Format;
         Assert.Equal(new HCharFormat(true, true, true, true, true, false, 1400, "Times New Roman", "맑은 고딕", "#0000FF", "#FFFF00", -5), bold);
         Assert.Equal("#00FF00", ((HText)formatted.Inlines[2]).Format.Shade); // highlighter (markpen)

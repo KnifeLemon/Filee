@@ -7,6 +7,7 @@
 //                        cells and paragraphs, lists (\listtable, \ls) and pictures;
 //  * RtfReader.Shapes.cs pictures and text boxes in drawing objects (\shp) and pictures' properties;
 //  * RtfReader.Fonts.cs  the fonts the text is set in, for the missing-font notice;
+//  * RtfReader.Revisions.cs character styles, annotations (comments) and tracked changes;
 //  * RtfReader.Lexer.cs  tokens.
 //
 // Text is decoded with the code page of the font in effect (\fcharset, \cpg) or the document's (\ansicpg), so
@@ -61,6 +62,16 @@ internal sealed partial class RtfReader
 
         /// <summary>The value of a shape property (\sv); a picture's (pib) holds a \pict group instead.</summary>
         ShapeValue,
+
+        /// <summary>The revision table's authors (\*\revtbl).</summary>
+        RevisionTable,
+
+        /// <summary>An annotation's id or date (\*\atrfstart, \*\atnref, \*\atndate ...), collected.</summary>
+        AnnotationId,
+
+        /// <summary>An annotation's author's initials (\*\atnid) and name (\*\atnauthor).</summary>
+        AnnotationInitials,
+        AnnotationAuthor,
     }
 
     /// <summary>Where text and paragraphs go: the body of a section, a note, a header or a footer.</summary>
@@ -75,6 +86,11 @@ internal sealed partial class RtfReader
 
         /// <summary>The text of a footnote or endnote, where \chftn is the note's own number.</summary>
         public bool Note { get; init; }
+
+        /// <summary>The text of an annotation (\*\annotation), with its \atnref id and \atndate once read.</summary>
+        public bool Annotation { get; init; }
+        public string? AnnotationId { get; set; }
+        public DateTime? AnnotationDate { get; set; }
     }
 
     /// <summary>A section with Word's note numbers (1, 2, 3 and i, ii, iii), without 한글's ")" after them.</summary>
@@ -90,10 +106,14 @@ internal sealed partial class RtfReader
     }
 
     /// <param name="RightToLeft">A right-to-left run: \rtlch came after the last \ltrch.</param>
+    /// <param name="CharStyle">The character style (\csN), -1 for none.</param>
+    /// <param name="Inserted">\revised, by the revision table's author \revauthN at \revdttmN.</param>
+    /// <param name="Deleted">\deleted, by \revauthdelN at \revdttmdelN.</param>
     private record struct CharProps(bool Bold, bool Italic, bool Underline, bool Strike, bool Superscript, bool Subscript,
-        int HalfPoints, int Font, int Color, int Shade, bool Hidden, bool RightToLeft = false)
+        int HalfPoints, int Font, int Color, int Shade, bool Hidden, bool RightToLeft = false, int CharStyle = -1,
+        bool Inserted = false, int InsertAuthor = 0, int InsertDate = 0, bool Deleted = false, int DeleteAuthor = 0, int DeleteDate = 0)
     {
-        public static CharProps Default => new() { HalfPoints = DefaultHalfPoints, Font = -1 };
+        public static CharProps Default => new() { HalfPoints = DefaultHalfPoints, Font = -1, CharStyle = -1 };
     }
 
     /// <param name="Align">\ql, \qr ...: the left and right side, also in a right-to-left paragraph.</param>
@@ -333,7 +353,7 @@ internal sealed partial class RtfReader
     {
         var ignorable = _g.Ignorable;
         _g.Ignorable = false;
-        if (Destination(word, parameter))
+        if (Destination(word, parameter) || RevisionDestination(word, parameter))
             return;
         if (ignorable)
         {
@@ -371,7 +391,7 @@ internal sealed partial class RtfReader
             case "red" when _g.Dest == Dest.ColorTable: _red = value; return;
             case "green" when _g.Dest == Dest.ColorTable: _green = value; return;
             case "blue" when _g.Dest == Dest.ColorTable: _blue = value; return;
-            case "s" when _g.Dest == Dest.StyleSheet: _styleId = value; break;
+            case "s" when _g.Dest == Dest.StyleSheet: _styleId = value; _characterStyle = false; break;
             case "s":
                 if (_styles.TryGetValue(value, out var style))
                 {
@@ -402,6 +422,13 @@ internal sealed partial class RtfReader
             case "highlight" or "cb" or "chcbpat": _g.Char = c with { Shade = value }; return;
             case "v": _g.Char = c with { Hidden = on }; return;
             case "rtlch": _g.Char = c with { RightToLeft = true }; return;
+            case "cs": _g.Char = c with { CharStyle = value }; return;
+            case "revised": _g.Char = c with { Inserted = on }; return;
+            case "revauth": _g.Char = c with { InsertAuthor = value }; return;
+            case "revdttm": _g.Char = c with { InsertDate = value }; return;
+            case "deleted": _g.Char = c with { Deleted = on }; return;
+            case "revauthdel": _g.Char = c with { DeleteAuthor = value }; return;
+            case "revdttmdel": _g.Char = c with { DeleteDate = value }; return;
             case "ltrch": _g.Char = c with { RightToLeft = false }; return;
 
             // Paragraph properties
@@ -536,10 +563,12 @@ internal sealed partial class RtfReader
             case "shptxt" when _g.Dest == Dest.Shape && _g.Shape is { } holder:
                 StartShapeText(holder);
                 return true;
-            case "shprslt" when _g.Shape is { Picture: not null } or { Text: not null }:
-                // A picture shape or a text box read from the shape itself: the result is another copy of it, for
-                // programs without shapes.
-                _g.Dest = Dest.Skip;
+            case "shprslt" when _g.Shape is { } drawn:
+                // A picture shape, a text box or a drawing read from the shape itself: the result is another copy of
+                // it, for programs without shapes. Other shapes are read from it.
+                drawn.Result = true;
+                if (drawn.Picture is not null || drawn.Text is not null || DrawnKind(drawn) is not null)
+                    _g.Dest = Dest.Skip;
                 return true;
             case "shppict" or "shp" or "shprslt" or "object" or "result" or "upr" or "ud":
                 return true; // a wrapper: its content is read as text
@@ -576,8 +605,7 @@ internal sealed partial class RtfReader
                 _g.Dest = Dest.FontAlternate;
                 _fontAlternate.Clear();
                 return true;
-            case "nonshppict" or "listtext" or "pntext" or "xe" or "tc" or "txe" or "rxe" or "bkmkend" or "annotation" or "atnid"
-                or "atnauthor" or "template" or "comment" or "author" or "operator" or "company" or "manager" or "category"
+            case "nonshppict" or "listtext" or "pntext" or "xe" or "tc" or "txe" or "rxe" or "bkmkend" or "template" or "comment" or "author" or "operator" or "company" or "manager" or "category"
                 or "keywords" or "subject" or "doccomm" or "hlinkbase" or "creatim" or "revtim" or "printim" or "buptim"
                 or "objdata" or "datafield" or "formfield" or "fname" or "falt" or "panose" or "nonesttables" or "shptxt":
                 _g.Dest = Dest.Skip;
@@ -684,7 +712,14 @@ internal sealed partial class RtfReader
                 if (text.IndexOf(';') is >= 0 and var semicolon)
                 {
                     var name = _collected.ToString(0, before + semicolon).Split(',')[0].Trim();
-                    if (_styleId >= 0)
+                    if (_styleId >= 0 && _characterStyle)
+                    {
+                        if (!_characterStyles.ContainsKey(_styleId))
+                            Definitions(_characterStyles.Count, "styles");
+                        if (name.Length > 0)
+                            _characterStyles[_styleId] = name;
+                    }
+                    else if (_styleId >= 0)
                     {
                         if (!_styles.ContainsKey(_styleId))
                             Definitions(_styles.Count, "styles");
@@ -692,6 +727,7 @@ internal sealed partial class RtfReader
                     }
                     _collected.Clear();
                     _styleId = -1;
+                    _characterStyle = false;
                 }
                 break;
             case Dest.Title or Dest.LevelText or Dest.BookmarkStart:
@@ -712,6 +748,18 @@ internal sealed partial class RtfReader
                 break;
             case Dest.ShapeValue when _g.Shape is { } shape && shape.Value.Length < 256:
                 shape.Value.Append(text);
+                break;
+            case Dest.RevisionTable:
+                RevisionAuthor(text);
+                break;
+            case Dest.AnnotationId when _collected.Length < 256:
+                _collected.Append(text);
+                break;
+            case Dest.AnnotationInitials when _annotationInitials.Length < 256:
+                _annotationInitials.Append(text);
+                break;
+            case Dest.AnnotationAuthor when _annotationAuthor.Length < 256:
+                _annotationAuthor.Append(text);
                 break;
         }
     }
@@ -770,6 +818,8 @@ internal sealed partial class RtfReader
         204 => 1251,
         222 => 874,
         238 => 1250,
+        // Symbol fonts: each byte is the font's code (SymbolFonts maps the codes to Unicode).
+        2 => 28591,
         255 => 437,
         _ => 0,
     };
@@ -799,7 +849,19 @@ internal sealed partial class RtfReader
     private void AddText(string text)
     {
         var format = Format(_g.Char);
-        var inlines = _g.Sink ?? _g.Story.Inlines;
+        var inlines = TextSink();
+        // Text set in Wingdings, Symbol & co.: the characters their codes show, drawn from the font where it is installed.
+        if (SymbolFonts.IsSymbolFont(format.Font))
+        {
+            foreach (var piece in SymbolFonts.Runs(text, format))
+                AddText(inlines, piece.Text, piece.Format);
+            return;
+        }
+        AddText(inlines, text, format);
+    }
+
+    private void AddText(List<HInline> inlines, string text, HCharFormat format)
+    {
         if (_runs.TryGetValue(inlines, out var run))
         {
             if (run.Format.SameLayout(format))
@@ -822,9 +884,16 @@ internal sealed partial class RtfReader
 
     private void AddInline(HInline inline)
     {
-        var inlines = _g.Sink ?? _g.Story.Inlines;
+        // Tabs and line breaks in deleted text are deleted too.
+        var inlines = inline is HTab or HLineBreak ? TextSink() : NotDeleted();
         EndRun(inlines);
         inlines.Add(inline);
+
+        List<HInline> NotDeleted()
+        {
+            EndDeletion();
+            return _g.Sink ?? _g.Story.Inlines;
+        }
     }
 
     /// <summary>Refuses a font, colour, style or list table with more entries than a document may have objects.</summary>
@@ -855,7 +924,7 @@ internal sealed partial class RtfReader
             EastAsianFont: eastAsian,
             Color: c.Color > 0 && c.Color < _colors.Count ? _colors[c.Color] : null,
             Shade: c.Shade > 0 && c.Shade < _colors.Count ? _colors[c.Shade] : null,
-            Layout: c.RightToLeft ? new HCharLayout(RightToLeft: true) : null);
+            Layout: RevisionLayout(c, c.RightToLeft ? new HCharLayout(RightToLeft: true) : null));
     }
 
     /// <summary>
@@ -930,6 +999,7 @@ internal sealed partial class RtfReader
     /// <summary>Ends the paragraph of <paramref name="story"/>; without <paramref name="force"/>, only one with content.</summary>
     private void EndParagraph(Story story, bool force)
     {
+        EndDeletion();
         EndRun(story.Inlines);
         if (!force && story.Inlines.Count == 0)
             return;

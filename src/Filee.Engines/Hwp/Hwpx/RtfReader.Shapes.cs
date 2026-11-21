@@ -5,9 +5,11 @@
 // property's value}{\shprslt a copy for programs without shapes}}. Such a shape becomes a floating HImage. A text box
 // is a shape with its paragraphs in {\shptxt ...} inside \shpinst: it becomes an HTextBox with the shape's size,
 // place, fill (fillColor), outline (lineColor, lineWidth, lineDashing), padding (dxTextLeft ...) and vertical
-// alignment (anchorText). Either way the \shprslt copy is skipped; other shapes (rectangles, lines) are still read
-// from their \shprslt. A picture's own properties (\*\picprop, as Word writes for pictures in the text) give its
-// rotation and mirroring.
+// alignment (anchorText). A shape without text that is a rectangle (shapeType 1, 2 rounded, 202 an empty text box), an
+// ellipse (3) or a line (20, 32 a straight connector) becomes an HShape with the shape's size, place, fill and outline.
+// Either way the \shprslt copy is skipped. Other shapes (block arrows, freeforms, lines with arrowheads, which the model
+// can't draw) are still read from their \shprslt; a line with arrowheads without one becomes a plain line. A picture's
+// own properties (\*\picprop, as Word writes for pictures in the text) give its rotation and mirroring.
 
 using System.Globalization;
 using System.Text;
@@ -52,6 +54,9 @@ internal sealed partial class RtfReader
 
         /// <summary>The paragraphs of a text box (\shptxt), once read; null for a shape without text.</summary>
         public List<HBlock>? Text { get; set; }
+
+        /// <summary>The shape had a \shprslt copy (read or skipped).</summary>
+        public bool Result { get; set; }
 
         public void Set(string name, string value)
         {
@@ -156,13 +161,15 @@ internal sealed partial class RtfReader
         return new HInsets(Distance("dxWrapDistLeft", 900), Distance("dxWrapDistRight", 900), Distance("dyWrapDistTop", 0), Distance("dyWrapDistBottom", 0));
     }
 
-    /// <summary>A shape ends: its picture or its text box, floating where the shape is (or in the text, fPseudoInline).</summary>
+    /// <summary>A shape ends: its picture, text box or drawing, floating where the shape is (or in the text, fPseudoInline).</summary>
     private void EndShape(ShapeContext shape)
     {
         if (shape.Picture is not { } image)
         {
             if (shape.Text is { } text)
                 AddInline(TextBox(shape, text));
+            else if (DrawnKind(shape) is { } kind)
+                AddInline(Drawing(shape, kind));
             return;
         }
         // The shape's box is the picture's size.
@@ -183,6 +190,62 @@ internal sealed partial class RtfReader
         if (image.Anchor is not null)
             image.OuterMargin = WrapDistance(shape);
         AddInline(image);
+    }
+
+    /// <summary>
+    /// The kind of drawing a shape without text or picture is, when the model draws it as the shape is: rectangles,
+    /// rounded ones, empty text boxes, ellipses and lines; null for others. A line with arrowheads keeps its \shprslt
+    /// copy, which has them; without one it is drawn as a plain line.
+    /// </summary>
+    private static HShapeKind? DrawnKind(ShapeContext shape)
+    {
+        if (shape.Picture is not null || shape.Text is not null)
+            return null;
+        return shape.Number("shapeType") switch
+        {
+            1 or 2 or 202 => HShapeKind.Rectangle,
+            3 => HShapeKind.Ellipse,
+            20 or 32 when (shape.Number("lineStartArrowhead") ?? 0) == 0 && (shape.Number("lineEndArrowhead") ?? 0) == 0 || !shape.Result => HShapeKind.Line,
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// A drawing from a shape without text: its box, fill (fillColor, Word's default white; none for lines), outline,
+    /// corner rounding (shapeType 2), rotation and mirroring (a line runs from the box's top left unless mirrored).
+    /// </summary>
+    private static HShape Drawing(ShapeContext shape, HShapeKind kind)
+    {
+        var (width, height) = Size(shape);
+        var line = kind == HShapeKind.Line;
+        var drawing = new HShape(kind)
+        {
+            Width = HwpxUnits.FromTwips(line ? width : Math.Max(1, width)),
+            Height = HwpxUnits.FromTwips(line ? height : Math.Max(1, height)),
+            Fill = !line && shape.Number("fFilled") is not 0 ? ShapeColor(shape.Number("fillColor") ?? 0xFFFFFF) : null,
+            Line = shape.Number("fLine") is 0 ? HBorder.None : Outline(shape),
+        };
+        if (line)
+        {
+            drawing.FlipHorizontal = shape.Flag("fFlipH");
+            drawing.FlipVertical = shape.Flag("fFlipV");
+            var rotation = new HTransform((shape.Number("rotation") ?? 0) / 65536.0 % 360, false, false);
+            drawing.Transform = rotation.IsIdentity ? null : rotation;
+        }
+        else
+        {
+            drawing.Transform = shape.Transform();
+        }
+        if (shape.Number("shapeType") == 2)
+            drawing.CornerRatio = (int)Math.Round(Math.Clamp(shape.Number("adjustValue") ?? 3600, 0, 10800) * 100.0 / 21600);
+        if (!shape.Flag("fPseudoInline"))
+        {
+            drawing.Anchor = Anchor(shape);
+            drawing.OuterMargin = WrapDistance(shape);
+            if (shape.Z is { } z)
+                drawing.ZOrder = z;
+        }
+        return drawing;
     }
 
     /// <summary>

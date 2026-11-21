@@ -793,7 +793,13 @@ internal sealed partial class DocxReader
         }
         var run = mark.Clone();
         run.Apply(rPr);
-        return CharFormat(run);
+        var format = CharFormat(run);
+        // A bullet of Wingdings, Symbol & co. keeps its codes, for the layout to draw them in the font where it is
+        // installed (its Unicode character elsewhere).
+        if (level.Format == "bullet" && LevelFont(level.RPr) is { } font && SymbolFonts.IsSymbolFont(font)
+            && level.Text.Length > 0 && BulletText(level.Text, font).Length == level.Text.Length)
+            format = SymbolFonts.Drawn(format, font, level.Text);
+        return format;
     }
 
     private static string NumberFormat(string wordFormat) => wordFormat switch
