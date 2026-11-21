@@ -24,8 +24,9 @@
 // brackets too wide for a line as well, each bracket as tall as all it holds), the lines
 // after the first indented (Word's defaults: m:brkBin "before", m:wrapIndent 1 inch), the whole centred as a group; a
 // Word document's own m:mathPr settings (operators after the break or on both lines, the signs of a repeated minus, the
-// indent, continuation lines to the right) are followed. An inline formula comes in pieces split before the same
-// top-level operators (Pieces), which the paragraph's lines break between as Word breaks inline math across lines.
+// indent, continuation lines to the right) are followed. An inline formula comes in pieces split at the same
+// top-level operators under the same m:brkBin and m:brkBinSub (Pieces), which the paragraph's lines break between as
+// Word breaks inline math across lines; a line ending at a piece leaves out the room before the next operator.
 //
 // Brackets and radical signs come from a math font when one is installed (Cambria Math on Windows, STIX Two Math on
 // macOS, Latin Modern Math, DejaVu Math TeX Gyre ... on Linux: a font with an OpenType MATH table, see MathTable): the
@@ -55,6 +56,14 @@ internal sealed class EquationBox(float width, float ascent, float descent, Acti
     public float Height => Ascent + Descent;
     public Action<PageContent, float, float, float> Paint { get; } = paint;
 }
+
+/// <summary>
+/// A piece of an inline formula that a line of text may break after (MathLayout.Pieces): <paramref name="Box"/> as it
+/// sits beside the next piece, <paramref name="End"/> as it ends a line (without the room before the next piece, or
+/// with the operator Word repeats there), <paramref name="Start"/> as it starts a line when that differs (the second
+/// sign of a repeated subtraction), else null.
+/// </summary>
+internal sealed record MathPiece(EquationBox Box, EquationBox End, EquationBox? Start = null);
 
 /// <summary>How the parts of a formula are sized.</summary>
 internal enum MathMode
@@ -664,22 +673,38 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     }
 
     /// <summary>
-    /// An inline formula in the pieces a line of text may break it into (Word breaks inline math across lines before
-    /// its top-level binary and relation operators, see <see cref="BreaksBefore"/>): side by side they are the formula
-    /// laid out whole. Each piece after the first starts at its operator; the room before the operator ends the piece
-    /// before it. Null when the formula has no such place (or is too deep for <see cref="MaxDepth"/>).
+    /// An inline formula in the pieces a line of text may break it into (Word breaks inline math across lines at its
+    /// top-level binary and relation operators, see <see cref="BreaksBefore"/>): side by side they are the formula laid
+    /// out whole. As <paramref name="wrap"/> says (Word's m:mathPr, null for its defaults), a piece after a break starts
+    /// at its operator (before), a binary operator ends the piece before (after), or ends it and starts the next one too
+    /// when the line breaks there (repeat, a subtraction with the signs of m:brkBinSub); relations always start a piece.
+    /// The room between two pieces ends the first, and a line ending there leaves it out (<see cref="MathPiece.End"/>).
+    /// Null when the formula has no such place (or is too deep for <see cref="MaxDepth"/>).
     /// </summary>
-    public IReadOnlyList<EquationBox>? Pieces(MathNode node, float size, SKColor color, MathMode mode)
+    public IReadOnlyList<MathPiece>? Pieces(MathNode node, float size, SKColor color, MathMode mode, HMathWrap? wrap = null)
     {
         var inner = Unwrapped(node);
         if (inner is not MathRow { Items.Count: > 1 } row || row.Items.Any(i => i is MathAlign))
             return null;
+        wrap ??= DefaultWrap;
         var items = row.Items;
+        bool IsBinary(int i) => Glyph(items[i]) is { } glyph && Binary.Contains(glyph);
+        // Where pieces start; for a binary operator ending its line (after), the piece after it starts past it.
         var cuts = new List<int>();
+        var repeated = new HashSet<int>();
         for (var i = 1; i < items.Count; i++)
         {
-            if (BreaksBefore(items[i], items[i - 1]))
-                cuts.Add(i);
+            if (!BreaksBefore(items[i], items[i - 1]))
+                continue;
+            if (wrap.Break == HMathBreak.After && IsBinary(i))
+            {
+                if (i + 1 < items.Count)
+                    cuts.Add(i + 1);
+                continue;
+            }
+            cuts.Add(i);
+            if (wrap.Break == HMathBreak.Repeat && IsBinary(i))
+                repeated.Add(i);
         }
         if (cuts.Count == 0)
             return null;
@@ -688,29 +713,60 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
         // Laid out as Row lays out the whole formula: where each item's box starts and where the row ends.
         var style = new Style(size, color, false, false, mode);
         var boxes = new EquationBox[items.Count];
+        var spacing = new (float Before, float After)[items.Count];
         var at = new float[items.Count + 1];
         float x = 0;
         MathNode? previous = null;
         for (var i = 0; i < items.Count; i++)
         {
             boxes[i] = Lay(items[i], style);
-            var (before, after) = Spacing(items[i], previous, style);
-            x += before;
+            spacing[i] = Spacing(items[i], previous, style);
+            x += spacing[i].Before;
             at[i] = x;
-            x += boxes[i].Width + after;
+            x += boxes[i].Width + spacing[i].After;
             previous = items[i];
         }
         at[items.Count] = x;
 
-        var pieces = new List<EquationBox>(cuts.Count);
+        // A subtraction repeated across a break shows m:brkBinSub's signs: the first ending the line, the second starting the next.
+        EquationBox Sign(int i, bool start)
+        {
+            if (Glyph(items[i]) is not ("-" or "−") || wrap.Subtraction is not { Length: 2 } signs || (start ? signs[1] : signs[0]) != '+')
+                return boxes[i];
+            return Lay(new MathSymbol("+"), style);
+        }
+
+        var pieces = new List<MathPiece>(cuts.Count);
         var from = 0;
         foreach (var to in cuts)
         {
-            var start = from == 0 ? 0 : at[from];
+            var origin = from == 0 ? 0 : at[from];
             var parts = new List<(float X, EquationBox Box)>(to - from);
             for (var i = from; i < to; i++)
-                parts.Add((at[i] - start, boxes[i]));
-            pieces.Add(Combine(parts, at[to] - start));
+                parts.Add((at[i] - origin, boxes[i]));
+            var box = Combine(parts, at[to] - origin);
+            // Ending a line: up to its last item's ink, then the repeated operator (with its room before it).
+            var ink = at[to - 1] + boxes[to - 1].Width - origin;
+            EquationBox end;
+            if (to < items.Count && repeated.Contains(to))
+            {
+                var sign = Sign(to, start: false);
+                var withSign = new List<(float X, EquationBox Box)>(parts) { (at[to] - origin, sign) };
+                end = Combine(withSign, at[to] - origin + sign.Width);
+            }
+            else
+            {
+                end = to < items.Count ? Combine(parts, ink) : box;
+            }
+            // Starting a line after a repeated subtraction: the operator in its second sign.
+            EquationBox? start = null;
+            if (from > 0 && repeated.Contains(from) && Sign(from, start: true) is var startSign && !ReferenceEquals(startSign, boxes[from]))
+            {
+                var swapped = new List<(float X, EquationBox Box)>(parts);
+                swapped[0] = (0, startSign);
+                start = Combine(swapped, box.Width);
+            }
+            pieces.Add(new MathPiece(box, end, start));
             from = to;
         }
         return pieces;

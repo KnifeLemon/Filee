@@ -3,6 +3,8 @@
 // drawn from the drawing Word saves with it; a 한글 check box that is on; backslashes in the template's Korean font and
 // in one the document names; a rectangle path gradient. Documents are built in code and laid
 // out with the repository's Noto fonts; the assertions look at where the glyphs land, which every computer agrees on.
+// Pictures in vertical text (laid out like characters, and floating ones' wrap room), numbers set across taking an em,
+// 한글 headers written vertically, and the seams of a rectangle gradient's pieces are checked on models built in code.
 
 using System.IO.Compression;
 using System.Text;
@@ -489,6 +491,200 @@ public sealed class VerticalTextTests(EngineFixture fx) : IClassFixture<EngineFi
         // The document chose 맑은 고딕 (Noto Sans KR stands in for it here): Word draws its ₩, and so does Filee.
         var backslash = page.Items.OfType<GlyphItem>().Select(i => i.Run).Single(r => r.Text.Contains('\\'));
         Assert.Same(_fonts.Font(RepositoryFonts.Korean), backslash.Font);
+    }
+
+    // ───────────────────────── Pictures, numbers and headers in vertical text ─────────────────────────
+
+    private static HCharFormat Korean() => new(Size: 1000, Font: RepositoryFonts.Korean, EastAsianFont: RepositoryFonts.Korean);
+
+    /// <summary>A4 with 1 inch margins and a header area of <paramref name="header"/> (HWPUNIT).</summary>
+    private static HSection Section(HTextFlow flow, int header = 0) =>
+        new() { TextFlow = flow, Page = new HPage(59528, 84188, 7200, 7200, 7200, 7200, header, 0, 0) };
+
+    /// <summary>A red picture <paramref name="width"/> × <paramref name="height"/> points.</summary>
+    private string Red(float width, float height)
+    {
+        var path = Path.Combine(fx.NewFolder(), "red.png");
+        using var bitmap = new SKBitmap((int)width, (int)height);
+        bitmap.Erase(SKColors.Red);
+        using (var file = File.Create(path))
+            bitmap.Encode(file, SKEncodedImageFormat.Png, 100);
+        return path;
+    }
+
+    /// <summary>Where the red of a page drawn at 1 px per point is (empty for none).</summary>
+    private static SKRectI RedArea(PageContent page)
+    {
+        using var bitmap = new SKBitmap((int)Math.Ceiling(page.Width), (int)Math.Ceiling(page.Height));
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(SKColors.White);
+            page.Draw(canvas);
+        }
+        var (left, top, right, bottom) = (int.MaxValue, int.MaxValue, -1, -1);
+        for (var y = 0; y < bitmap.Height; y++)
+        {
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                var pixel = bitmap.GetPixel(x, y);
+                if (pixel.Red > 200 && pixel.Green < 80 && pixel.Blue < 80)
+                    (left, top, right, bottom) = (Math.Min(left, x), Math.Min(top, y), Math.Max(right, x + 1), Math.Max(bottom, y + 1));
+            }
+        }
+        return right < 0 ? SKRectI.Empty : new SKRectI(left, top, right, bottom);
+    }
+
+    /// <summary>The middle of each upright glyph's em box on the page (the point VerticalText turns it about).</summary>
+    private static List<(char Character, SKPoint Middle)> Middles(PageContent page) =>
+        [.. page.Items.OfType<GlyphItem>().Select(i => i.Run).Where(r => r.Transform is not null).SelectMany(run =>
+            Enumerable.Range(0, run.Glyphs.Length).Select(g => (run.Text[run.Clusters[g]],
+                run.Transform!.Value.MapPoint(run.Positions[g].X + run.Size / 2, run.Positions[g].Y - 0.38f * run.Size))))];
+
+    [Fact]
+    public void A_picture_in_vertical_text_stands_upright_and_a_number_set_across_takes_one_em()
+    {
+        NeedFonts();
+        var document = new HDocument();
+        var section = Section(HTextFlow.Vertical);
+        var paragraph = new HParagraph { Format = new HParaFormat(Align: HAlign.Left, Before: 0, After: 0) { Layout = new HParaLayout(Breaking: new HLineBreaking(AutoSpaceDigits: true)) } };
+        paragraph.Inlines.Add(new HText("가", Korean()));
+        paragraph.Inlines.Add(new HImage(Red(40, 20)) { Width = 4000, Height = 2000 });
+        paragraph.Inlines.Add(new HText("나第12回다", Korean()));
+        section.Blocks.Add(paragraph);
+        document.Sections.Add(section);
+
+        var page = Assert.Single(new PageComposer(new FontResolver(_fonts), _shaper).Compose(document, Token).Pages);
+
+        // The picture stands as it is, 40 pt wide and 20 pt high, in the first line at the right.
+        var red = RedArea(page);
+        Assert.InRange(red.Width, 39, 41);
+        Assert.InRange(red.Height, 19, 21);
+        Assert.True(red.Left > page.Width / 2, $"{red}");
+        // Along the line it takes its height: 나 comes 20 pt further down than an em after 가.
+        var glyphs = Glyphs(page);
+        var (ga, na) = (glyphs.Single(g => g.Character == '가'), glyphs.Single(g => g.Character == '나'));
+        Assert.Equal(10 + 20, na.Origin.Y - ga.Origin.Y, 1.0);
+        Assert.InRange(red.Top, ga.Origin.Y - 2, na.Origin.Y);
+        // 第12回: the number set across takes one em between 第 and 回, without auto-spacing beside it.
+        var middles = Middles(page);
+        var (first, last) = (middles.Single(m => m.Character == '第').Middle, middles.Single(m => m.Character == '回').Middle);
+        Assert.Equal(20, last.Y - first.Y, 0.6);
+        var digits = page.Items.OfType<GlyphItem>().Select(i => i.Run).Single(r => r.Text == "12");
+        Assert.NotNull(digits.Transform);
+        var across = digits.Transform!.Value.MapPoint((digits.Positions[0].X + digits.Positions[^1].X) / 2 + digits.Size * 0.15f, digits.Positions[0].Y - 0.38f * digits.Size);
+        Assert.InRange(across.Y, first.Y + 5, last.Y - 5);
+    }
+
+    [Fact]
+    public void Text_goes_around_a_floating_picture_of_a_vertical_page_where_the_picture_stands()
+    {
+        NeedFonts();
+        var document = new HDocument();
+        var section = Section(HTextFlow.Vertical);
+        var paragraph = new HParagraph { Format = new HParaFormat(Align: HAlign.Left, Before: 0, After: 0) };
+        paragraph.Inlines.Add(new HImage(Red(80, 20))
+        {
+            Width = 8000,
+            Height = 2000,
+            Anchor = new HAnchor("COLUMN", "LEFT", 20000, "PARA", "TOP", 2000, "SQUARE", false),
+        });
+        paragraph.Inlines.Add(new HText(string.Concat(Enumerable.Repeat("가나다라마바사아자차카타파하", 40)), Korean()));
+        section.Blocks.Add(paragraph);
+        document.Sections.Add(section);
+
+        var page = new PageComposer(new FontResolver(_fonts), _shaper).Compose(document, Token).Pages[0];
+
+        // Upright, 80 pt wide and 20 pt high; no character's em box has its middle on it, while characters run past it
+        // on both sides (above and below it, beside it to the left and right).
+        var red = RedArea(page);
+        Assert.InRange(red.Width, 79, 81);
+        Assert.InRange(red.Height, 19, 21);
+        var inside = SKRect.Inflate(new SKRect(red.Left, red.Top, red.Right, red.Bottom), -2, -2);
+        var middles = Middles(page);
+        Assert.DoesNotContain(middles, m => inside.Contains(m.Middle));
+        Assert.Contains(middles, m => m.Middle.X > red.Left && m.Middle.X < red.Right && m.Middle.Y < red.Top);
+        Assert.Contains(middles, m => m.Middle.X > red.Left && m.Middle.X < red.Right && m.Middle.Y > red.Bottom);
+    }
+
+    [Fact]
+    public void A_hangul_header_written_vertically_is_set_vertically_in_its_area()
+    {
+        NeedFonts();
+        // Read: the header keeps its direction, and isn't counted as vertical text left out.
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "header.hwpx");
+        File.Copy(HwpxReaderTests.HangulStylePackage(folder), path);
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            var entry = zip.GetEntry("Contents/section0.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+                xml = reader.ReadToEnd();
+            entry.Delete();
+            const string Header = "<hp:header id=\"1\" applyPageType=\"ODD\"><hp:subList id=\"\" textDirection=\"";
+            Assert.Contains(Header + "HORIZONTAL", xml, StringComparison.Ordinal);
+            using var writer = new StreamWriter(zip.CreateEntry("Contents/section0.xml").Open(), new UTF8Encoding(false));
+            writer.Write(xml.Replace(Header + "HORIZONTAL", Header + "VERTICAL", StringComparison.Ordinal));
+        }
+        var read = HwpxReader.ReadForLayout(path, Path.Combine(folder, "media"));
+        Assert.Equal(HTextFlow.Vertical, read.Sections[0].Headers.Single(h => h.Pages == HPageType.Odd).TextFlow);
+        Assert.Equal(0, read.LeftOut[HLeftOutKind.VerticalText]);
+
+        // Laid out: down its 40 pt high area from the right of the text width, each Hangul upright, the body across.
+        var document = new HDocument();
+        var section = Section(HTextFlow.Horizontal, header: 4000);
+        var header = new HHeaderFooter(HPageType.Both) { TextFlow = HTextFlow.Vertical };
+        header.Blocks.Add(new HParagraph { Format = new HParaFormat(Align: HAlign.Left, Before: 0, After: 0), Inlines = { new HText("머리말", Korean()) } });
+        section.Headers.Add(header);
+        section.Blocks.Add(new HParagraph { Format = new HParaFormat(Align: HAlign.Left, Before: 0, After: 0), Inlines = { new HText("본문", Korean()) } });
+        document.Sections.Add(section);
+        var page = Assert.Single(new PageComposer(new FontResolver(_fonts), _shaper).Compose(document, Token).Pages);
+        var glyphs = Glyphs(page);
+        var head = glyphs.Where(g => g.Character is '머' or '리' or '말').ToList();
+        Assert.Equal(3, head.Count);
+        Assert.All(head, g => Assert.True(Upright(g), $"{g.Character} up {g.Up}"));
+        Assert.All(head, g => Assert.InRange(g.Origin.X, 595.3f - 72 - 20, 595.3f - 72));
+        Assert.True(head.Zip(head.Skip(1)).All(pair => pair.Second.Origin.Y > pair.First.Origin.Y + 5 && Math.Abs(pair.Second.Origin.X - pair.First.Origin.X) < 0.5f));
+        Assert.All(head, g => Assert.InRange(g.Origin.Y, 72, 72 + 40));
+        var body = glyphs.Where(g => g.Character is '본' or '문').ToList();
+        Assert.True(body[1].Origin.X > body[0].Origin.X + 5 && Math.Abs(body[1].Origin.Y - body[0].Origin.Y) < 0.5f, "the body runs across");
+    }
+
+    [Fact]
+    public void The_pieces_of_a_rectangle_gradient_overlap_so_no_seam_shows_between_them()
+    {
+        // Each piece drawn smoothed on its own, as a PDF viewer draws them, at a scale that puts the edges between pixels.
+        static int Seams(float overlap)
+        {
+            var box = new SKRect(0, 0, 100, 60);
+            var focus = SlidePaint.Focus(new SKRect(0.3f, 0.4f, 0.25f, 0.35f), box);
+            using var bitmap = new SKBitmap(260, 160);
+            using var canvas = new SKCanvas(bitmap);
+            canvas.Clear(SKColors.Black);
+            canvas.Translate(0.37f, 0.61f);
+            canvas.Scale(2.53f);
+            using var white = new SKPaint { Color = SKColors.White, IsAntialias = true, Style = SKPaintStyle.Fill };
+            canvas.DrawRect(focus, white);
+            foreach (var (piece, _, _) in SlidePaint.RectanglePieces(focus, box, overlap))
+            {
+                using (piece)
+                    canvas.DrawPath(piece, white);
+            }
+            canvas.Flush();
+            var seams = 0;
+            // Inside the box, a pixel away from its edge.
+            for (var y = 3; y < 60 * 2.53f - 2; y++)
+            {
+                for (var x = 3; x < 100 * 2.53f - 2; x++)
+                {
+                    if (bitmap.GetPixel(x, y).Red < 250)
+                        seams++;
+                }
+            }
+            return seams;
+        }
+        Assert.True(Seams(0) > 0, "edge to edge, smoothed pieces leave a hairline");
+        Assert.Equal(0, Seams(0.5f));
     }
 
     // ───────────────────────── Slides: a rectangle gradient ─────────────────────────

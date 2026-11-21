@@ -869,6 +869,15 @@ which is also the equation's alternative text in HWPX. The DOCX writer writes ev
 (`Hwp/Hwpx/Docx/OmmlWriter.cs`), the HTML and EPUB writers as MathML (`Hwp/Hwpx/MathMLWriter.cs`; EPUB pages with it
 carry `properties="mathml"`; MOBI keeps the text).
 
+More routes keep equations as equations. The ODT writer writes LibreOffice formula objects: MathML with a
+`StarMath 5.0` annotation (`Hwp/Hwpx/StarMath.cs`, written from the tree) and the TeX one; the ODT reader reads them
+back (`Hwp/Hwpx/MathMLReader.cs`), keeps a LibreOffice file's own StarMath source, and reads the StarMath when the
+MathML shows nothing. The PPTX writer writes Office Math (`a14:m` in `mc:AlternateContent`) in text boxes, slide
+titles and table cells; the fallback for other readers is a picture drawn by the slide renderer: of the text box or
+title, filling the same shape, and of each cell with equations, filling that cell. The PPTX readers and the slide
+renderer take the `a14:m` choice. HTML and EPUB `<math>` is read back as equations (`HtmlReader`, through
+MathMLReader), its TeX annotation kept.
+
 **TeX math in Markdown** (#1652): `$…$`, `$$…$$`, `\(…\)` and `\[…\]` (`Hwp/Hwpx/MarkdownMath.cs`, Pandoc's rules
 for dollars: no space inside the delimiters, no digit after the closing `$`, code spans win) are read by
 `Hwp/Hwpx/LatexMath.cs` into the same tree: fractions, roots, scripts, Greek letters and symbols, sums, integrals and
@@ -1521,6 +1530,9 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
   - On the line, an equation takes the box 한글 laid it out in (hp:sz) with its baseline (baseLine), at its own size
     (baseUnit) and colour, drawn narrowed to the box where Filee's comes out wider (한글 sets equations tighter than the
     fonts' advances); Word's equations take their own box.
+  - Word's and TeX's inline equations break across lines of text at their top-level binary and relation operators,
+    following the document's `m:brkBin` (before, after, repeat) and `m:brkBinSub`; a line ending inside one leaves out
+    the room before the next operator, as at a space.
   - Measured against 한글's PDFs: two two-column exam papers from Filee's issue files (488 and 249 equations): the
     problems' text and equations on 한글's lines and in 한글's columns, the second paper on 한글's 9 pages, its first
     page as 한글's (the first paper takes 11 pages to 한글's 10); hwplib's 수식 and hwpxlib's SimpleEquation samples

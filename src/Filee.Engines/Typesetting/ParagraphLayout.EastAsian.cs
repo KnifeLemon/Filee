@@ -5,7 +5,7 @@
 //   a quarter of the East Asian character's size goes between the two, whichever side the letter is on. It counts in the
 //   line's width when lines are broken, and a line that breaks there leaves it out. Full-width letters and digits are
 //   East Asian text and get none; nor does punctuation on either side. 한글's stored lines are drawn as 한글 laid them
-//   out, without it.
+//   out, without it. In vertical text a number set across (ParagraphLayout.Vertical.cs) gets none either.
 // - Justification of Word's paragraphs: a justified line spreads its room over its spaces and over the gaps beside each
 //   Chinese or Japanese character (Han, kana, bopomofo, full-width punctuation), each the same share, so a Chinese line
 //   holding a few spaces ("共 3 个 GPU 节点") doesn't put all of it into them. Latin words keep their letters together.
@@ -33,9 +33,10 @@ internal sealed partial class ParagraphLayouter
 
     /// <summary>
     /// Per UTF-16 index, the auto-spacing after the cluster that starts there (0 elsewhere); null when the paragraph has
-    /// it off or has nowhere to put it.
+    /// it off or has nowhere to put it. In vertical text (<paramref name="vertical"/>) a number set across takes none on
+    /// either side.
     /// </summary>
-    private static float[]? AutoSpace(ParagraphText source, List<Item> items, bool[] starts, HLineBreaking? breaking)
+    private static float[]? AutoSpace(ParagraphText source, List<Item> items, bool[] starts, HLineBreaking? breaking, bool vertical = false)
     {
         var (latin, digits) = (breaking?.AutoSpaceLatin == true, breaking?.AutoSpaceDigits == true);
         if (!latin && !digits)
@@ -56,7 +57,7 @@ internal sealed partial class ParagraphLayouter
         {
             var (a, first) = clusters[k];
             var (b, second) = clusters[k + 1];
-            if (first.Kind != ItemKind.Text || second.Kind != ItemKind.Text)
+            if (first.Kind != ItemKind.Text || second.Kind != ItemKind.Text || vertical && (first.Style.Across || second.Style.Across))
                 continue;
             var (left, right) = (SideOf(text, a), SideOf(text, b));
             bool Applies(AutoSpaceSide side) => side == AutoSpaceSide.Letter ? latin : side == AutoSpaceSide.Digit && digits;
