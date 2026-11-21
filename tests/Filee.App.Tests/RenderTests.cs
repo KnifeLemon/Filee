@@ -591,8 +591,13 @@ public class RenderTests
             Pump();
 
             var engines = ((Filee.App.ViewModels.Pages.EnginesPageViewModel)vm.CurrentPage).Engines;
-            Assert.All(engines.Where(e => e.IsAvailable), e => Assert.False(string.IsNullOrWhiteSpace(e.Version)));
             Assert.All(engines, e => Assert.False(string.IsNullOrWhiteSpace(e.Description)));
+            // Each engine has its row with its name; an engine that reports its version shows it there. A program of the
+            // PC's own (a Tesseract not fetched by Filee) may report none: its row is drawn all the same, without one.
+            var texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
+            Assert.All(engines, e => Assert.Contains(e.Name, texts));
+            Assert.Contains(engines, e => e.IsAvailable && !string.IsNullOrWhiteSpace(e.Version));
+            Assert.All(engines.Where(e => !string.IsNullOrWhiteSpace(e.Version)), e => Assert.Contains(e.Version, texts));
             Save(window, "page-engines-downloading-ko.png");
             window.Close();
         }

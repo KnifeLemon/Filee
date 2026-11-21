@@ -2,8 +2,9 @@
 // among the runs of a text shape, the shape in an mc:AlternateContent whose choice needs Office 2010's drawing
 // extensions (a14) and whose fallback is the same shape filled with a picture of its text, locked, with an empty
 // paragraph, for readers without Office Math. The picture is the shape's paragraphs drawn by the slide renderer
-// (equations by MathLayout) on a transparent ground; a shape that can't be drawn falls back to its text with the
-// equations' linear text.
+// (equations by MathLayout) on a transparent ground, encoded straight into its part; a shape that can't be drawn falls
+// back to its text with the equations' linear text. Titles and tables with equations have them in a14:m too, in an
+// mc:AlternateContent whose fallback is the same title or table with the equations' linear text.
 
 using System.Text;
 using Filee.Engines.Hwp.Hwpx.Docx;
@@ -30,12 +31,37 @@ internal sealed partial class PptxWriter
     private int _mathPictures;
 
     /// <summary>An equation run as Office Math in a14:m, in the paragraph's size and the run's colour.</summary>
-    private string MathXml(Run run, HEquation equation, Para paragraph)
+    private static string MathXml(Run run, HEquation equation, Para paragraph) => MathXml(run, equation, paragraph.Size, paragraph.Align, null);
+
+    /// <summary>
+    /// An equation run as Office Math in a14:m at <paramref name="size"/> (hundredths of a point), in
+    /// <paramref name="color"/> when given (a table's header row), else the run's own.
+    /// </summary>
+    private static string MathXml(Run run, HEquation equation, int size, HAlign? paragraphAlign, string? color)
     {
-        var fill = Color(equation.Format.Color) is { } own && own != "FFFFFF" ? $"<a:solidFill><a:srgbClr val=\"{own}\"/></a:solidFill>" : "";
-        var align = paragraph.Align is HAlign.Left or HAlign.Right ? paragraph.Align : null;
-        return "<a14:m>" + OmmlWriter.WriteDrawing(equation.Math, run.Display, $" sz=\"{N(paragraph.Size)}\"", fill, align) + "</a14:m>";
+        var fill = (color ?? (Color(equation.Format.Color) is { } own && own != "FFFFFF" ? own : null)) is { } rgb
+            ? $"<a:solidFill><a:srgbClr val=\"{rgb}\"/></a:solidFill>" : "";
+        var align = paragraphAlign is HAlign.Left or HAlign.Right ? paragraphAlign : null;
+        return "<a14:m>" + OmmlWriter.WriteDrawing(equation.Math, run.Display, $" sz=\"{N(size)}\"", fill, align) + "</a14:m>";
     }
+
+    /// <summary>
+    /// Equations as Office Math (a14:m) in a title or table: <paramref name="write"/> writes it with them
+    /// (<c>true</c>, the choice) and with their linear text (<c>false</c>, the fallback), both with the same shape id.
+    /// </summary>
+    private string WithMath(Func<bool, string> write)
+    {
+        var id = _shapeId;
+        var choice = write(true);
+        _shapeId = id; // the same shape again
+        return Alternate(choice, write(false));
+    }
+
+    /// <summary>Content that needs Office 2010's drawing extensions (a14), and what readers without them show.</summary>
+    private static string Alternate(string choice, string fallback) =>
+        $"<mc:AlternateContent xmlns:mc=\"{McNamespace}\" xmlns:m=\"{MathNamespace}\">" +
+        $"<mc:Choice xmlns:a14=\"{A14Namespace}\" Requires=\"a14\">{choice}</mc:Choice>" +
+        $"<mc:Fallback>{fallback}</mc:Fallback></mc:AlternateContent>";
 
     /// <summary>
     /// A text shape with equations: the shape as written (<paramref name="shape"/>, its equations in a14:m) as the
@@ -49,11 +75,12 @@ internal sealed partial class PptxWriter
             ? "<p:cNvSpPr><a:spLocks noGrp=\"1\" noRot=\"1\" noChangeAspect=\"1\" noMove=\"1\" noResize=\"1\" noEditPoints=\"1\" noAdjustHandles=\"1\" noChangeArrowheads=\"1\" noChangeShapeType=\"1\" noTextEdit=\"1\"/></p:cNvSpPr><p:nvPr><p:ph idx=\"1\"/></p:nvPr>"
             : "<p:cNvSpPr txBox=\"1\"><a:spLocks noRot=\"1\" noChangeAspect=\"1\" noMove=\"1\" noResize=\"1\" noEditPoints=\"1\" noAdjustHandles=\"1\" noChangeArrowheads=\"1\" noChangeShapeType=\"1\" noTextEdit=\"1\"/></p:cNvSpPr><p:nvPr/>";
         string fallback;
-        if (FallbackPicture(paragraphs, width, height) is { } png)
+        using var picture = FallbackPicture(paragraphs, width, height);
+        if (picture is not null)
         {
             var file = $"math{++_mathPictures}.png";
             using (var target = _package!.Create("ppt/media/" + file, "png", "image/png", compress: false))
-                target.Write(png);
+                picture.Encode(target, SKEncodedImageFormat.Png, 100);
             var relationship = Relate("image", "../media/" + file);
             fallback = $"<p:sp><p:nvSpPr><p:cNvPr id=\"{id}\" name=\"{name} {id - 1}\"/>{nonVisual}</p:nvSpPr>" +
                        $"<p:spPr>{Xfrm(x, y, width, height)}<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>" +
@@ -71,16 +98,14 @@ internal sealed partial class PptxWriter
                 ? TextShape(name, "<p:ph idx=\"1\"/>", x, y, width, height, body.ToString())
                 : TextShape(name, null, x, y, width, height, body.ToString());
         }
-        return $"<mc:AlternateContent xmlns:mc=\"{McNamespace}\" xmlns:m=\"{MathNamespace}\">" +
-               $"<mc:Choice xmlns:a14=\"{A14Namespace}\" Requires=\"a14\">{shape}</mc:Choice>" +
-               $"<mc:Fallback>{fallback}</mc:Fallback></mc:AlternateContent>";
+        return Alternate(shape, fallback);
     }
 
     /// <summary>
     /// The shape's text drawn as the slide renderer draws a text box (its insets, the paragraphs' sizes, indents,
-    /// bullets and equations), as a PNG on a transparent ground; null when nothing could be drawn.
+    /// bullets and equations), on a transparent ground, for its PNG; null when nothing could be drawn.
     /// </summary>
-    private byte[]? FallbackPicture(List<Para> paragraphs, long width, long height)
+    private SKBitmap? FallbackPicture(List<Para> paragraphs, long width, long height)
     {
         var (w, h) = ((float)(width / Emu), (float)(height / Emu));
         if (!(w > 1 && h > 1))
@@ -104,15 +129,14 @@ internal sealed partial class PptxWriter
         using (var renderer = new SlideRenderer(_drawing.Value.Fonts, _drawing.Value.Shaper, _token))
             page = renderer.Render(deck, slide, withBackground: false);
         var scale = Math.Min(FallbackDpi / 72f, 4000 / Math.Max(w, h));
-        using var bitmap = new SKBitmap(Math.Max(1, (int)Math.Ceiling(w * scale)), Math.Max(1, (int)Math.Ceiling(h * scale)), SKColorType.Rgba8888, SKAlphaType.Premul);
+        var bitmap = new SKBitmap(Math.Max(1, (int)Math.Ceiling(w * scale)), Math.Max(1, (int)Math.Ceiling(h * scale)), SKColorType.Rgba8888, SKAlphaType.Premul);
         using (var canvas = new SKCanvas(bitmap))
         {
             canvas.Clear(SKColors.Transparent);
             canvas.Scale(scale);
             page.Draw(canvas);
         }
-        using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
-        return data?.ToArray();
+        return bitmap;
     }
 
     /// <summary>A slide paragraph as the document model has it, for the renderer: its runs at its size, its bullet as text.</summary>

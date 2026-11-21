@@ -14,7 +14,8 @@
 //   (with tableStyles.xml styles), SmartArt from the drawing PowerPoint keeps with it, charts from their chart part
 //   (ChartReader; drawn by ChartDrawer, a picture of them for what takes pictures), OLE objects and other charts as the
 //   picture stored for them, mc:AlternateContent through its fallback (an Office 2016 chart through its choice when
-//   ChartReader reads its part).
+//   ChartReader reads its part, and content with Office Math through its choice: PowerPoint's equations, a14:m among
+//   a paragraph's runs, are drawn as equations rather than from the fallback's picture of them).
 // - Fills: solid, gradient (linear, circle, rectangle; group fill), picture, pattern. Lines: width, dash, cap, join,
 //   compound, arrowheads.
 // Shadows, glow, reflection, 3D and WordArt warps are left out; the capability check (SlideCapabilities) names them,
@@ -39,6 +40,9 @@ internal sealed partial class PptxSlideReader
 {
     private static readonly XNamespace P = "http://schemas.openxmlformats.org/presentationml/2006/main";
     private static readonly XNamespace A = DrawingColors.A;
+
+    /// <summary>Office 2010's drawing extensions: PowerPoint's equations are a14:m among a paragraph's runs.</summary>
+    private static readonly XNamespace A14 = "http://schemas.microsoft.com/office/drawing/2010/main";
     private static readonly XNamespace R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private static readonly XNamespace Dsp = "http://schemas.microsoft.com/office/drawing/2008/diagram";
 
@@ -322,13 +326,21 @@ internal sealed partial class PptxSlideReader
                 yield return element;
                 continue;
             }
-            // An Office 2016 chart (chartex) is drawn from its part when ChartReader reads it, else from the fallback picture.
+            // An Office 2016 chart (chartex) is drawn from its part when ChartReader reads it, else from the fallback
+            // picture; Office Math (a14:m) from its choice, where the equations are.
             var chosen = ChartReader.ChartExChoice(element) is { } chartEx && ChartExDrawn(part, chartEx.RelationshipId) ? chartEx.Choice
-                : element.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback") ?? element.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice");
+                : MathChoice(element)
+                  ?? element.Elements().FirstOrDefault(e => e.Name.LocalName == "Fallback") ?? element.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice");
             if (chosen is not null)
                 open.Push(chosen.Elements().GetEnumerator());
         }
     }
+
+    /// <summary>The choice of an mc:AlternateContent that needs a14 and holds Office Math (a14:m); null for any other.</summary>
+    private static XElement? MathChoice(XElement alternate) =>
+        alternate.Elements().FirstOrDefault(e => e.Name.LocalName == "Choice"
+                                                && ((string?)e.Attribute("Requires"))?.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("a14") == true
+                                                && e.Descendants(A14 + "m").Any());
 
     /// <summary>Whether the Office 2016 chart part <paramref name="id"/> of <paramref name="part"/> is one ChartReader reads.</summary>
     private bool ChartExDrawn(string part, string? id)

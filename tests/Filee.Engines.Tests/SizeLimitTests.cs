@@ -473,16 +473,20 @@ public class SizeLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(["-c:v", "libvpx-vp9", "-b:v", "1000k", "-maxrate", "1500k", "-bufsize", "2000k"], fitted[1].Arguments);
     }
 
-    /// <summary>Eight seconds of a noisy 720p pattern with sound: several MB even as H.264.</summary>
-    private async Task<string> MakeVideoAsync()
+    /// <summary>
+    /// Eight seconds of a noisy 720p pattern with sound: several MB even as H.264 (how many depends on the FFmpeg: a
+    /// recent build's noise filter makes well over 100 MB of it). Without the noise, at x264's default quality: a few MB
+    /// at most, whatever the FFmpeg.
+    /// </summary>
+    private async Task<string> MakeVideoAsync(bool noisy = true)
     {
-        var path = Path.Combine(fx.NewFolder(), "noisy.mp4");
+        var path = Path.Combine(fx.NewFolder(), noisy ? "noisy.mp4" : "plain.mp4");
         var result = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
         [
             "-hide_banner", "-nostdin", "-v", "error", "-y",
-            "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30:duration=8,noise=alls=40:allf=t",
+            "-f", "lavfi", "-i", noisy ? "testsrc2=size=1280x720:rate=30:duration=8,noise=alls=40:allf=t" : "testsrc2=size=1280x720:rate=30:duration=8",
             "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=8", "-ac", "2",
-            "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p", "-c:a", "aac", path,
+            "-c:v", "libx264", "-crf", noisy ? "16" : "23", "-pix_fmt", "yuv420p", "-c:a", "aac", path,
         ], TimeSpan.FromMinutes(2), CancellationToken.None);
         Assert.True(result.ExitCode == 0, result.StandardError);
         return path;
@@ -537,7 +541,11 @@ public class SizeLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public async Task A_video_too_long_for_its_percentage_limit_is_refused()
     {
         Assert.SkipUnless(Tools is not null, "FFmpeg is not installed (pwsh build/fetch-engines.ps1 -Only ffmpeg)");
-        var source = await MakeVideoAsync();
+        // A plain pattern, so the source is a few MB with any FFmpeg: 1% of it leaves no bitrate for 8 s of video. (The
+        // noisy one is over 100 MB with FFmpeg 9, whose 1% fits.)
+        var source = await MakeVideoAsync(noisy: false);
+        var sourceLength = new FileInfo(source).Length;
+        Assert.True(MediaEncoding.FitBitrateKbps(SizeLimit.Bytes(sourceLength, 1), 8, 96) == 0, $"the test video is {sourceLength} bytes, too large to be refused");
 
         var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "mp4", Media = { MaxSizePercent = 1 }, Output = { FileNamePattern = "{name}_pct_fit" } });
 
