@@ -229,6 +229,19 @@ public class SevenZipWriterTests(EngineFixture fx) : IClassFixture<EngineFixture
         reader.CopyTo(copy);
         Assert.Equal(text, copy.ToArray());
 
+        // A header of a few KB: the parse's window shrinks to what fits under the input's size, and still compresses.
+        foreach (var length in new[] { 700, 3_000 })
+        {
+            var small = LzmaTests.Prose(length);
+            var smallPacked = SevenZipWriter.CompressLzma(small, out var smallDictionary);
+            Assert.NotNull(smallPacked);
+            Assert.True(smallPacked.Length < small.Length * 2 / 3, $"{length}: {smallPacked.Length}");
+            using var smallReader = new LzmaRawReader(new MemoryStream(smallPacked), LzmaProperties.Default, (uint)smallDictionary, small.Length);
+            using var smallCopy = new MemoryStream();
+            smallReader.CopyTo(smallCopy);
+            Assert.Equal(small, smallCopy.ToArray());
+        }
+
         Assert.Null(SevenZipWriter.CompressLzma(Noise(10_000, 1), out _)); // stays plain
     }
 
