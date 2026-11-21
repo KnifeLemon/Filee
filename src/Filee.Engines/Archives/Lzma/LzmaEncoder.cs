@@ -11,8 +11,11 @@
 //   gets all its matches (one per length, the nearest distance), its four repeats, a literal and a short repeat;
 //   each choice is priced in 1/16 bits with the current probabilities and the cheapest way to reach every later
 //   position is kept, along with the state and distances that path leaves. The window ends where no choice reaches
-//   past the position (or at its size limit, or where a match of the nice length starts), and the cheapest path to
-//   its end is coded. Prices are refreshed from the probabilities every few KB.
+//   past the position or where a match of the nice length starts, and the cheapest path to its end is coded. At its
+//   size limit it ends instead at the node (of those its choices reach) that is cheapest for the bytes it covers, so
+//   a match across the limit isn't cut short. Prices are refreshed from the probabilities every few KB.
+//   (Pricing a match, the literal that ends it and the same distance again as one choice was tried: 0.05 % smaller
+//   x86 code, 0.02 % larger text, 3 to 7 % slower; left out.)
 
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -45,19 +48,26 @@ internal sealed class LzmaEncoder : LzmaModel
 
     // The price-based parser: matches of the current position, the path nodes, and price tables.
     private const int OptimalWindow = 2048;
+    private const int Nodes = OptimalWindow + MatchMaxLength + 1; // a choice reaches up to 273 past the window
     private const int LengthSymbols = MatchMaxLength - MatchMinLength + 1;
     private const uint LiteralBack = uint.MaxValue;
     private const int PriceRefresh = 4096;
+
+    // The most a parse window's symbols can take per position they cover: every probability stays at least 31/2048,
+    // so a decision costs at most 6.05 bits, and the worst is a two-byte match at the longest distance (16 decisions
+    // and 26 direct bits, 15.3 bytes); a literal takes at most 6.8 bytes. Rounded up. The callers' limits leave a
+    // margin below what they can hold (LZMA2: 64 bytes under a chunk's 64 KiB).
+    private const int WorstBytes = 8;
     private readonly int[] _lengths = new int[MatchMaxLength + 1];
     private readonly uint[] _distances = new uint[MatchMaxLength + 1];
     private readonly int[] _repLengths = new int[4];
-    private readonly int[] _nodePrice = new int[OptimalWindow + MatchMaxLength + 1];
-    private readonly int[] _nodePrev = new int[OptimalWindow + MatchMaxLength + 1];
-    private readonly int[] _nodeLength = new int[OptimalWindow + MatchMaxLength + 1];
-    private readonly uint[] _nodeBack = new uint[OptimalWindow + MatchMaxLength + 1];
-    private readonly int[] _nodeState = new int[OptimalWindow + MatchMaxLength + 1];
-    private readonly uint[] _nodeReps = new uint[(OptimalWindow + MatchMaxLength + 1) * 4];
-    private readonly int[] _path = new int[OptimalWindow + MatchMaxLength + 1];
+    private readonly int[] _nodePrice = new int[Nodes];
+    private readonly int[] _nodePrev = new int[Nodes];
+    private readonly int[] _nodeLength = new int[Nodes];
+    private readonly uint[] _nodeBack = new uint[Nodes];
+    private readonly int[] _nodeState = new int[Nodes];
+    private readonly uint[] _nodeReps = new uint[Nodes * 4];
+    private readonly int[] _path = new int[Nodes];
     private readonly int[] _matchLengthPrices = new int[MaxPosStates * LengthSymbols];
     private readonly int[] _repLengthPrices = new int[MaxPosStates * LengthSymbols];
     private readonly int[] _slotPrices = new int[LengthStates << PosSlotBits];
@@ -75,17 +85,25 @@ internal sealed class LzmaEncoder : LzmaModel
 
     /// <summary>
     /// Codes symbols from the cursor until <paramref name="end"/> (no match crosses it) or until the coder's output
-    /// would pass <paramref name="packedLimit"/> bytes.
+    /// would pass <paramref name="packedLimit"/> bytes. With <paramref name="wholeWindows"/>, the price-based parse
+    /// stops instead where a window of its full size might no longer fit (see <see cref="WorstBytes"/>): ending an
+    /// LZMA2 chunk early costs a few bytes, a short window costs more.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Encode(RangeEncoder rc, int end, long packedLimit)
+    public void Encode(RangeEncoder rc, int end, long packedLimit, bool wholeWindows = false)
     {
         while (_mf.Position < end && rc.FlushedSize < packedLimit)
         {
             if (_settings.Optimal)
+            {
+                if (wholeWindows && packedLimit - rc.FlushedSize < Nodes * WorstBytes)
+                    return;
                 EncodeOptimal(rc, end, packedLimit);
+            }
             else
+            {
                 EncodeOne(rc, end);
+            }
         }
     }
 
@@ -262,8 +280,12 @@ internal sealed class LzmaEncoder : LzmaModel
         if (_pricedAt < 0 || _total - _pricedAt >= PriceRefresh)
             RefreshPrices();
 
-        // Each coded symbol takes at most ~25 bytes, so a window never overruns the chunk's packed limit.
-        var window = (int)Math.Clamp((packedLimit - rc.FlushedSize) / 32, 1, OptimalWindow);
+        // A window codes at most WorstBytes per position it covers (a byte more at the very end), so it stays within
+        // the packed limit: with room for all the nodes, a full window that may end past its size limit; with less,
+        // as many positions as fit.
+        var room = (packedLimit - rc.FlushedSize) / WorstBytes;
+        var overrun = room >= Nodes;
+        var window = (int)Math.Clamp(room, 1, OptimalWindow);
         _nodePrice[0] = 0;
         _nodeState[0] = State;
         _nodeReps[0] = Rep0;
@@ -278,7 +300,7 @@ internal sealed class LzmaEncoder : LzmaModel
             {
                 if (i >= furthest || i >= window)
                 {
-                    last = i;
+                    last = i < furthest && overrun ? BestEnd(i, furthest) : i;
                     break;
                 }
                 FollowNode(i);
@@ -377,10 +399,14 @@ internal sealed class LzmaEncoder : LzmaModel
                     var distance = _distances[k];
                     var back = distance + 4;
                     // The distance is priced by length state: lengths 2, 3, 4 and 5 or more.
-                    var short2 = DistancePrice(distance, 2);
-                    var short3 = DistancePrice(distance, 3);
-                    var short4 = DistancePrice(distance, 4);
                     var other = DistancePrice(distance, 5);
+                    int short2 = 0, short3 = 0, short4 = 0;
+                    if (l <= 4)
+                    {
+                        short2 = DistancePrice(distance, 2);
+                        short3 = DistancePrice(distance, 3);
+                        short4 = DistancePrice(distance, 4);
+                    }
                     for (; l <= _lengths[k]; l++)
                     {
                         var candidatePrice = basePrice + prices[l - MatchMinLength] + (l switch { 2 => short2, 3 => short3, 4 => short4, _ => other });
@@ -422,6 +448,28 @@ internal sealed class LzmaEncoder : LzmaModel
                 EmitMatch(rc, length, back - 4);
             }
         }
+    }
+
+    /// <summary>
+    /// Where a window cut at <paramref name="cut"/> (choices from before it reach on to <paramref name="furthest"/>)
+    /// had best end: at the node whose price, less what the bytes after the cut cost at the window's average so far,
+    /// is lowest. A long match the cut would break ends past it that way, instead of being shortened.
+    /// </summary>
+    private int BestEnd(int cut, int furthest)
+    {
+        var perByte = (long)_nodePrice[cut] / cut;
+        var best = cut;
+        long bestScore = _nodePrice[cut];
+        for (var j = cut + 1; j <= furthest; j++)
+        {
+            var score = _nodePrice[j] - perByte * (j - cut);
+            if (_nodePrice[j] != int.MaxValue && score < bestScore)
+            {
+                best = j;
+                bestScore = score;
+            }
+        }
+        return best;
     }
 
     private void Relax(int node, int price, int from, int length, uint back)

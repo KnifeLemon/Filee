@@ -363,10 +363,13 @@ internal sealed class Lzma2BlockEncoder
         if (_needStateReset)
             _encoder!.ResetState();
         rc.Reset();
-        _encoder!.Encode(rc, end, PackedLimit);
+        _encoder!.Encode(rc, end, PackedLimit, wholeWindows: true);
         rc.Flush();
         var unpacked = mf.Position - start;
         var packed = rc.Output.Length;
+        // The encoder stops well before the limit (LzmaEncoder.WorstBytes); a chunk past it would be written wrong.
+        if (packed > Lzma2Reader.MaxChunkPacked)
+            throw new InvalidOperationException("an LZMA2 chunk came out larger than the format allows");
 
         if (packed + 6 >= unpacked + 3 * ((unpacked + StoredChunk - 1) / StoredChunk))
         {

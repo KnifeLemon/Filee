@@ -184,6 +184,48 @@ public class LzmaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(Compress(text, ArchiveLevel.Maximum).Length <= Compress(text, ArchiveLevel.Fast).Length);
     }
 
+    /// <summary>
+    /// The price-based parse ends a chunk where a whole window might no longer fit, by the most a symbol can cost.
+    /// Bytes from a few letters give mostly short matches at random distances, about the costliest data per position
+    /// that still compresses: every chunk must still be inside the LZMA2 limits and the data come back whole.
+    /// </summary>
+    [Theory]
+    [InlineData(ArchiveLevel.Normal)]
+    [InlineData(ArchiveLevel.Maximum)]
+    public void Price_based_chunks_stay_within_the_lzma2_limits(ArchiveLevel level)
+    {
+        foreach (var letters in new[] { 2, 4, 16 })
+        {
+            var random = new Random(letters);
+            var data = new byte[1_500_000];
+            for (var i = 0; i < data.Length; i++)
+                data[i] = (byte)('a' + random.Next(letters));
+            var xz = Compress(data, level);
+            Assert.True(data.AsSpan().SequenceEqual(Decompress(xz)), $"{letters} letters at {level}");
+            using var other = new XZStream(new MemoryStream(xz));
+            using var copy = new MemoryStream();
+            other.CopyTo(copy);
+            Assert.True(data.AsSpan().SequenceEqual(copy.ToArray()), $"{letters} letters at {level} (SharpCompress)");
+
+            // Walk the chunks of the (only) block: LZMA ones are 64 KiB or less by the header's 16 bits; count them.
+            var at = 12 + (xz[12] + 1) * 4;
+            var compressed = 0;
+            while (xz[at] != 0)
+            {
+                int control = xz[at];
+                if (control < 0x80)
+                {
+                    at += 3 + (xz[at + 1] << 8 | xz[at + 2]) + 1;
+                    continue;
+                }
+                var packed = (xz[at + 3] << 8 | xz[at + 4]) + 1;
+                at += (control >= 0xC0 ? 6 : 5) + packed;
+                compressed++;
+            }
+            Assert.True(compressed >= 3, $"{letters} letters at {level}: {compressed} compressed chunks");
+        }
+    }
+
     [Fact]
     public void The_window_slides_past_a_small_dictionary()
     {

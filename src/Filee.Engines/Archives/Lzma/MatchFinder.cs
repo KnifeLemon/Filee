@@ -301,6 +301,8 @@ internal sealed class MatchFinder
         slot3 = stored;
         var candidate = slot4;
         slot4 = stored;
+        if (pos + 8 <= Filled)
+            PrefetchNext(pos);
 
         var found = new Found(maxLength, lengths, distances);
         if (maxLength >= 2)
@@ -432,6 +434,39 @@ internal sealed class MatchFinder
             Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref data, at)));
     }
 
+    /// <summary>
+    /// Hints for the searches that come next in order: the slots of the position two ahead, and the root of the next
+    /// position's tree (its children and first bytes), read from its slot as it is now (x86; elsewhere nothing). A
+    /// tree walk waits on a cache miss at every step; these come in while the current one walks.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private unsafe void PrefetchNext(int pos)
+    {
+        if (!Sse.IsSupported)
+            return;
+        ref var data = ref MemoryMarshal.GetArrayDataReference(Buffer);
+        PrefetchSlots(Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref data, pos + 2)));
+        var value = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref data, pos + 1));
+        if (!BitConverter.IsLittleEndian)
+            value = BinaryPrimitives.ReverseEndianness(value);
+        PrefetchRoot((int)((value * 2654435761u) >> _hash4Shift));
+    }
+
+    /// <summary>A hint to load the root of the tree under <paramref name="h4"/> (its children and first bytes) into the cache (x86; elsewhere nothing).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private unsafe void PrefetchRoot(int h4)
+    {
+        if (!Sse.IsSupported)
+            return;
+        var root = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_head4), h4); // a hash, below the table's size
+        if (root <= 0)
+            return;
+        Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_links), (root & _mask) << 1)));
+        var at = root - _offset;
+        if ((uint)at < (uint)Buffer.Length)
+            Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Buffer), at)));
+    }
+
     /// <summary>The chain's two-byte slot for the bytes in the low half of <paramref name="value"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ChainHash2(uint value) => (int)(((value & 0xFFFF) * 2654435761u) >> (32 - ChainHash2Bits));
@@ -558,6 +593,8 @@ internal sealed class MatchFinder
         {
             if (!_tree && p + 8 < end)
                 PrefetchSlots(BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(p + 4)));
+            else if (_tree && p + 8 <= Filled)
+                PrefetchNext(p);
             var value = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(p));
             var h4 = (int)((value * 2654435761u) >> _hash4Shift);
             var h3 = (int)(((value & 0xFFFFFF) * 0x9E3779B1u) >> (32 - Hash3Bits));
@@ -674,13 +711,35 @@ internal sealed class MatchFinder
                     var last = Math.Min(_end, first + BatchSize);
                     var tree = batch.Trees[part];
                     var at = 0;
+                    var scanned = first; // positions before this were hashed for the look ahead below
+                    var nextOwn = -1;
+                    var nextHash = 0;
                     for (var p = first; p < last; p++)
                     {
-                        var h4 = p + 4 <= mf.Filled ? mf.Hash4(p) : -1;
+                        int h4;
+                        if (p == nextOwn)
+                            h4 = nextHash;
+                        else if (p < scanned)
+                            h4 = -1; // looked at ahead: another thread's (or too near the end)
+                        else
+                            h4 = p + 4 <= mf.Filled ? mf.Hash4(p) : -1;
                         if (h4 < 0 || (_threads > 1 && h4 % _threads != part))
                         {
                             tree.Offsets[p - first] = -1;
                             continue;
+                        }
+                        // The root of this thread's next position into the cache while this walk waits on its own.
+                        for (scanned = Math.Max(scanned, p + 1), nextOwn = -1; scanned < last && scanned < p + 16 && scanned + 4 <= mf.Filled; scanned++)
+                        {
+                            var h = mf.Hash4(scanned);
+                            if (_threads == 1 || h % _threads == part)
+                            {
+                                nextOwn = scanned;
+                                nextHash = h;
+                                mf.PrefetchRoot(h);
+                                scanned++;
+                                break;
+                            }
                         }
                         var found = new Found(Math.Min(LzmaModel.MatchMaxLength, _end - p), lengths, distances);
                         mf.TreeSearch(p, h4, ref found);
