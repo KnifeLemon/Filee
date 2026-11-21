@@ -114,6 +114,8 @@ internal static class Help
           -p, --preset <preset>  A preset from the app, by id or name (see 'filee presets')
               --iso-filesystem <joliet|udf201>
                                  ISO filesystem; an explicit choice overrides the preset (default: Joliet).
+              --iso-label <label>
+                                 ISO volume label; overrides the preset. Empty uses the input name.
           -o, --output <folder>  Save there instead of next to the sources
           -r, --recursive        Include sub folders
               --sort <order>     The order files merge in: name, name-desc, modified, modified-desc, created or

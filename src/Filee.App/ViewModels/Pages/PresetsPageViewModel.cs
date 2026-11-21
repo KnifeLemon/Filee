@@ -103,7 +103,7 @@ public sealed partial class PresetsPageViewModel : ObservableObject, IFitsWindow
             return;
         if (!Editor.Apply())
         {
-            SaveError = Editor.NameError ?? Editor.SizeRangeError ?? Editor.DestinationError ?? Editor.CustomSizeError;
+            SaveError = Editor.NameError ?? Editor.SizeRangeError ?? Editor.DestinationError ?? Editor.CustomSizeError ?? Editor.IsoLabelError;
             SaveResult = SaveResult.Failed;
             ValidationFailed?.Invoke(this, EventArgs.Empty);
             return;

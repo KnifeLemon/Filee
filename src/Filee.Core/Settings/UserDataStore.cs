@@ -1193,6 +1193,17 @@ internal static class SettingsMigrations
         // v99: CrossOver logs (.cxlog, #1383) learn the text donut; custom claims stay put.
         if (from < 99)
             changed |= LearnExtensions(profiles, out _, ["cxlog"]);
+        // v100: Source engine models (.mdl) and studiomdl data (.smd) learn the 3D models donut and "SMD" joins the 3D
+        //       models in the palette after glTF; custom claims stay put.
+        if (from < 100)
+        {
+            changed |= AddSourcePresets(presets);
+            changed |= LearnExtensions(profiles, out _, ["mdl", "smd"]);
+        }
+        // v101: "QC + SMD" (decompiling a Source engine model into its QC and SMDs) joins the palette after "SMD", not a
+        //       donut.
+        if (from < 101 && presets.All(p => p.Id != BuiltInData.DecompileModelId))
+            changed |= AddLikeNewLibrary(presets, BuiltInData.DecompileModelId);
         return changed;
     }
 
@@ -1264,6 +1275,21 @@ internal static class SettingsMigrations
             at = presets.FindIndex(p => p.Id == "to-tar");
         presets.Insert(at < 0 ? presets.Count : at + 1, BuiltInData.GamePackPresets().Single(p => p.Id == "to-gma"));
         return true;
+    }
+
+    /// <summary>"SMD" after the last 3D model preset of the library (glTF), or at the end.</summary>
+    private static bool AddSourcePresets(List<Preset> presets)
+    {
+        var changed = false;
+        // Only "SMD": "QC + SMD" came a step later.
+        foreach (var preset in BuiltInData.SourceModelPresets().Where(p => p.Id == "to-smd" && presets.All(existing => existing.Id != p.Id)))
+        {
+            var models = BuiltInData.ModelPresets().Select(p => p.Id).ToHashSet();
+            var last = presets.FindLastIndex(p => models.Contains(p.Id));
+            presets.Insert(last < 0 ? presets.Count : last + 1, preset);
+            changed = true;
+        }
+        return changed;
     }
 
     private static bool AddCropVideo(List<Preset> presets)
