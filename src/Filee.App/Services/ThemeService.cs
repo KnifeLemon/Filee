@@ -99,7 +99,7 @@ public sealed class ThemeService(IPlatformServices platform)
 
         // Radii, fonts, flow direction
         SoftPalette.ApplyCornerRadius(top, theme.CornerRadius);
-        top["AppFontFamily"] = SoftPalette.FontFamilyFor(language, theme.UseSystemFont);
+        top["AppFontFamily"] = SoftPalette.FontFamilyFor(language, theme.UseSystemFont, InstalledFonts);
         // Annotate draws its labels in the same fonts (read when a label is first drawn).
         AnnotationFonts.Use(language, theme.UseSystemFont);
         SoftPalette.ApplyFlowDirection(top, language);
@@ -177,6 +177,12 @@ public sealed class ThemeService(IPlatformServices platform)
 
     /// <summary>The UI font chain for <paramref name="language"/> (see <see cref="SoftPalette.FontFamilies"/>).</summary>
     internal static string FontFamilies(string language, bool systemFont = false) => SoftPalette.FontFamilies(language, systemFont);
+
+    /// <summary>
+    /// macOS: which plain family names of the UI font chain stay (the ones CoreText lists as installed, see
+    /// SoftPalette.Installed); null elsewhere, where the whole chain is asked for.
+    /// </summary>
+    internal static Func<string, bool>? InstalledFonts => OperatingSystem.IsMacOS() ? Filee.Engines.Typesetting.SystemFonts.Asks : null;
 
     private static void ApplyCustomOverrides(IResourceDictionary dictionary, IReadOnlyDictionary<string, string>? colors)
     {
