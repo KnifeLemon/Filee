@@ -1127,6 +1127,12 @@ file became and once on a merged PDF, so the box means the same whichever engine
   output intent; the profile is Magick.NET's sRGB, written into the prelude as a hex string so safe mode needn't read
   a file. Colours become RGB, fonts are embedded, what PDF/A forbids is left out (policy 1), and a tagged PDF loses its
   tags (part B doesn't need them).
+- **Annotations** (`PdfPrintableAnnotations`): Ghostscript reads a copy in which visible annotations print, since PDF/A
+  keeps only printing ones. PDF/A also wants an appearance stream on every annotation but links, popups and zero-size
+  ones, which Ghostscript doesn't make (#1566): when a printing annotation has none, the prelude ends with
+  `/PreserveAnnotTypes` set to Ghostscript's default types without that annotation's type, so annotations of that type
+  are drawn into the page with their look and the rest (links included) stay annotations. This goes by type: a
+  highlight with an appearance next to one without is drawn into the page too.
 - **Without Ghostscript**: a preset whose files are all PDFs is greyed out with the usual engine reason. Other files
   are converted and the PDF is left as it is, with `notice.pdfa_needs_ghostscript` in the result, unless LibreOffice
   made it PDF/A.
@@ -1434,8 +1440,8 @@ to draw). G-code is a read-only CAD format (fields: 3D models and CAD).
 
 ## 3D models
 
-`Filee.Engines/Models3D` converts GLB, glTF, STL, OBJ, 3MF and PLY into each other, and FBX into any of them, in
-managed code: every reader
+`Filee.Engines/Models3D` converts GLB, glTF, STL, OBJ, 3MF and PLY into each other, FBX and Source engine models (MDL)
+into any of them, and studiomdl data (SMD) to and from them, in managed code: every reader
 fills one in-memory model (`Model3D`: parts with positions, normals, UVs, vertex colours and triangles; materials
 with a base colour and a base colour texture) and every writer takes it, so each pair is one step. glTF and GLB are
 read and written with [SharpGLTF](https://github.com/vpenades/SharpGLTF) (MIT); STL, OBJ/MTL, PLY, 3MF and the FBX
@@ -1469,6 +1475,8 @@ What each format keeps:
 | OBJ + MTL | `o` / `g` / `usemtl` as parts, `v` (+ r g b), `vt`, `vn`, faces of any size; `mtllib` with `Kd`, `d` / `Tr`, `map_Kd` (options skipped) next to the file | **the `.mtl` and the textures are written next to the `.obj`** (`name.obj`, `name.mtl`, `name_texture.png`, named like the output); vertex colours as `v x y z r g b` |
 | 3MF | objects, components (also in other model parts, as Bambu Studio writes them), build transforms, base materials, colour groups (materials extension); `support` / `other` objects skipped | one object per part, base materials from material colours, a colour group from vertex colours |
 | FBX (read only) | binary 6.x–7.x (64-bit records from 7.5, zlib-compressed arrays) and ASCII; mesh geometry with polygons of any size, the first normal, UV, colour and material layer (by polygon vertex, control point or polygon, or all the same; direct or indexed); the model hierarchy from the connections with translation, rotation (every Euler order, pre- / post-rotation, pivots and offsets), scaling and geometric transforms; property templates from Definitions; material `DiffuseColor` and `Opacity`; the diffuse texture embedded (Video `Content`) or named next to the file; animation, skins, blend shapes, NURBS, cameras and lights skipped (the rest pose is read) | — (not written) |
+| SMD (studiomdl data) | the triangles of a reference SMD, one part per material (bones and weights not kept) | from an MDL: its bones, bind pose and weights (see below); from the others: a static prop with one root bone |
+| MDL (Source engine, read only) | versions 44–49 with the `.vvd` and `.dx90.vtx` (else `.vtx`, `.dx80.vtx`, `.sw.vtx`) beside it (see below) | — (needs Valve's studiomdl) |
 | PLY | ASCII, binary little / big endian; vertex position, normal, UV (`s`/`t`, `u`/`v`, `texture_u`/`texture_v`), colours of any type; face lists with per-corner `texcoord` and face colours; `comment TextureFile`; other elements skipped | binary little endian, one mesh; material colours become vertex colours |
 
 Lost on the way (no place in the target): **STL** keeps only the triangles (no colours, UVs, normals or materials);
@@ -1482,6 +1490,67 @@ a clear message, as do damaged files ("cut short", an index that does not exist,
 FBX's texture names) are read only from the model's folder or a folder below it. A path that climbs out (`../`) or
 points anywhere else is looked up by its name in the model's folder instead, so a downloaded model cannot pull a
 picture from elsewhere on the disk into its output.
+
+**Source engine models** (`.mdl`, #1526, the Games field; `Models3D/SourceModel.cs`): Garry's Mod, Counter-Strike:
+Source, Team Fortress 2 and Half-Life 2 models are three files studiomdl writes side by side: the `.mdl` (bones,
+textures, texture folders, the skin table, body parts → models → meshes), the `.vvd` (vertices with up to three bone
+weights; fixups say which runs make LOD 0) and the `.dx90.vtx` (per mesh, strip groups of triangle lists or strips
+indexing the mesh's vertices). All three must have the `.mdl`'s checksum, else the files belong to different builds and
+the model is refused; a missing `.vvd` or `.vtx` is named. The model is read in its bind pose with its default body
+groups (the first model of each body part), the first skin and LOD 0; animations, flexes, attachments and the physics
+mesh (`.phy`) are not read. Source is Z up and measured in inches (25.4 mm), its triangles are clockwise and its UVs
+start at the top left, so the model is turned to Filee's Y up, millimetres, counter-clockwise and bottom-left UVs; each
+mesh becomes a part named after its model, with one material per texture. Later branches' 8-byte-longer strip groups
+(CS:GO) are read when the indices of the usual layout don't fit.
+The textures are found as Garry's Mod finds them: in the addon's or game's own layout, the `materials` folder beside the
+`models` folder the model is in, `materials/<texture folder>/<texture>.vmt` for each of the model's texture folders
+(`$cdmaterials`), letter case aside, then the material's `$basetexture` (also through a `patch` material's `include`) as
+a `.vtf`, decoded by the VTF reader into a PNG texture; `$nocull` makes the material double-sided. Only `.vmt` and
+`.vtf` files below that `materials` folder are read, never through `..`. A model outside such a layout, or one whose
+materials come from the game itself (the HL2 textures), keeps plain materials. OBJ output writes the textures beside the
+`.obj`, GLB embeds them.
+
+**Studiomdl data** (`.smd`, #1526, the Games field; `Models3D/SmdFormat.cs`): the text Valve's studiomdl compiles models
+from (`nodes`, a `skeleton` at `time 0`, `triangles`: a material line and three vertex lines of parent bone, position,
+normal, UV and bone weights), Z up, in inches, counter-clockwise, UVs from the bottom left. An MDL becomes a reference
+SMD that studiomdl can compile again: its bones with their bind pose (position and rotation relative to the parent), its
+triangles with up to three bone weights per vertex and the textures as materials, read straight from the model so the
+skeleton is kept (Filee's own 3D model has no place for it). Any other model becomes a static prop: one `root` bone,
+every vertex weighted to it, the material's (or texture's) name as the material line, normals computed where the model
+has none. Reading takes the triangles of a reference SMD as a static model; an animation SMD (no triangles) is refused
+with "no triangles", a broken line with its number. The "SMD" preset is in the palette, after glTF.
+
+**Decompiling Source engine models** (#1526, `Models3D/SourceDecompiler.cs`, with `SourceModelDetails`,
+`SourceAnimation` and `SourcePhysics`): the "QC + SMD" preset (in the palette after "SMD", settings schema 101; only
+a `.mdl` takes it) turns a model into a folder named after it with what studiomdl builds it from:
+
+| File | Holds |
+|---|---|
+| `<model>.qc` | in the order and layout decompiled QCs commonly have: `$modelname`, `$staticprop`, `$bodygroup`s, `$lod`/`$shadowlod` blocks, `$surfaceprop`, `$contents`, `$illumposition` and `$eyeposition` (turned back the quarter turn studiomdl gives them), the other flags (`$opaque`, `$mostlyopaque` …), `$cdmaterials`, `$texturegroup` (the textures that differ between skins), `$attachment`s, `$cbox`, `$bbox`, a `$definebone` per bone, `$hboxset`/`$hbox`es (not when studiomdl made them), `$poseparameter`s, `$sectionframes`, a `$sequence` per sequence (its animations, activity and weight, fade times, fps, `loop`/`snap`/`delta`/… options, motion flags, blend parameters, events), `$includemodel`s (without the `models/` studiomdl adds), `$collisionmodel` or `$collisionjoints` with its settings, `$keyvalues` |
+| `<body model>.smd` | one reference SMD per body group model with triangles (blank models are `blank` in the QC) |
+| `<body model>_lod<n>.smd` | a model's triangles at LOD *n*, written only when they differ from the LOD before; a model a LOD drops is `removemodel` |
+| `<model>_physics.smd` | the convex pieces of the `.phy`, every vertex on its piece's bone (material `phy`) |
+| `<model>_anims/<animation>.smd` | every frame of every bone of each animation |
+
+LODs use the LOD 0 vertices with each LOD's own triangles from the `.vtx` (each mesh's vertex numbers count from the
+same start in every LOD; checked against the six LODs of a Garry's Mod vehicle). Animations are decoded from the `.mdl`,
+or the `.ani` file beside it when they are in animation blocks, section by section: each animated bone has a raw
+rotation (Quaternion64 or Quaternion48), run-length encoded rotation tracks, a raw position (three half floats) or
+position tracks, scaled by the bone's scales and added to its bind pose (not for delta animations); bones an animation
+doesn't touch keep their bind pose, and the linear motion studiomdl took out of the root bones (movements) is added back.
+Rotations are Source's Euler angles (rotation about X, then Y, then Z), as in the bones and SMDs. The `.phy`'s solids
+are walked through their IVP ledge trees; points are in metres in IVP's axes (Source x = x, y = z, z = −y), turned into
+inches. A solid named after a bone (`$collisionjoints`, a ragdoll) is in that bone's space and is moved into the model's
+with the bind pose; the joint limits (`ragdollconstraint`) become `$jointconstrain` lines. A `.phy` with another
+checksum than the `.mdl` is left out with a comment in the QC. Not written: flexes (`.vta`), eyeballs, IK rules and
+chains, bone controllers and procedural bones; a model that has them still compiles from the QC, without them.
+Compiling a QC back into an MDL needs Valve's studiomdl, which only the games and their SDKs ship.
+
+Every count in the `.mdl`, `.phy` and `.ani` is capped and every offset checked against the file before it is used or
+anything is allocated: frames (100,000 per animation), bone entries per frame, track runs, sequences and their blend
+grids (4,096 animations), events, LODs (8), attachments, hitboxes, solids (1,024), ledge tree nodes (65,536, walked
+without recursion so a looping tree stops), points per piece (65,536); a damaged file is refused and the half-written
+folder removed.
 
 **3D → pictures**: a small software rasteriser (`MeshRenderer`) draws an isometric view from the front right, above,
 with one light and flat shading per triangle, vertex colours or the texture interpolated across it, and a z-buffer,
@@ -1936,6 +2005,19 @@ LTRData DiscUtils writes ISO 9660 with Joliet (the default) or UDF 2.01 in-proce
 preset, or use `--iso-filesystem udf201` with `--to iso` in the CLI (`--iso-filesystem joliet` selects the default).
 No new donut slice is added. Existing presets retain Joliet without a schema migration. Images are data discs,
 not bootable clones. Archive reading still uses the existing extraction engine.
+
+The volume label defaults to the input folder name, or the archive name without its extension (including `.tar.gz`).
+A dotted folder name keeps its suffix. Names are fitted to the selected filesystem, with `FILEE` as the fallback
+when no usable label remains. Each input gets its own label, independently of the output filename.
+The ISO preset's **Volume label** field overrides this default; empty uses the input name. The CLI equivalent is
+`--iso-label "MY_DISC"`, which overrides the preset for that command without changing the saved preset.
+Custom labels are validated rather than silently changed. Joliet preserves case, spaces, punctuation and BMP Unicode
+within its 16-character limit, excluding control characters and `*`, `/`, `:`, `;`, `?` and backslashes. Its primary
+ISO 9660 descriptor has a separate uppercase ASCII-compatible label for older readers. UDF accepts up to
+30 Latin-1 characters, or 15 UTF-16 units when another character is present; a supplementary character takes two units.
+UDF labels cannot contain control characters, malformed Unicode or leading/trailing whitespace.
+For example: `filee convert "backup.tar.gz" --to iso --iso-filesystem udf201 --iso-label "My backup"`.
+The optional label is saved with presets and can be included in shared presets; older presets need no migration.
 
 UDF supports approximately 234 GiB per file and 8 TiB per partition. The library encodes filenames in OSTA compressed
 Unicode (up to 254 bytes before the file identifier prefix); names outside its supported range are refused before replacing the

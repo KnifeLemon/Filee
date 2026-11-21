@@ -35,7 +35,7 @@ public sealed class TrayService(UserDataStore store, ILocalizer loc, IPlatformSe
         _tray = new TrayIcon
         {
             // Set before the icon is attached: on macOS Avalonia passes the tooltip to native code, which can't take null.
-            ToolTipText = "Filee",
+            ToolTipText = platform.SupportsDockVisibility ? "" : "Filee",
             Menu = new NativeMenu { Items = { _open, _pause, new NativeMenuItemSeparator(), _quit } },
             IsVisible = platform.SupportsDockVisibility ? store.Settings.ShowMenuBarIcon : true,
         };
@@ -75,8 +75,20 @@ public sealed class TrayService(UserDataStore store, ILocalizer loc, IPlatformSe
         _open!.Header = loc["tray.open"];
         _pause!.Header = store.Settings.Paused ? loc["tray.resume"] : loc["tray.pause"];
         _quit!.Header = loc["tray.quit"];
+        _tray.ToolTipText = ToolTip();
+    }
+
+    /// <summary>
+    /// The hint shown when the pointer rests on the icon. The macOS menu bar icon has none: macOS 27.2 can leave a
+    /// menu bar item's tooltip on screen, far from the icon, until the item is hovered or clicked (#1193), and the
+    /// menu already says whether shortcuts are paused.
+    /// </summary>
+    private string ToolTip()
+    {
+        if (platform.SupportsDockVisibility)
+            return "";
         var drag = store.Settings.Triggers.FirstOrDefault(t => t.Enabled && t.Kind == TriggerKind.Drag);
-        _tray.ToolTipText = store.Settings.Paused
+        return store.Settings.Paused
             ? loc["triggers.paused"]
             : loc.Format("tray.tooltip", drag is null ? "—" : GestureText.Modifiers(drag.Modifiers));
     }

@@ -1179,6 +1179,9 @@
   "presets.audio_codec.alac": "ALAC (lossless)",
   "presets.group.archive": "Archive",
   "presets.iso_filesystem": "ISO filesystem",
+  "presets.iso_label": "Volume label",
+
+  "presets.iso_label_hint": "Empty uses the folder or archive name. Joliet: up to 16 BMP Unicode characters, preserving case and hyphens. UDF: up to 30 Latin-1 characters or 15 UTF-16 units.",
   "presets.archive_level": "Compression",
   "presets.archive_level.Store": "None (store only)",
   "presets.archive_level.Fast": "Fast",
@@ -1827,6 +1830,8 @@
   "error.iso_root": "ISO creation does not support drive or filesystem roots. Select a folder inside the drive instead.",
   "error.iso_link": "ISO creation does not follow symbolic links or junctions. Select an original folder without linked entries.",
   "error.iso_name": "Joliet names must contain at most 62 BMP Unicode characters and no control characters, semicolons or backslashes, *, : or ?. Relative paths must be at most 240 characters. For longer names or larger files, select UDF 2.01 in the preset\u0027s ISO filesystem option.",
+
+  "error.iso_label": "Invalid ISO label. Joliet: up to 16 BMP Unicode characters, excluding * / : ; ? and backslash. UDF: up to 30 Latin-1 characters or 15 UTF-16 units. No control characters or leading/trailing spaces.",
   "error.iso_file_size": "Joliet requires individual files smaller than 4 GiB. For longer names or larger files, select UDF 2.01 in the preset\u0027s ISO filesystem option.",
   "error.iso_udf_name": "UDF names must be valid Unicode, without slashes, backslashes or null characters, and cannot be . or ... Each name may contain up to 254 Latin-1 characters, or 127 UTF-16 units if any character is outside Latin-1.",
   "error.iso_changed": "ISO creation stopped before all data was written. A source file may have changed during conversion.",

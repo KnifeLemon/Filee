@@ -1179,6 +1179,9 @@
   "presets.audio_codec.alac": "ALAC（無損）",
   "presets.group.archive": "壓縮檔",
   "presets.iso_filesystem": "ISO 檔案系統",
+  "presets.iso_label": "磁碟區標籤",
+
+  "presets.iso_label_hint": "留空使用資料夾或壓縮檔名稱。Joliet：保留大小寫和連字號，最多16個 BMP Unicode 字元。UDF：30個 Latin-1 字元或15個 UTF-16 單元。",
   "presets.archive_level": "壓縮等級",
   "presets.archive_level.Store": "不壓縮（僅儲存）",
   "presets.archive_level.Fast": "快速",
@@ -1827,6 +1830,8 @@
   "error.iso_root": "不支援從磁碟機或檔案系統根目錄建立 ISO。請選擇磁碟機內的資料夾。",
   "error.iso_link": "建立 ISO 時不會跟隨符號連結或目錄接合點。請選擇不含連結項目的原始資料夾。",
   "error.iso_name": "Joliet 名稱最多包含 62 個 Unicode BMP 字元，不能包含控制字元、分號或反斜線、*、:、?。相對路徑最多為 240 個字元。 若名稱較長或檔案較大，請在預設的 ISO 檔案系統選項中選擇 UDF 2.01。",
+
+  "error.iso_label": "ISO 標籤無效。Joliet：最多16個 BMP Unicode 字元，不含 * / : ; ? 或反斜線。UDF：30個 Latin-1 字元或15個 UTF-16 單元。不允許控制字元或頭尾空格。",
   "error.iso_file_size": "建立 ISO 時，每個檔案的大小必須小於 4 GiB。 若名稱較長或檔案較大，請在預設的 ISO 檔案系統選項中選擇 UDF 2.01。",
   "error.iso_udf_name": "UDF 名稱必須是有效的 Unicode，不能包含斜線、反斜線或空字元，也不能是 . 或 ..。僅含 Latin-1 字元時最多254個字元；包含其他字元時最多127個 UTF-16 單元。",
   "error.iso_changed": "ISO 建立在寫入所有資料之前停止。來源檔案可能在轉換過程中發生變更。",

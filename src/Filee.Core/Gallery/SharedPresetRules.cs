@@ -303,6 +303,7 @@ internal static class SharedPresetRules
             ("removeMetadata", Flag))),
         ("archive", Obj(
             ("isoFileSystem", Enum<IsoFileSystem>()),
+            ("isoVolumeLabel", new StringRule(30)),
             ("combineIntoOne", Flag),
             ("level", Enum<ArchiveLevel>()))),
         ("trace", Obj(

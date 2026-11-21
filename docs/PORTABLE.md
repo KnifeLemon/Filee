@@ -39,7 +39,7 @@ import, so declining import does not hide obsolete integration. Declining cleanu
 A failed cleanup can be retried in the dialog. Closing the dialog also remembers a declined cleanup.
 `--uninstall-cleanup` removes only this copy's entries, regardless of the remembered choice.
 
-On Linux, cleanup checks autostart, Thunar actions and shortcuts, and the Thunar, Nautilus, Nemo and KDE file-manager
+On Linux, cleanup checks autostart, Thunar actions and shortcuts, and the Thunar, Nautilus, Nemo, KDE and Flea file-manager
 entries. On macOS, it checks the LaunchAgent and legacy Automator Quick Action. The shared Finder service preference
 is left alone because it does not identify a specific executable. Cleanup recognizes the command formats Filee
 generated; malformed or unrecognized entries and linked files are preserved. Removing a macOS LaunchAgent prevents
