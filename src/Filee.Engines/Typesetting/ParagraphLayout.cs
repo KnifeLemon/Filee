@@ -148,7 +148,7 @@ internal sealed partial class ParagraphLayouter
     private const int GuardLines = 256;
     private readonly string? _notAtLineStart;
     private readonly string? _notAtLineEnd;
-    private readonly Dictionary<(string? Family, FontStyle Style, string Language), ResolvedFont> _resolved = [];
+    private readonly Dictionary<(string? Family, FontStyle Style, string Language, bool Named), ResolvedFont> _resolved = [];
 
     private readonly bool _storedLines;
 
@@ -553,7 +553,7 @@ internal sealed partial class ParagraphLayouter
                     Split(text, new FontRun(start, length, symbolFont), style, levels, span.Link, items, drawn);
                     continue;
                 }
-                var primary = Font(style.Family, style.Style, fontLanguage);
+                var primary = Font(style.Family, style.Style, fontLanguage, style.Named);
                 foreach (var run in _fonts.Fallback(text, start, length, primary, style.Style, fontLanguage))
                     Split(text, run, style, levels, span.Link, items);
             }
@@ -612,15 +612,16 @@ internal sealed partial class ParagraphLayouter
         _ => ItemKind.Text,
     };
 
-    private ResolvedFont Font(string? family, FontStyle style, string language)
+    /// <param name="named">The run named <paramref name="family"/> itself: a template font of that name is no substitute.</param>
+    private ResolvedFont Font(string? family, FontStyle style, string language, bool named = false)
     {
-        var key = (family, style, language);
+        var key = (family, style, language, named);
         if (!_resolved.TryGetValue(key, out var font))
         {
             _resolved[key] = font = _fonts.Resolve(Alternate(family, style), style, language)
                                     ?? _fonts.Resolve(null, style, language)
                                     ?? throw new InvalidOperationException("No installed font can draw the document's text.");
-            if (family is not null && _templateFaces is { } template && template.Contains(family.Trim()))
+            if (!named && family is not null && _templateFaces is { } template && template.Contains(family.Trim()))
                 _resolved[key] = font = font with { Substitute = true };
         }
         return font;
@@ -1213,6 +1214,7 @@ internal sealed partial class ParagraphLayouter
                     ScaleX = scaleX,
                     Embolden = part.Item.Font.SyntheticBold,
                     Slant = part.Item.Font.SyntheticItalic,
+                    Across = style.Across,
                 }));
                 Decorate(part, x0, x, fills, strokes);
             }

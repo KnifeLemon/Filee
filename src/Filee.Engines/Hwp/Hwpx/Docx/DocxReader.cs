@@ -318,7 +318,7 @@ internal sealed partial class DocxReader
     {
         var page = Page(sectPr);
         var columns = Columns(sectPr);
-        CountVerticalText(sectPr);
+        var flow = TextFlow(sectPr);
         var previous = document.Sections.LastOrDefault();
 
         // Sections without their own header or footer reference inherit the previous section's.
@@ -331,7 +331,7 @@ internal sealed partial class DocxReader
 
         // Word uses continuous section breaks to change the number of columns mid-page. 한글 does that with a
         // column definition inside the section, so keep one section when the paper does not change.
-        if (previous is not null && Val(sectPr?.Element(W + "type")) == "continuous" && previous.Page == page)
+        if (previous is not null && Val(sectPr?.Element(W + "type")) == "continuous" && previous.Page == page && previous.TextFlow == flow)
         {
             if (blocks.FirstOrDefault() is not HParagraph first)
                 blocks.Insert(0, first = new HParagraph());
@@ -350,6 +350,8 @@ internal sealed partial class DocxReader
         {
             Page = page,
             Columns = columns,
+            // A section written vertically (w:textDirection tbRl, btLr, ...) is drawn turned.
+            TextFlow = flow,
             Grid = Grid(sectPr),
             HeaderMovesBody = Twips(sectPr?.Element(W + "pgMar"), "top") is not < 0,
             FooterMovesBody = Twips(sectPr?.Element(W + "pgMar"), "bottom") is not < 0,
@@ -1442,7 +1444,10 @@ internal sealed partial class DocxReader
         return note;
     }
 
-    /// <summary>How a cell's text runs (w:textDirection; the strict names too): top to bottom East Asian style, or bottom to top.</summary>
+    /// <summary>
+    /// How a section's or cell's text runs (w:textDirection; the strict names too): top to bottom East Asian style, or
+    /// bottom to top.
+    /// </summary>
     private static HTextFlow TextFlow(XElement? properties) => Val(properties?.Element(W + "textDirection")) switch
     {
         "tbRl" or "tbRlV" or "tbLrV" or "tb" or "tbV" => HTextFlow.Vertical,
@@ -1459,13 +1464,6 @@ internal sealed partial class DocxReader
         "wordArtVert" or "wordArtVertRtl" => HTextFlow.Stacked,
         _ => HTextFlow.Horizontal,
     };
-
-    /// <summary>Counts text a section writes top to bottom (w:textDirection), which is set horizontally.</summary>
-    private void CountVerticalText(XElement? properties)
-    {
-        if (Val(properties?.Element(W + "textDirection")) is "tbRl" or "btLr" or "tbRlV" or "tbLrV")
-            _leftOut.Add(HLeftOutKind.VerticalText);
-    }
 
     /// <summary>
     /// mc:AlternateContent: the Choice when it is DrawingML we understand (an Office 2016 chart when ChartReader reads its

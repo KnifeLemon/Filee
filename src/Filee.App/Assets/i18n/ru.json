@@ -211,7 +211,6 @@
   "notice.pdfa_needs_ghostscript": "Этот PDF не в формате PDF/A: чтобы создавать PDF/A, установите Ghostscript в разделе Настройки → Движки",
   "notice.pdfa_form_fields": "Создан PDF/A: поля формы больше нельзя заполнять",
   "pdfa.reason.font_not_embedded": "использованный шрифт не встроен",
-  "pdfa.reason.cmyk": "его цвета CMYK нужно преобразовать",
   "pdfa.reason.no_appearance": "у аннотации или поля формы нет собственного вида",
   "pdfa.reason.unsupported": "в нём есть содержимое, запрещённое в PDF/A, которое Filee не может убрать",
   "pdfa.reason.unreadable": "Filee не удалось его прочитать",
@@ -282,7 +281,6 @@
   "notice.renderer_left_out.ink_one": "пропущен 1 рукописный рисунок",
   "notice.renderer_left_out.wordart": "WordArt нарисован обычным текстом",
   "notice.renderer_left_out.effects": "пропущены тени, объём и другие эффекты",
-  "notice.renderer_left_out.vertical_text_turned": "вертикальный восточноазиатский текст повёрнут набок",
   "notice.renderer_left_out.more": "и другое",
 
   "engine.reason.not_installed": "Не установлен",

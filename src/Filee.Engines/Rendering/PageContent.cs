@@ -39,6 +39,12 @@ internal sealed record GlyphRun(PageFont Font, float Size, ushort[] Glyphs, SKPo
     /// <summary>Only what lies inside this rectangle of the page (before <see cref="Transform"/>) is drawn; null = all.</summary>
     public SKRect? Clip { get; init; }
 
+    /// <summary>
+    /// In vertical text the run is set across in one character's room (縦中横: Word w:eastAsianLayout w:vert); the
+    /// layout only marks it, VerticalText sets it.
+    /// </summary>
+    public bool Across { get; init; }
+
     /// <summary>Throws when the arrays don't describe the same glyphs or a cluster points outside the text.</summary>
     public void Validate()
     {

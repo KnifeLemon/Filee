@@ -49,12 +49,16 @@ internal sealed record PlacedRun(PageFont Font, float Size, ushort[] Glyphs, SKP
 
     public bool Slant { get; init; }
 
+    /// <summary>Set across in vertical text (TextStyle.Across).</summary>
+    public bool Across { get; init; }
+
     public GlyphRun At(float x, float y) => new(Font, Size, Glyphs, [.. Positions.Select(p => new SKPoint(p.X + x, p.Y + y))], Text, Clusters)
     {
         Color = Color,
         ScaleX = ScaleX,
         Embolden = Embolden,
         SkewX = Slant ? GlyphRun.SyntheticSlant : 0,
+        Across = Across,
     };
 }
 

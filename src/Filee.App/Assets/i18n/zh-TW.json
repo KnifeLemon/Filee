@@ -211,7 +211,6 @@
   "notice.pdfa_needs_ghostscript": "這個 PDF 不是 PDF/A：要產生 PDF/A，請在「設定 → 轉換引擎」中安裝 Ghostscript",
   "notice.pdfa_form_fields": "已產生 PDF/A：表單欄位無法再填寫",
   "pdfa.reason.font_not_embedded": "使用的字型沒有內嵌",
-  "pdfa.reason.cmyk": "需要轉換其中的 CMYK 色彩",
   "pdfa.reason.no_appearance": "某個註解或表單欄位沒有自己的外觀",
   "pdfa.reason.unsupported": "其中有 PDF/A 不允許、Filee 又無法移除的內容",
   "pdfa.reason.unreadable": "Filee 無法讀取這個檔案",
@@ -282,7 +281,6 @@
   "notice.renderer_left_out.ink_one": "略過了 1 個筆跡",
   "notice.renderer_left_out.wordart": "文字藝術師以一般文字繪製",
   "notice.renderer_left_out.effects": "略過了陰影、立體等效果",
-  "notice.renderer_left_out.vertical_text_turned": "東亞直書文字側轉顯示",
   "notice.renderer_left_out.more": "等",
 
   "engine.reason.not_installed": "未安裝",

@@ -167,7 +167,7 @@ internal sealed partial class OdpWriter
         else
         {
             // Path gradients: the start colour outside, the end colour at the focus.
-            style = gradient.Shape == GradientShape.Circle ? "radial" : "rectangular";
+            style = gradient.Shape switch { GradientShape.Circle => "radial", GradientShape.Ellipse => "ellipsoid", _ => "rectangular" };
             (start, end) = (last.Color, first.Color);
             if (stops.Count > 1 && Same(stops[^2].Color, last.Color))
                 border = 1 - stops[^2].Position;

@@ -151,6 +151,28 @@ internal sealed record FontMetrics(
     int SuperscriptYOffset, int SuperscriptYSize, int SubscriptYOffset, int SubscriptYSize, bool EastAsian = false, bool Math = false,
     int ExternalLeading = 0);
 
+/// <summary>
+/// A character as vertical text sets it upright (Shaper.Vertical), in font units: its glyph (a vertical alternate where
+/// the font has one), the offset from the pen at the top of its cell to the glyph's origin (HarfBuzz's convention, y
+/// up) and how far down the pen moves.
+/// </summary>
+/// <param name="Substituted">
+/// <paramref name="Glyph"/> is a vertical alternate (vert / vrt2); otherwise the character keeps the glyph it was laid
+/// out with (its language forms).
+/// </param>
+/// <param name="Metrics">The font has vertical metrics: the offsets place the glyph; else only the glyph counts.</param>
+internal readonly record struct VerticalGlyph(ushort Glyph, bool Substituted, int UnitsPerEm, int XOffset, int YOffset, int Advance, bool Metrics);
+
+/// <summary>Keys of Shaper's vertical glyphs: the font by reference, the text by value.</summary>
+file sealed class VerticalKeys : IEqualityComparer<(PageFont Font, string Text)>
+{
+    public static readonly VerticalKeys Instance = new();
+
+    public bool Equals((PageFont Font, string Text) x, (PageFont Font, string Text) y) => ReferenceEquals(x.Font, y.Font) && x.Text == y.Text;
+
+    public int GetHashCode((PageFont Font, string Text) key) => HashCode.Combine(RuntimeHelpers.GetHashCode(key.Font), key.Text);
+}
+
 /// <summary>Shapes runs with HarfBuzz and caches the results; one per layout job (not thread-safe).</summary>
 internal sealed class Shaper : IDisposable
 {
@@ -198,6 +220,49 @@ internal sealed class Shaper : IDisposable
         _cache[key] = run;
         Shaped++;
         return run;
+    }
+
+    private readonly Dictionary<(PageFont Font, string Text), VerticalGlyph?> _vertical = new(VerticalKeys.Instance);
+
+    /// <summary>
+    /// <paramref name="text"/> (one cluster) set top to bottom, as vertical text sets an upright character: HarfBuzz
+    /// shapes it downwards, which applies the font's vertical alternates (OpenType vert; vrt2 where the font has only
+    /// that) and places it by the font's vertical metrics (vmtx, VORG). Null when it doesn't come out as one glyph.
+    /// </summary>
+    public VerticalGlyph? Vertical(PageFont font, string text)
+    {
+        if (_vertical.TryGetValue((font, text), out var known))
+            return known;
+        var hb = For(font);
+        // The glyph it takes across tells a vertical alternate from it (switching vert off doesn't: HarfBuzz then maps
+        // brackets and punctuation to Unicode's vertical forms itself).
+        var plain = OneGlyph(hb, text, [], Direction.LeftToRight);
+        var glyph = OneGlyph(hb, text, [], Direction.TopToBottom);
+        if (glyph is { } first && first.Glyph == plain?.Glyph && OneGlyph(hb, text, [new Feature(Tag.Parse("vrt2"))], Direction.TopToBottom) is { } second)
+            glyph = second;
+        if (glyph is { } found)
+            glyph = found with { Metrics = hb.VerticalMetrics, Substituted = plain is null || found.Glyph != plain.Value.Glyph };
+        if (_vertical.Count >= MaxCached)
+            _vertical.Clear();
+        return _vertical[(font, text)] = glyph;
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> shaped in <paramref name="direction"/>: its glyph, offsets and advance down; null unless it
+    /// comes out as one glyph.
+    /// </summary>
+    private static VerticalGlyph? OneGlyph(HarfBuzzFont hb, string text, Feature[] features, Direction direction)
+    {
+        using var buffer = new Buffer();
+        buffer.AddUtf16(text);
+        buffer.GuessSegmentProperties();
+        buffer.Direction = direction;
+        hb.Font.Shape(buffer, features);
+        var infos = buffer.GetGlyphInfoSpan();
+        var positions = buffer.GetGlyphPositionSpan();
+        if (infos.Length != 1)
+            return null;
+        return new VerticalGlyph((ushort)infos[0].Codepoint, false, hb.UnitsPerEm, positions[0].XOffset, positions[0].YOffset, -positions[0].YAdvance, false);
     }
 
     /// <summary>The font's vertical and decoration metrics.</summary>
@@ -303,6 +368,7 @@ internal sealed class Shaper : IDisposable
             font.Dispose();
         _fonts.Clear();
         _cache.Clear();
+        _vertical.Clear();
     }
 
     /// <summary>What a result needs: <c>Text</c> is the run with its context, the run is at <c>Start</c>.</summary>
@@ -349,6 +415,11 @@ internal sealed class Shaper : IDisposable
 
         /// <summary>See <see cref="FontMetrics.Math"/>.</summary>
         public bool Math => _math ??= HasTable("MATH");
+
+        /// <summary>The font has vertical metrics (a vmtx table) for HarfBuzz to place glyphs by downwards.</summary>
+        public bool VerticalMetrics => _verticalMetrics ??= HasTable("vmtx");
+
+        private bool? _verticalMetrics;
 
         /// <summary>See <see cref="FontMetrics.ExternalLeading"/>; read from the hhea and OS/2 tables on first use.</summary>
         public int ExternalLeading => _externalLeading ??= WindowsLeading();

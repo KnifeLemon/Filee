@@ -1,5 +1,5 @@
-// Fills of the slide model as Skia paints: solid colours, gradients (linear at an angle, circles and rectangles out from
-// a focus), pictures stretched into their fill rectangle with their crop or tiled, and two-colour patterns. Pictures are
+// Fills of the slide model as Skia paints: solid colours, gradients (linear at an angle, circles, ellipses and rectangles
+// out from a focus), pictures stretched into their fill rectangle with their crop or tiled, and two-colour patterns. Pictures are
 // decoded once per deck (SlideImages) and keep their encoded data, so a PDF gets JPEGs as they are and a logo on
 // every slide once.
 
@@ -92,6 +92,9 @@ internal static class SlidePaint
                 using (var paint = new SKPaint { Color = solid.Color, IsAntialias = true, Style = SKPaintStyle.Fill })
                     canvas.DrawPath(path, paint);
                 break;
+            case GradientFill { Shape: GradientShape.Rectangle } rectangle:
+                RectangleGradient(canvas, path, rectangle, box);
+                break;
             case GradientFill gradient:
                 using (var shader = Gradient(gradient, box))
                 using (var paint = new SKPaint { Shader = shader, IsAntialias = true, Style = SKPaintStyle.Fill })
@@ -165,10 +168,68 @@ internal static class SlidePaint
             var radius = MathF.Sqrt(rx * rx + ry * ry);
             return SKShader.CreateRadialGradient(new SKPoint(fx, fy), Math.Max(radius, 0.01f), colors, positions, SKShaderTileMode.Clamp);
         }
-        // A rectangle: an ellipse through the box's corners stands in for the rectangles.
+        // An ellipse through the box's corners (also a rectangle's stand-in where one paint draws it: a gradient line).
         var scaleY = ry / Math.Max(rx, 0.01f);
         var matrix = SKMatrix.CreateScale(1, scaleY, fx, fy);
         return SKShader.CreateRadialGradient(new SKPoint(fx, fy), Math.Max(rx * 1.4142f, 0.01f), colors, positions, SKShaderTileMode.Clamp, matrix);
+    }
+
+    /// <summary>
+    /// Fills <paramref name="path"/> with a rectangle gradient (DrawingML path="rect", ECMA-376 20.1.8.46): the first
+    /// stop fills the focus rectangle (fillToRect, 20.1.8.31: the box less its margins), the last lies on the box's
+    /// edge, and in between the colour runs in rectangles from one to the other, so inside an ellipse the last stop
+    /// meets the middle of each side. Drawn as the focus rectangle and the four pieces between it and the box, each with
+    /// a linear gradient across, which a PDF keeps as vectors.
+    /// </summary>
+    private static void RectangleGradient(SKCanvas canvas, SKPath path, GradientFill gradient, SKRect box)
+    {
+        var colors = gradient.Stops.Select(s => s.Color).ToArray();
+        var positions = gradient.Stops.Select(s => s.Position).ToArray();
+        var focus = Focus(gradient.Focus, box);
+        canvas.Save();
+        canvas.ClipPath(path, antialias: true);
+        // The pieces meet edge to edge: drawn without antialiasing inside the antialiased clip, they leave no seam.
+        using (var solid = new SKPaint { Style = SKPaintStyle.Fill, Color = gradient.Stops[0].Color })
+            canvas.DrawRect(focus, solid);
+        void Piece(SKPoint a, SKPoint b, SKPoint c, SKPoint d, SKPoint from, SKPoint to)
+        {
+            if (SKPoint.Distance(from, to) < 0.001f)
+                return;
+            using var piece = new SKPath();
+            piece.MoveTo(a);
+            piece.LineTo(b);
+            piece.LineTo(c);
+            piece.LineTo(d);
+            piece.Close();
+            using var shader = SKShader.CreateLinearGradient(from, to, colors, positions, SKShaderTileMode.Clamp);
+            using var paint = new SKPaint { Shader = shader, Style = SKPaintStyle.Fill };
+            canvas.DrawPath(piece, paint);
+        }
+        static SKPoint P(float x, float y) => new(x, y);
+        Piece(P(focus.Left, focus.Top), P(focus.Right, focus.Top), P(box.Right, box.Top), P(box.Left, box.Top),
+            P(focus.MidX, focus.Top), P(focus.MidX, box.Top));
+        Piece(P(focus.Right, focus.Top), P(focus.Right, focus.Bottom), P(box.Right, box.Bottom), P(box.Right, box.Top),
+            P(focus.Right, focus.MidY), P(box.Right, focus.MidY));
+        Piece(P(focus.Right, focus.Bottom), P(focus.Left, focus.Bottom), P(box.Left, box.Bottom), P(box.Right, box.Bottom),
+            P(focus.MidX, focus.Bottom), P(focus.MidX, box.Bottom));
+        Piece(P(focus.Left, focus.Bottom), P(focus.Left, focus.Top), P(box.Left, box.Top), P(box.Left, box.Bottom),
+            P(focus.Left, focus.MidY), P(box.Left, focus.MidY));
+        canvas.Restore();
+    }
+
+    /// <summary>The focus rectangle in the box: the box less the fill-to rectangle's margins (fractions of its size).</summary>
+    internal static SKRect Focus(SKRect margins, SKRect box)
+    {
+        var left = box.Left + box.Width * Math.Clamp(margins.Left, 0, 1);
+        var top = box.Top + box.Height * Math.Clamp(margins.Top, 0, 1);
+        var right = box.Right - box.Width * Math.Clamp(margins.Right, 0, 1);
+        var bottom = box.Bottom - box.Height * Math.Clamp(margins.Bottom, 0, 1);
+        // Margins that overlap (more than the box between them) meet in the middle of the overlap.
+        if (right < left)
+            left = right = (left + right) / 2;
+        if (bottom < top)
+            top = bottom = (top + bottom) / 2;
+        return new SKRect(left, top, right, bottom);
     }
 
     /// <summary>Draws a picture fill into <paramref name="box"/> (clipped by the caller).</summary>

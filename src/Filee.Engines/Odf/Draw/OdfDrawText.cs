@@ -114,7 +114,14 @@ internal sealed partial class OdfDrawReader
             },
             AnchorCenter = props[Draw + "textarea-horizontal-align"] == "center",
             Wrap = props[Fo + "wrap-option"] != "no-wrap" && props[Draw + "auto-grow-width"] != "true",
-            Direction = writingMode is "tb-rl" or "tb" ? TextDirection.Down : TextDirection.Horizontal,
+            Direction = writingMode switch
+            {
+                "tb-rl" or "tb" or "tb-lr" => TextDirection.Down,
+                "bt-lr" => TextDirection.Up,
+                _ => TextDirection.Horizontal,
+            },
+            // ODF's top-to-bottom writing is East Asian vertical text: CJK characters stand upright.
+            Upright = writingMode is "tb-rl" or "tb" or "tb-lr" ? Typesetting.UprightGlyphs.EastAsian : Typesetting.UprightGlyphs.None,
             Columns = int.TryParse(Attr(columns, Fo + "column-count"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var count) ? Math.Clamp(count, 1, 16) : 1,
             ColumnGap = Math.Clamp(Points(Attr(columns, Fo + "column-gap")) ?? 0, 0, 10_000),
         };

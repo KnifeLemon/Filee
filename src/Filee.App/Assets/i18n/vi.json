@@ -211,7 +211,6 @@
   "notice.pdfa_needs_ghostscript": "Tệp PDF này không phải PDF/A: hãy cài Ghostscript trong Cài đặt → Bộ xử lý để tạo PDF/A",
   "notice.pdfa_form_fields": "Đã tạo PDF/A: không thể điền các trường biểu mẫu nữa",
   "pdfa.reason.font_not_embedded": "một phông chữ được dùng chưa được nhúng",
-  "pdfa.reason.cmyk": "cần chuyển đổi màu CMYK của tệp",
   "pdfa.reason.no_appearance": "một chú thích hoặc trường biểu mẫu không có hình thức riêng",
   "pdfa.reason.unsupported": "tệp có nội dung PDF/A không cho phép mà Filee không thể gỡ bỏ",
   "pdfa.reason.unreadable": "Filee không đọc được tệp",
@@ -282,7 +281,6 @@
   "notice.renderer_left_out.ink_one": "bỏ qua 1 nét vẽ mực",
   "notice.renderer_left_out.wordart": "WordArt được vẽ thành chữ thường",
   "notice.renderer_left_out.effects": "bỏ qua bóng đổ, 3D và các hiệu ứng khác",
-  "notice.renderer_left_out.vertical_text_turned": "chữ dọc Đông Á được xoay nằm nghiêng",
   "notice.renderer_left_out.more": "và các mục khác",
 
   "engine.reason.not_installed": "Chưa cài đặt",

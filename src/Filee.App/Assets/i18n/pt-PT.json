@@ -211,7 +211,6 @@
   "notice.pdfa_needs_ghostscript": "Este PDF não é PDF/A: instala o Ghostscript em Definições → Motores para criar PDF/A",
   "notice.pdfa_form_fields": "PDF/A criado: os campos do formulário já não podem ser preenchidos",
   "pdfa.reason.font_not_embedded": "um tipo de letra usado não está incorporado",
-  "pdfa.reason.cmyk": "as cores CMYK teriam de ser convertidas",
   "pdfa.reason.no_appearance": "uma anotação ou campo de formulário não tem aparência própria",
   "pdfa.reason.unsupported": "tem conteúdo que o PDF/A não permite e que o Filee não consegue remover",
   "pdfa.reason.unreadable": "o Filee não o conseguiu ler",
@@ -282,7 +281,6 @@
   "notice.renderer_left_out.ink_one": "1 desenho a tinta omitido",
   "notice.renderer_left_out.wordart": "WordArt desenhado como texto simples",
   "notice.renderer_left_out.effects": "sombras, 3D e outros efeitos omitidos",
-  "notice.renderer_left_out.vertical_text_turned": "texto vertical da Ásia Oriental virado de lado",
   "notice.renderer_left_out.more": "e mais",
 
   "engine.reason.not_installed": "Não instalado",

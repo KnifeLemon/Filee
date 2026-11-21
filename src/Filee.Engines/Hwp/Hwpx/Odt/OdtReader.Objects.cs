@@ -191,13 +191,13 @@ internal sealed partial class OdtReader
         if (++_cells > _budget.Limits.MaxParagraphs)
             throw DocumentLimits.TooLarge($"The document has more than {DocumentLimits.Count(_budget.Limits.MaxParagraphs)} table cells.");
         var props = Chain("table-cell", Attr(element, Table + "style-name")).Select(s => s.Element(Style + "table-cell-properties")).ToList();
-        CountVerticalText(props);
         var fill = Inherited(props, Fo + "background-color");
         var cell = new HCell
         {
             Column = column,
             ColSpan = Math.Clamp(Int(Attr(element, Table + "number-columns-spanned")) ?? 1, 1, maxColumns - column),
             RowSpan = Math.Clamp(Int(Attr(element, Table + "number-rows-spanned")) ?? 1, 1, 1_000_000),
+            TextFlow = TextFlowOf(props),
             Fill = fill == "transparent" ? null : Color(fill),
             Borders = Borders(props),
             CellMargin = Padding(props),
@@ -346,12 +346,16 @@ internal sealed partial class OdtReader
         return result;
     }
 
-    /// <summary>Counts text a cell, page or text box writes top to bottom (style:writing-mode tb-rl / tb-lr), which is set horizontally.</summary>
-    private void CountVerticalText(IEnumerable<XElement?> chain)
+    /// <summary>
+    /// How a cell's, page's or text box's text runs (style:writing-mode): tb-rl (and tb, tb-lr) top to bottom East
+    /// Asian style, bt-lr bottom to top.
+    /// </summary>
+    private static HTextFlow TextFlowOf(IEnumerable<XElement?> chain) => Inherited(chain, Style + "writing-mode") switch
     {
-        if (Inherited(chain, Style + "writing-mode")?.StartsWith("tb", StringComparison.Ordinal) == true)
-            _document.LeftOut.Add(HLeftOutKind.VerticalText);
-    }
+        "tb-rl" or "tb" or "tb-lr" => HTextFlow.Vertical,
+        "bt-lr" => HTextFlow.Up,
+        _ => HTextFlow.Horizontal,
+    };
 
     /// <summary>The graphic properties of an object's style and its parents; with the default style for shapes.</summary>
     private List<XElement?> GraphicProps(XElement element, bool withDefault) =>
@@ -370,9 +374,9 @@ internal sealed partial class OdtReader
 
         if (frame.Element(Draw + "text-box") is { } content)
         {
-            CountVerticalText(all);
             var box = new HTextBox
             {
+                TextFlow = TextFlowOf(all),
                 Width = Size(width ?? Length(Attr(content, Fo + "min-width"))),
                 Height = Size(height ?? Length(Attr(content, Fo + "min-height"))),
                 Anchor = anchor,

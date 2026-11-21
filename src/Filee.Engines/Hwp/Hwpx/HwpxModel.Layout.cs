@@ -33,6 +33,15 @@ namespace Filee.Engines.Hwp.Hwpx;
 /// Unicode characters in the text font, and the layout draws the codes in this font where it is installed. Only the run
 /// itself has it: <see cref="Over"/> doesn't pass it on.
 /// </param>
+/// <param name="NamedFonts">
+/// The fonts the run named itself (or through the document's own styles), one per line, set where the style template
+/// fills in fonts and one of them is also a template font: such a font isn't a substitute for the backslash rule
+/// (ResolvedFont.Substitute), so a run that names 맑은 고딕 draws its ₩ as Word does. Only the run itself has it.
+/// </param>
+/// <param name="Across">
+/// In vertical text the run is set across in one character's room (Word w:eastAsianLayout w:vert, 縦中横), squeezed to
+/// an em where it is wider.
+/// </param>
 internal sealed record HCharLayout(
     HLanguageSlots? Slots = null,
     HWordFonts? WordFonts = null,
@@ -46,7 +55,9 @@ internal sealed record HCharLayout(
     int? ComplexSize = null,
     bool? ComplexBold = null,
     bool? ComplexItalic = null,
-    HSymbol? Symbol = null)
+    HSymbol? Symbol = null,
+    string? NamedFonts = null,
+    bool? Across = null)
 {
     /// <summary>This layout with the members it leaves open taken from <paramref name="baseline"/>.</summary>
     public HCharLayout Over(HCharLayout? baseline) => baseline is null ? this : new HCharLayout(
@@ -62,7 +73,13 @@ internal sealed record HCharLayout(
         ComplexSize ?? baseline.ComplexSize,
         ComplexBold ?? baseline.ComplexBold,
         ComplexItalic ?? baseline.ComplexItalic,
-        Symbol);
+        Symbol,
+        NamedFonts,
+        Across ?? baseline.Across);
+
+    /// <summary>Whether the run named <paramref name="family"/> itself (<see cref="NamedFonts"/>).</summary>
+    public bool Named(string? family) =>
+        family is not null && NamedFonts is { } names && names.Split('\n').Contains(family.Trim(), StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>Characters of a symbol font as the document stores them (see <see cref="HCharLayout.Symbol"/>).</summary>

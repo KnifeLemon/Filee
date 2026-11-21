@@ -89,6 +89,13 @@ internal sealed class HSection
     public HPage? Page { get; set; }
 
     public HColumns Columns { get; set; } = HColumns.Single;
+
+    /// <summary>
+    /// How the body's text runs (Word sectPr w:textDirection, 한글 secPr textDirection, ODF page writing-mode): written
+    /// vertically, the body is laid out turned (PageComposer); headers and footers stay across. Read for layout only.
+    /// </summary>
+    public HTextFlow TextFlow { get; set; }
+
     public List<HHeaderFooter> Headers { get; } = [];
     public List<HHeaderFooter> Footers { get; } = [];
 

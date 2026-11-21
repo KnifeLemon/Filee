@@ -1,5 +1,5 @@
 // What Filee's renderer says it left out: a document it converts anyway (no other route, or the user's choice) with
-// charts, embedded objects, SmartArt, form controls, videos or vertical text gets a note on its result that names each
+// charts, embedded objects, SmartArt, form controls, videos or vertical text it sets across gets a note on its result that names each
 // kind once with its count, with LibreOffice to install where it would draw the file faithfully. The readers count what
 // they meet as they read (no second look through the file); a document without such things gets no note. Slide decks
 // (PPTX, PPT, ODP) say the same from what the slide readers met. The files are built here.
@@ -51,7 +51,7 @@ public sealed class RendererLeftOutTests(EngineFixture fx) : IClassFixture<Engin
         "<o:OLEObject Type=\"Embed\" ProgID=\"Visio.Drawing.15\" ShapeID=\"_x0000_i1025\" DrawAspect=\"Content\" ObjectID=\"_1\" r:id=\"rId95\"/></w:object></w:r>";
 
     [Fact]
-    public async Task A_word_document_names_its_charts_objects_smartart_and_vertical_text()
+    public async Task A_word_document_names_its_charts_objects_and_smartart_and_draws_its_vertical_text()
     {
         var builder = new DocxBuilder();
         var picture = builder.Image(DocumentFuzzTests.TinyPng(4, 3));
@@ -64,9 +64,9 @@ public sealed class RendererLeftOutTests(EngineFixture fx) : IClassFixture<Engin
 
         var notice = Assert.Single(await ConvertAsync(source, "docx"));
 
-        // Left out first, then what was drawn another way; vertical text once, however many places have it.
+        // Left out first, then what was drawn another way; the vertical section and cell are drawn so.
         Assert.Equal(WithLibreOffice, notice.Key);
-        Assert.Equal([Part("charts", 2), Part("smartart", 1), Part("objects", 1), Part("objects_pictured", 1), Part("vertical_text")], notice.Parts);
+        Assert.Equal([Part("charts", 2), Part("smartart", 1), Part("objects", 1), Part("objects_pictured", 1)], notice.Parts);
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public sealed class RendererLeftOutTests(EngineFixture fx) : IClassFixture<Engin
     }
 
     [Fact]
-    public async Task An_opendocument_text_names_its_objects_formulas_form_controls_and_vertical_text()
+    public async Task An_opendocument_text_names_its_objects_formulas_and_form_controls_and_draws_its_vertical_cell()
     {
         var builder = new OdtBuilder
         {
@@ -104,14 +104,14 @@ public sealed class RendererLeftOutTests(EngineFixture fx) : IClassFixture<Engin
         var notice = Assert.Single(await ConvertAsync(source, "odt"));
 
         Assert.Equal(WithLibreOffice, notice.Key);
-        Assert.Equal([Part("objects", 1), Part("form_controls", 1), Part("objects_pictured", 1), Part("formulas", 1), Part("vertical_text")], notice.Parts);
+        Assert.Equal([Part("objects", 1), Part("form_controls", 1), Part("objects_pictured", 1), Part("formulas", 1)], notice.Parts);
     }
 
     [Fact]
-    public async Task An_hwpx_names_its_chart_object_video_and_vertical_text_without_asking_for_libreoffice()
+    public async Task An_hwpx_names_its_chart_object_and_video_without_asking_for_libreoffice()
     {
         // The 한글-style package has a chart whose OLE fallback has no saved picture; its first section is made
-        // vertical and a chart and a video are added.
+        // vertical (drawn so, not named) and a chart and a video are added.
         var folder = fx.NewFolder();
         var source = Path.Combine(folder, "report.hwpx");
         File.Copy(HwpxReaderTests.HangulStylePackage(folder), source);
@@ -135,7 +135,7 @@ public sealed class RendererLeftOutTests(EngineFixture fx) : IClassFixture<Engin
 
         // No optional engine draws an HWPX better: nothing to install.
         Assert.Equal(Key, notice.Key);
-        Assert.Equal([Part("charts", 1), Part("objects", 1), Part("videos", 1), Part("vertical_text")], notice.Parts);
+        Assert.Equal([Part("charts", 1), Part("objects", 1), Part("videos", 1)], notice.Parts);
     }
 
     [Fact]

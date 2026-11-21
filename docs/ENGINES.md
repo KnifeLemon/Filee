@@ -1119,7 +1119,7 @@ test turns it on.
 - **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX, Word
   or ODT package (an HWP as the HWPX package it becomes, a DOC as the DOCX package it becomes) for what it doesn't draw yet — OLE objects, charts
   other than the DrawingML ones the [chart drawer](#charts) draws (Word charts, HWPX `hp:chart` parts) and the ODF ones
-  `OdfChartReader` reads (ODT chart objects), vertical text, form controls, videos, SmartArt — and a deck for what the slide
+  `OdfChartReader` reads (ODT chart objects), form controls it doesn't draw (ActiveX, ODF controls, 한글 list boxes and scroll bars), videos, SmartArt without Word's drawing of it — and a deck for what the slide
   renderer doesn't draw (charts the chart drawer doesn't draw without a stored picture, shadows and other effects, 3D, WordArt warps, presets it lacks, ...) — and `JobQueue` plans again
   without it, so such a file takes its usual route (logged). The choice is made once, before the conversion. A checked edge is only ever a route's first step, where the
   file is the one the engine looked at. Text formats hold nothing it can't draw.
@@ -1556,8 +1556,8 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     text read back in order and no overlapping glyphs. 한글 itself lays such a Hebrew line out against UAX #9 (its words
     come out in reverse order), so Filee follows the standard there.
   - With the renderer off, `ComplexScripts` and the `Unshaped` edges still send such documents to LibreOffice; on
-    (the default), the new engine draws them. Not yet: vertical text, and Word's and 한글's character spacing for
-    Arabic (kashida justification).
+    (the default), the new engine draws them. Not yet: Word's and 한글's character spacing for Arabic (kashida
+    justification).
 
 The PDF writer's subsets now keep only the characters the text has in their cmap: CJK fonts map 文 and the Kangxi
 radical ⽂ to one glyph, and the PDF's ToUnicode took the lower code point, so Japanese and Chinese text copied out as
@@ -1646,7 +1646,7 @@ a slide.
 - **The check** (`SlideCapabilities.cs`) looks at the shown slides and the layouts and masters they use, leaving out
   what a fallback replaces, and names: charts the chart drawer doesn't draw without a stored picture, SmartArt without its drawing, OLE objects and
   other embedded content without a picture, ink, shadows and other effects (on shapes, pictures and text, or through
-  the theme's effect styles), 3D, WordArt warps, outlined text, East Asian vertical text, preset names outside
+  the theme's effect styles), 3D, WordArt warps, outlined text, preset names outside
   ST_ShapeType, and TIFF and JPEG XR pictures.
 - **Hostile input:** parts through `DocumentPackage` (part and package sizes, inflate ratio, XML depth and elements),
   `DocumentBudget` for paragraphs, objects and group nesting, pictures whose header claims more than
@@ -1664,10 +1664,9 @@ recomputes "shrink text on overflow" instead of using the stored scale and picks
 Every slide's text reads back, nothing is outside a slide, every font is embedded and subset; the deck takes about
 6 s (most of it loading fonts), LibreOffice about 60 s with a fresh profile.
 
-Not yet: shadows, glow, reflection, soft edges and 3D (named by the check); WordArt warps and text outlines; East Asian
-vertical text (upright characters); gradient-filled text (the first stop's colour); tiled pictures at their own
-resolution (taken as 96 dpi); a gradient that doesn't turn with its shape; "rect" path gradients (drawn as an ellipse
-through the corners); 3D and other charts the chart drawer doesn't draw; notes pages and handouts.
+Not yet: shadows, glow, reflection, soft edges and 3D (named by the check); WordArt warps and text outlines;
+gradient-filled text (the first stop's colour); tiled pictures at their own resolution (taken as 96 dpi); a gradient
+that doesn't turn with its shape; 3D and other charts the chart drawer doesn't draw; notes pages and handouts.
 
 ## Charts
 
