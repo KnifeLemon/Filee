@@ -1,6 +1,9 @@
 // Mutation fuzzing of the DjVu reader (Djvu/): the seeds are a page with a JB2 mask, a palette and hidden text, a
 // bundled document with a shared dictionary, a photo page (IW44 in two chunks), and a bundled document with bookmarks,
-// hyperlinks and a G4 (Smmr) mask in stripes, all written in code (DjvuBuilder).
+// hyperlinks and a G4 (Smmr) mask in stripes, a standalone IW44 picture (FORM:PM44), and a page with view settings,
+// metadata and text with only a page zone, all written in code (DjvuBuilder). A second target mutates JBIG2 streams
+// (Jbig2Encoder's, with shared /JBIG2Globals) for Filee's JBIG2 decoder: each is read or refused with
+// InvalidDataException, NotSupportedException or ConversionRefusedException.
 // Every input must be read or refused with InvalidDataException / ConversionRefusedException, in time and on a 1 MB
 // stack; every page read is drawn and written as a PDF page. Run by FuzzHarness: a short fixed run normally,
 // FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to keep failing inputs.
@@ -58,27 +61,69 @@ public class DjvuFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         return Bundle([outline], ("p1", smmr, true), ("p2", plain, true));
     }
 
+    private static byte[] Picture()
+    {
+        var y = Enumerable.Range(0, 16 * 8).Select(i => (sbyte)((i % 16) * 9 - 70)).ToArray();
+        return DjvuFile(Form("PM44", [.. Iw44Encoder.Encode(16, 8, y, new sbyte[128], new sbyte[128], slices: 30, chunks: 2).Select(c => Chunk("PM44", c))]));
+    }
+
+    private static byte[] ViewPage()
+    {
+        var text = DjvuBuilder.Text("one\ntwo\n", new TextZone(1, 0, 0, 40, 20, 0, 8));
+        var annotations = AnnotationChunk("(zoom d150) (mode bw) (background #102030) (metadata (Title \"T\") (Author \"A\"))");
+        return DjvuFile(Page(40, 20, 100, Chunk("Sjbz", new Jb2Writer().Start(40, 20).New(Letter, 5, 5).End()), text, annotations));
+    }
+
     [Fact]
     public void DjvuDocument_reads_or_refuses_every_mutated_file() =>
-        new FuzzHarness(fx, QuickIterations, 20261120).Files("djvu", "djvu", [MaskPage(), BundledBook(), Photo(), LinkedBook()], FuzzHarness.Bytes, (path, _) =>
+        new FuzzHarness(fx, QuickIterations, 20261120).Files("djvu", "djvu", [MaskPage(), BundledBook(), Photo(), LinkedBook(), Picture(), ViewPage()], FuzzHarness.Bytes, (path, _) =>
         {
             // Smaller limits than real books need keep each input quick.
             var limits = DjvuLimits.Default with { MaxPagePixels = 4_000_000, MaxIw44Pixels = 1_000_000, MaxShapePixels = 4_000_000 };
             using var document = DjvuDocument.Open(path, limits, TestContext.Current.CancellationToken);
             using var writer = new OcrPdfWriter();
             var pages = new List<PdfSharp.Pdf.PdfPage>();
+            var shared = new Jbig2SharedShapes();
             var links = new List<(int Page, IReadOnlyList<DjvuLink> Links, double Scale)>();
             for (var i = 0; i < Math.Min(document.Count, 4); i++)
             {
                 var page = document.ReadPage(i, TestContext.Current.CancellationToken);
+                if (i == 0)
+                    DjvuPdfWriter.AddView(writer.Document, pages, page.Display, DjvuPdfWriter.Scale(page));
                 DjvuRenderer.Compose(page, TestContext.Current.CancellationToken);
-                pages.Add(DjvuPdfWriter.AddPage(writer, page, TestContext.Current.CancellationToken));
+                pages.Add(DjvuPdfWriter.AddPage(writer, page, shared, TestContext.Current.CancellationToken));
                 links.Add((i, page.Links, DjvuPdfWriter.Scale(page)));
             }
             foreach (var (page, pageLinks, scale) in links)
                 DjvuPdfWriter.AddLinks(writer.Document, pages[page], pageLinks, scale, pages);
             DjvuPdfWriter.AddOutline(writer.Document, pages, document.Bookmarks, url => document.PageOf(url), TestContext.Current.CancellationToken);
+            shared.Finish(TestContext.Current.CancellationToken);
             if (writer.PageCount > 0)
                 writer.Document.Save(new MemoryStream());
         });
+
+    [Fact]
+    public void Jbig2Decoder_reads_or_refuses_every_mutated_stream()
+    {
+        // A mask on shared shapes: the page's stream and the shared one (each seed mutated; the shared one kept whole).
+        var shapes = new List<Jb2Shape> { Letter, Jb2Writer.Shape("###", "#.#", "###"), Jb2Writer.Shape("#.", ".#") };
+        var globals = new Jbig2Globals(shapes, 2);
+        var blits = Enumerable.Range(0, 30).Select(i => new Jb2Blit(i % 3, i * 5 % 60, i * 3 % 30)).ToList();
+        var page = Jbig2Encoder.Encode(64, 32, shapes, blits, globals, out _, TestContext.Current.CancellationToken);
+        globals.Use(blits.Select(b => b.Shape));
+        var shared = globals.Encode(TestContext.Current.CancellationToken);
+        var alone = Jbig2Encoder.Encode(64, 32, shapes, blits, TestContext.Current.CancellationToken);
+        var limits = Jbig2Limits.Default with { MaxBitmapPixels = 4_000_000, MaxTotalPixels = 16_000_000, MaxSymbols = 100_000, MaxInstances = 100_000 };
+        new FuzzHarness(fx, QuickIterations, 20261121).Data("jbig2", "jb2", [page, alone], FuzzHarness.Bytes, data =>
+        {
+            try
+            {
+                Jbig2Decoder.Decode(data, shared, limits, TestContext.Current.CancellationToken).PackedBits();
+            }
+            catch (NotSupportedException)
+            {
+                // Features Filee leaves to the page drawn as a picture.
+            }
+        });
+    }
 }

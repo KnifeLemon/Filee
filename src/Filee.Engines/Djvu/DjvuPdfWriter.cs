@@ -3,12 +3,16 @@
 // mask as 1-bit image masks painted in the foreground colour — one per palette colour, or the FG44 picture (a JPEG)
 // shown through the mask (explicit masking). Each mask is coded the smallest way: JBIG2 (the mask's shapes as
 // symbols, Jbig2Encoder — about the DjVu file's own size), CCITT G4 (CcittG4), or Flate for finely dithered pictures.
-// A page with more than MaxStencils palette colours is drawn whole as one JPEG instead. The hidden text becomes an
+// Pages whose masks build on the same shared shape dictionary (Djbz) share one /JBIG2Globals stream holding its shapes
+// (Jbig2SharedShapes), so a book's dictionary is in the PDF once. A page with more than MaxStencils palette colours is
+// drawn whole as one JPEG instead. The hidden text becomes an
 // invisible text layer (OcrPdfWriter's glyphless font), so the PDF can be searched and its text copied.
 //
 // Once all pages are in, their hyperlinks become link annotations (to a page, or a URI action for a web address) and
 // the bookmarks the document outline: links into the document go to their page, web addresses open, anything else
-// (a relative file, javascript:, file:) leaves the bookmark without an action and is no link.
+// (a relative file, javascript:, file:) leaves the bookmark without an action and is no link. The first page's
+// initial zoom becomes the PDF's open action and its metadata the document information; the display mode and the
+// viewer's background colour have no PDF counterpart (the PDF keeps every layer).
 
 using System.Globalization;
 using System.IO.Compression;
@@ -46,12 +50,15 @@ internal static class DjvuPdfWriter
     /// <summary>Points per page pixel.</summary>
     public static double Scale(DjvuPage page) => Math.Min(72.0 / page.Dpi, MaxSide / Math.Max(page.Width, page.Height));
 
-    /// <summary>Adds <paramref name="page"/> to <paramref name="writer"/>'s document; its links come with <see cref="AddLinks"/>.</summary>
-    public static PdfPage AddPage(OcrPdfWriter writer, DjvuPage page, CancellationToken cancellationToken = default) =>
-        AddPage(writer, page, MaskCodings.All, cancellationToken);
+    /// <summary>
+    /// Adds <paramref name="page"/> to <paramref name="writer"/>'s document; its links come with <see cref="AddLinks"/>.
+    /// Pages added with the same <paramref name="shared"/> share the JBIG2 shapes of their shared dictionaries.
+    /// </summary>
+    public static PdfPage AddPage(OcrPdfWriter writer, DjvuPage page, Jbig2SharedShapes? shared = null, CancellationToken cancellationToken = default) =>
+        AddPage(writer, page, MaskCodings.All, shared, cancellationToken);
 
     /// <summary>Adds <paramref name="page"/>, its masks coded only in the ways <paramref name="codings"/> allows.</summary>
-    internal static PdfPage AddPage(OcrPdfWriter writer, DjvuPage page, MaskCodings codings, CancellationToken cancellationToken)
+    internal static PdfPage AddPage(OcrPdfWriter writer, DjvuPage page, MaskCodings codings, Jbig2SharedShapes? shared, CancellationToken cancellationToken)
     {
         var document = writer.Document;
         var scale = Scale(page);
@@ -92,7 +99,7 @@ internal static class DjvuPdfWriter
                 if (page.Foreground is { } foreground)
                 {
                     var image = Jpeg(document, foreground);
-                    image.Elements["/Mask"] = Stencil(document, page, null, codings, cancellationToken).Reference;
+                    image.Elements["/Mask"] = Stencil(document, page, null, codings, shared, cancellationToken).Reference;
                     Draw(image);
                 }
                 else if (used is not null)
@@ -100,12 +107,12 @@ internal static class DjvuPdfWriter
                     foreach (var color in used)
                     {
                         var c = palette!.Colors[color];
-                        Draw(Stencil(document, page, color, codings, cancellationToken), $"{N(c.Red / 255.0)} {N(c.Green / 255.0)} {N(c.Blue / 255.0)} rg");
+                        Draw(Stencil(document, page, color, codings, shared, cancellationToken), $"{N(c.Red / 255.0)} {N(c.Green / 255.0)} {N(c.Blue / 255.0)} rg");
                     }
                 }
                 else
                 {
-                    Draw(Stencil(document, page, null, codings, cancellationToken), "0 g");
+                    Draw(Stencil(document, page, null, codings, shared, cancellationToken), "0 g");
                 }
             }
         }
@@ -218,6 +225,60 @@ internal static class DjvuPdfWriter
         document.PageMode = PdfPageMode.UseOutlines;
     }
 
+    /// <summary>
+    /// The document's open action from the first page's initial zoom (<paramref name="scale"/>: points per pixel of
+    /// that page) and its document information from the page's metadata.
+    /// </summary>
+    public static void AddView(PdfDocument document, IReadOnlyList<PdfPage> pages, DjvuDisplay display, double scale)
+    {
+        foreach (var (key, value) in display.Metadata)
+        {
+            switch (key.ToLowerInvariant())
+            {
+                case "title":
+                    document.Info.Title = value;
+                    break;
+                case "author":
+                    document.Info.Author = value;
+                    break;
+                case "subject":
+                    document.Info.Subject = value;
+                    break;
+                case "keywords":
+                    document.Info.Keywords = value;
+                    break;
+            }
+        }
+        if (display.Zoom is not { } zoom || pages.Count == 0)
+            return;
+        var destination = new PdfArray(document);
+        destination.Elements.Add(pages[0].Reference!);
+        double? factor = zoom switch
+        {
+            "width" or "page" or "stretch" => null,
+            // One page pixel on one screen pixel of a 96 dpi screen.
+            "one2one" => 0.75 / scale,
+            _ => int.Parse(zoom.AsSpan(1), CultureInfo.InvariantCulture) / 100.0,
+        };
+        if (zoom == "width")
+        {
+            destination.Elements.Add(new PdfName("/FitH"));
+            destination.Elements.Add(new PdfReal(Math.Round(pages[0].Height.Point, 3)));
+        }
+        else if (factor is null)
+        {
+            destination.Elements.Add(new PdfName("/Fit"));
+        }
+        else
+        {
+            destination.Elements.Add(new PdfName("/XYZ"));
+            destination.Elements.Add(PdfNull.Value);
+            destination.Elements.Add(PdfNull.Value);
+            destination.Elements.Add(new PdfReal(Math.Round(Math.Clamp(factor.Value, 0.01, 64), 4)));
+        }
+        document.Internals.Catalog.Elements["/OpenAction"] = destination;
+    }
+
     private sealed class OutlineItem(PdfDictionary dictionary, int level)
     {
         public PdfDictionary Dictionary { get; } = dictionary;
@@ -316,11 +377,17 @@ internal static class DjvuPdfWriter
     /// (the shapes as symbols, see Jbig2Encoder), CCITT G4, and — when neither packs the mask well (fine dithering) —
     /// Flate.
     /// </summary>
-    private static PdfDictionary Stencil(PdfDocument document, DjvuPage page, int? color, MaskCodings codings, CancellationToken cancellationToken)
+    private static PdfDictionary Stencil(PdfDocument document, DjvuPage page, int? color, MaskCodings codings, Jbig2SharedShapes? shared, CancellationToken cancellationToken)
     {
         var mask = page.Mask!;
         var blits = color is null ? mask.Blits : [.. mask.Blits.Where((_, b) => DjvuRenderer.ColorOf(page.Palette?.BlitColors, b, mask.Blits.Count) == color)];
-        var jbig2 = codings.HasFlag(MaskCodings.Jbig2) ? Jbig2Encoder.Encode(page.Width, page.Height, mask.Shapes, blits, cancellationToken) : null;
+        byte[]? jbig2 = null;
+        var usesGlobals = false;
+        if (codings.HasFlag(MaskCodings.Jbig2))
+        {
+            var sharedShapes = shared is not null && mask.Dictionary is { } dictionary ? shared.Of(dictionary) : null;
+            jbig2 = Jbig2Encoder.Encode(page.Width, page.Height, mask.Shapes, blits, sharedShapes, out usesGlobals, cancellationToken);
+        }
         var bits = DjvuRenderer.MaskBits(page, color, cancellationToken);
         var g4 = codings.HasFlag(MaskCodings.G4) ? CcittG4.Encode(bits, page.Width, page.Height, cancellationToken) : null;
         var best = Math.Min(jbig2?.Length ?? int.MaxValue, g4?.Length ?? int.MaxValue);
@@ -338,6 +405,12 @@ internal static class DjvuPdfWriter
         {
             // JBIG2's black samples come out as 0, which an image mask paints by default.
             image = Stream(document, jbig2, "/JBIG2Decode");
+            if (usesGlobals)
+            {
+                var parameters = new PdfDictionary(document);
+                parameters.Elements["/JBIG2Globals"] = shared!.Use(document, mask.Dictionary!, blits, cancellationToken).Reference;
+                image.Elements["/DecodeParms"] = parameters;
+            }
         }
         else
         {
@@ -420,4 +493,60 @@ internal static class DjvuPdfWriter
     }
 
     private static string N(double value) => Math.Round(value, 4).ToString("0.####", CultureInfo.InvariantCulture);
+}
+
+/// <summary>
+/// The /JBIG2Globals of a PDF's shared DjVu shape dictionaries: each dictionary's symbol ids are fixed when a page first
+/// builds on it; its stream is made when a mask first uses it and filled with the shapes pages drew when it leaves the
+/// few kept (as DjvuDocument keeps a few decoded dictionaries) or at <see cref="Finish"/>, before the PDF is saved.
+/// </summary>
+internal sealed class Jbig2SharedShapes
+{
+    private const int Kept = 8;
+
+    private sealed class Entry(Jbig2Globals globals)
+    {
+        public Jbig2Globals Globals { get; } = globals;
+        public PdfDictionary? Stream { get; set; }
+    }
+
+    private readonly Dictionary<Jb2Dictionary, Entry> _entries = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>The shared symbols of <paramref name="dictionary"/>'s shapes.</summary>
+    public Jbig2Globals Of(Jb2Dictionary dictionary)
+    {
+        if (!_entries.TryGetValue(dictionary, out var entry))
+        {
+            if (_entries.Count >= Kept)
+                Finish();
+            entry = new Entry(new Jbig2Globals(dictionary.Shapes, dictionary.Shapes.Count));
+            _entries[dictionary] = entry;
+        }
+        return entry.Globals;
+    }
+
+    /// <summary>
+    /// The stream of <paramref name="dictionary"/>'s shared segments in <paramref name="document"/>, for a mask that
+    /// draws <paramref name="blits"/>.
+    /// </summary>
+    public PdfDictionary Use(PdfDocument document, Jb2Dictionary dictionary, IEnumerable<Jb2Blit> blits, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var entry = _entries[dictionary];
+        entry.Globals.Use(blits.Select(blit => blit.Shape));
+        if (entry.Stream is null)
+        {
+            entry.Stream = new PdfDictionary(document);
+            document.Internals.AddObject(entry.Stream);
+        }
+        return entry.Stream;
+    }
+
+    /// <summary>Writes the streams of the dictionaries masks used and forgets them all.</summary>
+    public void Finish(CancellationToken cancellationToken = default)
+    {
+        foreach (var entry in _entries.Values)
+            entry.Stream?.CreateStream(entry.Globals.Encode(cancellationToken));
+        _entries.Clear();
+    }
 }

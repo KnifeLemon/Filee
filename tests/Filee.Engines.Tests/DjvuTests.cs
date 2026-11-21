@@ -3,7 +3,9 @@
 // shared dictionary, comments and a reset) against the shapes drawn by the test, IW44 pictures against their source
 // pixels, hidden text as PDF words, the CCITT G4 codec (its code tables, round trips, Smmr masks), bookmarks and
 // hyperlinks — then whole documents (one page, bundled and indirect) to PDF, PNG and TIFF, the PDF's JBIG2, G4 and
-// Flate masks drawn back by PDFtoImage, its links and outline, and hostile files refused quickly through the limits.
+// Flate masks drawn back by PDFtoImage, its links and outline, one /JBIG2Globals for pages on a shared dictionary, the
+// initial zoom and metadata, text with only a page zone, standalone IW44 pictures, JBIG2 and G4 masks as EPS image
+// masks, and hostile files refused quickly through the limits.
 
 using System.Diagnostics;
 using Filee.Core.Conversion;
@@ -670,7 +672,7 @@ public sealed class DjvuTests(EngineFixture fx) : IClassFixture<EngineFixture>, 
         using var document = DjvuDocument.Open(Save(WidePage()), cancellationToken: Token);
         var page = document.ReadPage(0, Token);
         using var writer = new OcrPdfWriter();
-        DjvuPdfWriter.AddPage(writer, page, (MaskCodings)coding, Token);
+        DjvuPdfWriter.AddPage(writer, page, (MaskCodings)coding, null, Token);
         var output = new MemoryStream();
         writer.Document.Save(output);
         var bytes = output.ToArray();
@@ -997,6 +999,204 @@ public sealed class DjvuTests(EngineFixture fx) : IClassFixture<EngineFixture>, 
         Assert.Equal(["pdf", "png", "jpg", "tiff"], converter.Edges.Select(e => e.To));
     }
 
+    // ---- shared JBIG2 shapes, the initial view, page-only text, IW44 pictures, EPS ----
+
+    /// <summary>A 3-page book whose pages draw the shapes of one shared dictionary (and one shape of their own).</summary>
+    private static byte[] SharedShapesBook()
+    {
+        var dictionaryWriter = new Jb2Writer().Start(0, 0).New(Letter, type: 2).New(Bar, type: 2).New(LetterMark, type: 2);
+        var shared = Form("DJVI", Chunk("Djbz", dictionaryWriter.End()));
+        byte[] PageForm(int seed)
+        {
+            var writer = new Jb2Writer().RequireDictionary(3, dictionaryWriter.Library).Start(1200, 600);
+            for (var i = 0; i < 300; i++)
+                writer.Copy((i + seed) % 3, 20 + i % 30 * 38, 10 + i / 30 * 55);
+            writer.New(Jb2Writer.Shape("#.#", ".#.", "#.#"), 5, 580);
+            return Form("DJVU", Info(1200, 600, 300), Include("shared"), Chunk("Sjbz", writer.End()));
+        }
+        return Bundle(("shared", shared, false), ("p1", PageForm(0), true), ("p2", PageForm(1), true), ("p3", PageForm(2), true));
+    }
+
+    [Fact]
+    public async Task Pages_on_one_shared_dictionary_share_one_jbig2_globals_stream()
+    {
+        var source = Save(SharedShapesBook());
+        var pdfPath = Assert.Single(await Convert(source, "pdf"));
+        using var document = DjvuDocument.Open(source, cancellationToken: Token);
+        using var pdf = PdfSharp.Pdf.IO.PdfReader.Open(pdfPath, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
+        var globals = new HashSet<int>();
+        for (var i = 0; i < 3; i++)
+        {
+            var objects = pdf.Pages[i].Resources.Elements.GetDictionary("/XObject")!;
+            var image = (PdfSharp.Pdf.PdfDictionary)((PdfSharp.Pdf.Advanced.PdfReference)objects.Elements.Values.Single()!).Value;
+            Assert.Equal("/JBIG2Decode", image.Elements.GetName("/Filter"));
+            var reference = (PdfSharp.Pdf.Advanced.PdfReference)image.Elements.GetDictionary("/DecodeParms")!.Elements["/JBIG2Globals"]!;
+            globals.Add(reference.ObjectNumber);
+            // Filee's decoder reads the page's mask back from the page's stream and the shared one.
+            var shared = ((PdfSharp.Pdf.PdfDictionary)reference.Value).Stream.Value;
+            var decoded = Jbig2Decoder.Decode(image.Stream.Value, shared, cancellationToken: Token);
+            Assert.Equal(DjvuRenderer.MaskBits(document.ReadPage(i, Token), cancellationToken: Token), decoded.PackedBits());
+        }
+        Assert.Single(globals);
+
+        // PDFium draws a page through the shared stream too.
+        using var bitmap = PDFtoImage.Conversion.ToImage(File.ReadAllBytes(pdfPath), 1, null, new PDFtoImage.RenderOptions(Dpi: 300));
+        var page = document.ReadPage(1, Token);
+        var rgb = DjvuRenderer.Compose(page, Token);
+        var differ = 0;
+        for (var y = 0; y < 600; y++)
+        {
+            for (var x = 0; x < 1200; x++)
+            {
+                if ((bitmap.GetPixel(x, y).Red < 128) != (rgb[(y * 1200 + x) * 3] < 128))
+                    differ++;
+            }
+        }
+        Assert.True(differ < 1200 * 600 / 200, $"{differ} pixels differ");
+    }
+
+    [Theory]
+    [InlineData("d150", "/XYZ", 1.5)]
+    [InlineData("width", "/FitH", 0)]
+    [InlineData("page", "/Fit", 0)]
+    [InlineData("one2one", "/XYZ", 100 / 96.0)]
+    public async Task The_initial_zoom_opens_the_pdf_and_the_metadata_fills_its_information(string zoom, string fit, double factor)
+    {
+        var annotations = $"(background #8f8f8f) (zoom {zoom}) (mode bw) (metadata (Title \"Scanned book\") (Author \"Ada\") (Producer \"x\"))";
+        var source = Save(DjvuFile(BilevelPage(100, 1, AnnotationChunk(annotations))));
+        using (var document = DjvuDocument.Open(source, cancellationToken: Token))
+        {
+            var display = document.ReadPage(0, Token).Display;
+            Assert.Equal((zoom, "bw", "#8F8F8F"), (display.Zoom, display.Mode, display.Background));
+            Assert.Equal("Ada", display.Metadata["author"]);
+        }
+        var pdfPath = Assert.Single(await Convert(source, "pdf"));
+        using var pdf = PdfSharp.Pdf.IO.PdfReader.Open(pdfPath, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
+        Assert.Equal(("Scanned book", "Ada"), (pdf.Info.Title, pdf.Info.Author));
+        var action = pdf.Internals.Catalog.Elements.GetArray("/OpenAction")!;
+        Assert.Equal(fit, action.Elements[1].ToString());
+        if (factor > 0)
+            Assert.Equal(factor, ((PdfSharp.Pdf.PdfReal)action.Elements[4]).Value, 3);
+    }
+
+    [Fact]
+    public void Unknown_view_settings_and_damage_leave_the_view_unset()
+    {
+        var (_, display) = DjvuAnnotations.Read("(zoom d0) (zoom huge) (mode loud) (background red) (metadata (Title))", DjvuLimits.Default);
+        Assert.True(display.IsEmpty);
+        var (links, damaged) = DjvuAnnotations.Read("(zoom d100) (metadata (Title \"x\"", DjvuLimits.Default);
+        Assert.Empty(links);
+        Assert.Equal("d100", damaged.Zoom); // what came before the unclosed expression stands
+    }
+
+    [Fact]
+    public async Task Text_with_only_a_page_zone_becomes_its_lines()
+    {
+        const string text = "First line\nSecond line\n";
+        var chunk = DjvuBuilder.Text(text, new TextZone(1, 0, 0, 120, 60, 0, System.Text.Encoding.UTF8.GetByteCount(text)));
+        var lines = DjvuText.Read(BzzDecoder.Decode(chunk[8..(8 + ReadSize(chunk))], 1 << 20, Token), DjvuLimits.Default);
+        Assert.Equal(["First line", "Second line"], lines.Select(l => l.Text));
+        Assert.Equal(new DjvuRect(0, 30, 120, 30), lines[0].Box);
+        Assert.Equal(new DjvuRect(0, 0, 120, 30), lines[1].Box);
+
+        var pdfPath = Assert.Single(await Convert(Save(DjvuFile(BilevelPage(100, 1, chunk))), "pdf"));
+        using var pdf = PdfDocument.Open(pdfPath);
+        var words = pdf.GetPage(1).GetWords().Select(w => w.Text).ToList();
+        Assert.Contains("First", words);
+        Assert.Contains("Second", words);
+    }
+
+    [Theory]
+    [InlineData("PM44", "photo.iw44")]
+    [InlineData("BM44", "photo.iw4")]
+    public async Task A_standalone_iw44_picture_reads_as_a_one_page_document(string kind, string name)
+    {
+        const int width = 128, height = 70;
+        var grey = GreySource(width, height);
+        var y = grey.Select(g => (sbyte)(127 - g)).ToArray();
+        // A colour picture whose chroma is neutral comes back grey, as a grey one does.
+        var chunks = kind == "PM44"
+            ? Iw44Encoder.Encode(width, height, [.. grey.Select(g => (sbyte)(g - 128))], new sbyte[width * height], new sbyte[width * height], slices: 120, chunks: 2)
+            : Iw44Encoder.Encode(width, height, y, slices: 120, chunks: 2);
+        var source = Save(DjvuFile(Form(kind, [.. chunks.Select(c => Chunk(kind, c))])), name);
+        Assert.Equal("djvu", FormatRegistry.Detect(name)?.Id);
+        using (var document = DjvuDocument.Open(source, cancellationToken: Token))
+        {
+            Assert.Equal(1, document.Count);
+            var page = document.ReadPage(0, Token);
+            Assert.Equal((width, height, DjvuDocument.PictureDpi), (page.Width, page.Height, page.Dpi));
+            var errors = Enumerable.Range(0, width * height).Select(i => Math.Abs(page.Background!.Rgb[3 * i] - grey[i])).ToList();
+            Assert.True(errors.Average() < 3.0, $"mean error {errors.Average()}");
+        }
+        var png = Assert.Single(await Convert(source, "png"));
+        using (var image = new MagickImage(png))
+            Assert.Equal((width, height), ((int)image.Width, (int)image.Height));
+        using var pdf = PdfDocument.Open(Assert.Single(await Convert(source, "pdf")));
+        var pdfPage = Assert.Single(pdf.GetPages());
+        Assert.Equal(width * 72.0 / DjvuDocument.PictureDpi, pdfPage.Width, 1);
+    }
+
+    [Fact]
+    public async Task Jbig2_masks_become_eps_image_masks_of_their_bits()
+    {
+        // A bilevel page (JBIG2 mask) and a page whose foreground picture shows through a mask (an explicit mask).
+        var source = Save(SharedShapesBook());
+        var pdfPath = Assert.Single(await Convert(source, "pdf"));
+        using var document = DjvuDocument.Open(source, cancellationToken: Token);
+        var writer = new Filee.Engines.Pdf.PostScript.PdfToPostScript(pdfPath, 150, null, Token);
+        var eps = Path.Combine(_folder, "page.eps");
+        writer.Write([0], eps, eps: true, _folder);
+        Assert.Empty(writer.RasterPages);
+        var text = File.ReadAllText(eps);
+        var start = text.LastIndexOf("FileeImageMask", StringComparison.Ordinal);
+        Assert.True(start > 0);
+        Assert.DoesNotContain("JBIG2", text);
+
+        // The data the EPS holds (G4 or Flate, whichever is smaller) is the page's mask.
+        var g4 = text.LastIndexOf("/CCITTFaxDecode filter", start, StringComparison.Ordinal) > text.LastIndexOf("/ImageType", start, StringComparison.Ordinal);
+        start += "FileeImageMask".Length;
+        var end = text.IndexOf("~>", start, StringComparison.Ordinal);
+        var ascii = System.Text.Encoding.ASCII.GetBytes(text[start..(end + 2)].Trim());
+        var (data, _) = Filee.Engines.Pdf.PostScript.PdfStreams.DecodeGeneral(ascii,
+            [new Filee.Engines.Pdf.PostScript.PdfFilter("ASCII85Decode", new Dictionary<string, double>())], 1 << 24);
+        var bits = new byte[150 * 600];
+        if (g4)
+        {
+            CcittG4.Decode(data, 1200, 600, bits, 0, Token);
+        }
+        else
+        {
+            // Samples: 0 paints.
+            bits = Filee.Engines.Pdf.PostScript.PdfStreams.Inflate(data, 1 << 24);
+            for (var i = 0; i < bits.Length; i++)
+                bits[i] = (byte)~bits[i];
+        }
+        Assert.Equal(DjvuRenderer.MaskBits(document.ReadPage(0, Token), cancellationToken: Token), bits);
+        // Much smaller than the page drawn as a picture would be (1200 × 600 grey samples).
+        Assert.True(new FileInfo(eps).Length < 60_000, $"{new FileInfo(eps).Length} bytes");
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void A_foreground_picture_through_a_jbig2_or_g4_mask_stays_vector_in_eps(int coding)
+    {
+        var y = Enumerable.Range(0, 8 * 4).Select(i => (sbyte)(i * 3 - 40)).ToArray();
+        var foreground = Iw44Encoder.Encode(8, 4, y, new sbyte[32], new sbyte[32], slices: 40).Select(c => Chunk("FG44", c));
+        using var document = DjvuDocument.Open(Save(DjvuFile(BilevelPage(100, 1, [.. foreground]))), cancellationToken: Token);
+        var pdfPath = Path.Combine(_folder, $"foreground{coding}.pdf");
+        using (var pdfWriter = new OcrPdfWriter())
+        {
+            DjvuPdfWriter.AddPage(pdfWriter, document.ReadPage(0, Token), (MaskCodings)coding, null, Token);
+            pdfWriter.Save(pdfPath);
+        }
+        var writer = new Filee.Engines.Pdf.PostScript.PdfToPostScript(pdfPath, 150, null, Token);
+        var eps = Path.Combine(_folder, $"foreground{coding}.eps");
+        writer.Write([0], eps, eps: true, _folder);
+        Assert.Empty(writer.RasterPages);
+        Assert.Contains("/ImageType 3", File.ReadAllText(eps));
+    }
+
     // ---- hostile files ----
 
     [Fact]
@@ -1011,6 +1211,7 @@ public sealed class DjvuTests(EngineFixture fx) : IClassFixture<EngineFixture>, 
         // An IW44 picture claiming 65,535 × 65,535 pixels.
         byte[] bigPicture = [0, 1, 1, 2, 0xFF, 0xFF, 0xFF, 0xFF, 0x80, 0, 0, 0];
         AssertTooLarge(DjvuFile(Form("DJVU", Info(100, 100), Chunk("BG44", bigPicture))), limits: null);
+        AssertTooLarge(DjvuFile(Form("PM44", Chunk("PM44", bigPicture))), limits: null);
         // More shapes, number cells and text zones than the (lowered) limits allow.
         var shapes = new Jb2Writer().Start(200, 200).New(Letter, 0, 0);
         for (var i = 0; i < 50; i++)

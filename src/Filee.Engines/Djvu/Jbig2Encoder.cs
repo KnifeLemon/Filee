@@ -10,6 +10,68 @@
 
 namespace Filee.Engines.Djvu;
 
+/// <summary>
+/// Shared JBIG2 symbols (PDF's /JBIG2Globals) of a shape dictionary several pages build on. Every shape with black
+/// pixels has its symbol id from the start, so pages can be coded before the document ends; the shared segments are
+/// written last (<see cref="Encode"/>) and hold the bitmaps of the shapes pages used (<see cref="Use"/>) — the others,
+/// which pages only refined, stay as empty symbols of no width that cost a few bits.
+/// </summary>
+internal sealed class Jbig2Globals
+{
+    private readonly IReadOnlyList<Jb2Shape> _shapes;
+    private readonly List<int> _symbols;
+    private readonly bool[] _used;
+    private readonly Dictionary<int, int> _ids;
+
+    /// <summary>The symbols for the first <paramref name="count"/> of <paramref name="shapes"/>.</summary>
+    public Jbig2Globals(IReadOnlyList<Jb2Shape> shapes, int count)
+    {
+        _shapes = shapes;
+        _symbols = [];
+        for (var i = 0; i < count; i++)
+        {
+            var shape = shapes[i];
+            if (shape.Width > 0 && shape.Height > 0 && shape.Bits.AsSpan().ContainsAnyExcept((byte)0))
+                _symbols.Add(i);
+        }
+        Jbig2Encoder.SortSymbols(shapes, _symbols);
+        _ids = new Dictionary<int, int>(_symbols.Count);
+        for (var i = 0; i < _symbols.Count; i++)
+            _ids[_symbols[i]] = i;
+        _used = new bool[_symbols.Count];
+    }
+
+    /// <summary>The symbol id of each shared shape index (shapes without black pixels have none).</summary>
+    public IReadOnlyDictionary<int, int> Ids => _ids;
+
+    public int Count => _symbols.Count;
+
+    /// <summary>Whether any shape has been used.</summary>
+    public bool Used { get; private set; }
+
+    /// <summary>Marks the shared shapes among <paramref name="shapes"/> (shape indices) as drawn by a page.</summary>
+    public void Use(IEnumerable<int> shapes)
+    {
+        foreach (var shape in shapes)
+        {
+            if (_ids.TryGetValue(shape, out var id))
+            {
+                _used[id] = true;
+                Used = true;
+            }
+        }
+    }
+
+    /// <summary>The shared segments: one symbol dictionary (segment 0) exporting every symbol.</summary>
+    public byte[] Encode(CancellationToken cancellationToken = default)
+    {
+        var output = new List<byte>();
+        if (_symbols.Count > 0)
+            Jbig2Encoder.Segment(output, 0, 0, [], Jbig2Encoder.SymbolDictionary(_shapes, _symbols, cancellationToken, i => !_used[i]), page: 0);
+        return [.. output];
+    }
+}
+
 internal static class Jbig2Encoder
 {
     /// <summary>Rows per text region strip (log2).</summary>
@@ -20,23 +82,38 @@ internal static class Jbig2Encoder
     /// placed by their bottom-left pixel from the page's bottom-left corner) on a page of
     /// <paramref name="width"/> × <paramref name="height"/>, as JBIG2 segments.
     /// </summary>
-    public static byte[] Encode(int width, int height, IReadOnlyList<Jb2Shape> shapes, IReadOnlyList<Jb2Blit> placements, CancellationToken cancellationToken = default)
+    public static byte[] Encode(int width, int height, IReadOnlyList<Jb2Shape> shapes, IReadOnlyList<Jb2Blit> placements, CancellationToken cancellationToken = default) =>
+        Encode(width, height, shapes, placements, null, out _, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="Encode(int, int, IReadOnlyList{Jb2Shape}, IReadOnlyList{Jb2Blit}, CancellationToken)"/>, the shapes
+    /// <paramref name="globals"/> holds taken from it (the stream then refers to the shared segments, and
+    /// <paramref name="usesGlobals"/> is true) and only the page's own shapes in a dictionary of the page.
+    /// </summary>
+    public static byte[] Encode(int width, int height, IReadOnlyList<Jb2Shape> shapes, IReadOnlyList<Jb2Blit> placements, Jbig2Globals? globals, out bool usesGlobals, CancellationToken cancellationToken = default)
     {
-        // The shapes placed that have black pixels, as symbols ordered by height then width (small deltas between
-        // them); a symbol's id is its place in that order.
-        var ids = new Dictionary<int, int>();
+        usesGlobals = globals is not null && placements.Any(blit => globals.Ids.ContainsKey(blit.Shape));
+        var shared = usesGlobals ? globals : null;
+        // The page's own shapes placed that have black pixels, as symbols ordered by height then width (small deltas
+        // between them); a symbol's id is its place in that order, after the shared symbols.
+        var seen = new HashSet<int>();
         var symbols = new List<int>();
         foreach (var blit in placements)
         {
+            if (shared is not null && shared.Ids.ContainsKey(blit.Shape))
+                continue;
             var shape = shapes[blit.Shape];
-            if (shape.Width > 0 && shape.Height > 0 && ids.TryAdd(blit.Shape, 0) && shape.Bits.AsSpan().ContainsAnyExcept((byte)0))
+            if (shape.Width > 0 && shape.Height > 0 && seen.Add(blit.Shape) && shape.Bits.AsSpan().ContainsAnyExcept((byte)0))
                 symbols.Add(blit.Shape);
         }
-        symbols.Sort((a, b) => shapes[a].Height != shapes[b].Height ? shapes[a].Height.CompareTo(shapes[b].Height) : shapes[a].Width.CompareTo(shapes[b].Width));
-        ids.Clear();
+        SortSymbols(shapes, symbols);
+        var first = shared?.Count ?? 0;
+        var ids = shared is null ? new Dictionary<int, int>() : new Dictionary<int, int>(shared.Ids);
         for (var i = 0; i < symbols.Count; i++)
-            ids[symbols[i]] = i;
+            ids[symbols[i]] = first + i;
 
+        // Segment numbers: the shared dictionary is 0 when there is one.
+        var number = shared is null ? 0 : 1;
         var output = new List<byte>();
         // Page information: size, no resolution, lossless, white by default, shapes combined with OR.
         var page = new List<byte>();
@@ -46,23 +123,34 @@ internal static class Jbig2Encoder
         page.AddRange(U32(0));
         page.Add(0x01);
         page.AddRange([0, 0]);
-        Segment(output, 0, 48, [], page);
-        if (symbols.Count == 0)
+        Segment(output, number++, 48, [], page);
+        if (ids.Count == 0)
             return [.. output];
 
-        Segment(output, 1, 0, [], SymbolDictionary(shapes, symbols, cancellationToken));
-        Segment(output, 2, 6, [1], TextRegion(width, height, shapes, placements, ids, symbols.Count, cancellationToken));
+        var referred = new List<int>();
+        if (shared is not null)
+            referred.Add(0);
+        if (symbols.Count > 0)
+        {
+            referred.Add(number);
+            Segment(output, number++, 0, [], SymbolDictionary(shapes, symbols, cancellationToken));
+        }
+        Segment(output, number, 6, [.. referred], TextRegion(width, height, shapes, placements, ids, ids.Count, cancellationToken));
         return [.. output];
     }
 
-    private static void Segment(List<byte> output, int number, int type, int[] referred, List<byte> data)
+    internal static void SortSymbols(IReadOnlyList<Jb2Shape> shapes, List<int> symbols) =>
+        symbols.Sort((a, b) => shapes[a].Height != shapes[b].Height ? shapes[a].Height.CompareTo(shapes[b].Height)
+            : shapes[a].Width != shapes[b].Width ? shapes[a].Width.CompareTo(shapes[b].Width) : a.CompareTo(b));
+
+    internal static void Segment(List<byte> output, int number, int type, int[] referred, List<byte> data, int page = 1)
     {
         output.AddRange(U32(number));
         output.Add((byte)type);
         output.Add((byte)(referred.Length << 5));
         foreach (var segment in referred)
             output.Add((byte)segment);
-        output.Add(1); // page 1
+        output.Add((byte)page);
         output.AddRange(U32(data.Count));
         output.AddRange(data);
     }
@@ -72,7 +160,11 @@ internal static class Jbig2Encoder
     /// <summary>The nominal adaptive pixels of generic template 0: (3, −1), (−3, −1), (2, −2), (−2, −2).</summary>
     private static readonly byte[] TemplateZero = [3, unchecked((byte)-1), unchecked((byte)-3), unchecked((byte)-1), 2, unchecked((byte)-2), unchecked((byte)-2), unchecked((byte)-2)];
 
-    private static List<byte> SymbolDictionary(IReadOnlyList<Jb2Shape> shapes, List<int> symbols, CancellationToken cancellationToken)
+    /// <summary>
+    /// A symbol dictionary of <paramref name="symbols"/> (shape indices, sorted by height), all exported; those
+    /// <paramref name="empty"/> picks (by place in the list) are coded as symbols of no width, without a bitmap.
+    /// </summary>
+    internal static List<byte> SymbolDictionary(IReadOnlyList<Jb2Shape> shapes, List<int> symbols, CancellationToken cancellationToken, Func<int, bool>? empty = null)
     {
         var data = new List<byte> { 0, 0 }; // arithmetic coding, no aggregation, template 0
         data.AddRange(TemplateZero);
@@ -95,9 +187,11 @@ internal static class Jbig2Encoder
                 if ((i & 0xFF) == 0)
                     cancellationToken.ThrowIfCancellationRequested();
                 var shape = shapes[symbols[i]];
-                deltaWidth.Encode(coder, shape.Width - symbolWidth);
-                symbolWidth = shape.Width;
-                Generic(coder, generic, shape);
+                var width = empty?.Invoke(i) == true ? 0 : shape.Width;
+                deltaWidth.Encode(coder, width - symbolWidth);
+                symbolWidth = width;
+                if (width > 0)
+                    Generic(coder, generic, shape);
             }
             deltaWidth.EncodeOutOfBand(coder);
         }
@@ -189,7 +283,7 @@ internal static class Jbig2Encoder
     }
 
     /// <summary>T.88's integer arithmetic coder (Annex A.2) in reverse: a sign, a range prefix, then the offset bits.</summary>
-    private sealed class IntegerCoder
+    internal sealed class IntegerCoder
     {
         private readonly byte[] _contexts = new byte[512];
 
@@ -234,7 +328,7 @@ internal static class Jbig2Encoder
     }
 
     /// <summary>IAID: a symbol id in SBSYMCODELEN bits, each in the context of the bits before it.</summary>
-    private sealed class IdCoder(int symbols)
+    internal sealed class IdCoder(int symbols)
     {
         /// <summary>SBSYMCODELEN: the bits that tell <c>symbols</c> ids apart (none for one).</summary>
         private readonly int _length = 32 - System.Numerics.BitOperations.LeadingZeroCount((uint)Math.Max(symbols - 1, 0));
@@ -254,30 +348,8 @@ internal static class Jbig2Encoder
     }
 
     /// <summary>The MQ arithmetic encoder (T.88 Annex E.2); a context is a byte: its state index × 2 + its MPS.</summary>
-    private sealed class MqEncoder
+    internal sealed class MqEncoder
     {
-        private static readonly ushort[] Qe =
-        [
-            0x5601, 0x3401, 0x1801, 0x0AC1, 0x0521, 0x0221, 0x5601, 0x5401, 0x4801, 0x3801, 0x3001, 0x2401, 0x1C01, 0x1601,
-            0x5601, 0x5401, 0x5101, 0x4801, 0x3801, 0x3401, 0x3001, 0x2801, 0x2401, 0x2201, 0x1C01, 0x1801, 0x1601, 0x1401,
-            0x1201, 0x1101, 0x0AC1, 0x09C1, 0x08A1, 0x0521, 0x0441, 0x02A1, 0x0221, 0x0141, 0x0111, 0x0085, 0x0049, 0x0025,
-            0x0015, 0x0009, 0x0005, 0x0001, 0x5601,
-        ];
-
-        private static readonly byte[] NextMps =
-        [
-            1, 2, 3, 4, 5, 38, 7, 8, 9, 10, 11, 12, 13, 29, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-            32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 45, 46,
-        ];
-
-        private static readonly byte[] NextLps =
-        [
-            1, 6, 9, 12, 29, 33, 6, 14, 14, 14, 17, 18, 20, 21, 14, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-            28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 46,
-        ];
-
-        private static readonly bool[] Switch = [true, false, false, false, false, false, true, false, false, false, false, false, false, false, true];
-
         private byte[] _out = new byte[4096];
         private int _bp; // _out[0] stands for the byte before the data (BPST − 1)
         private uint _c;
@@ -288,7 +360,7 @@ internal static class Jbig2Encoder
         {
             var state = contexts[cx] >> 1;
             var mps = contexts[cx] & 1;
-            uint qe = Qe[state];
+            uint qe = MqTables.Qe[state];
             _a -= qe;
             if (bit == mps)
             {
@@ -301,7 +373,7 @@ internal static class Jbig2Encoder
                     _a = qe;
                 else
                     _c += qe;
-                contexts[cx] = (byte)((NextMps[state] << 1) | mps);
+                contexts[cx] = (byte)((MqTables.NextMps[state] << 1) | mps);
             }
             else
             {
@@ -309,9 +381,9 @@ internal static class Jbig2Encoder
                     _c += qe;
                 else
                     _a = qe;
-                if (state < Switch.Length && Switch[state])
+                if (MqTables.Switch[state])
                     mps = 1 - mps;
-                contexts[cx] = (byte)((NextLps[state] << 1) | mps);
+                contexts[cx] = (byte)((MqTables.NextLps[state] << 1) | mps);
             }
             do
             {
@@ -380,4 +452,30 @@ internal static class Jbig2Encoder
             return _out[1..(_bp + 1)];
         }
     }
+}
+
+/// <summary>The MQ coder's probability states (T.88 Table E.1): Qe, the next state after an MPS / LPS, and whether an LPS swaps the MPS.</summary>
+internal static class MqTables
+{
+    public static readonly ushort[] Qe =
+    [
+        0x5601, 0x3401, 0x1801, 0x0AC1, 0x0521, 0x0221, 0x5601, 0x5401, 0x4801, 0x3801, 0x3001, 0x2401, 0x1C01, 0x1601,
+        0x5601, 0x5401, 0x5101, 0x4801, 0x3801, 0x3401, 0x3001, 0x2801, 0x2401, 0x2201, 0x1C01, 0x1801, 0x1601, 0x1401,
+        0x1201, 0x1101, 0x0AC1, 0x09C1, 0x08A1, 0x0521, 0x0441, 0x02A1, 0x0221, 0x0141, 0x0111, 0x0085, 0x0049, 0x0025,
+        0x0015, 0x0009, 0x0005, 0x0001, 0x5601,
+    ];
+
+    public static readonly byte[] NextMps =
+    [
+        1, 2, 3, 4, 5, 38, 7, 8, 9, 10, 11, 12, 13, 29, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+        32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 45, 46,
+    ];
+
+    public static readonly byte[] NextLps =
+    [
+        1, 6, 9, 12, 29, 33, 6, 14, 14, 14, 17, 18, 20, 21, 14, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+        28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 46,
+    ];
+
+    public static readonly bool[] Switch = [.. Enumerable.Range(0, 47).Select(i => i is 0 or 6 or 14)];
 }

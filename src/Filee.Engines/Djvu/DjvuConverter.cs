@@ -1,8 +1,9 @@
 // Filee's own DjVu reader (engine id "djvu", #346): DjVu documents (.djvu, .djv; one page, bundled or indirect) to PDF —
 // every page at its size, the layers kept (DjvuPdfWriter), the hidden text searchable, the hyperlinks and bookmarks
-// kept as PDF links and outline — and pictures of the pages (PNG, JPEG, TIFF; the PDF options' page range, the pages'
-// own resolution, then the image options; TIFF holds all pages in one file). Layers Filee doesn't decode are named in
-// the file's result (ConversionStep.LeftOut).
+// kept as PDF links and outline, the initial zoom and metadata kept — and pictures of the pages (PNG, JPEG, TIFF; the
+// PDF options' page range, the pages' own resolution, then the image options; TIFF holds all pages in one file). A
+// standalone IW44 picture (.iw4, .iw44) is a one-page document. Layers Filee doesn't decode are named in the file's
+// result (ConversionStep.LeftOut).
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
@@ -50,11 +51,15 @@ public sealed class DjvuConverter : IConverter, IImageTransformer
         using var writer = new OcrPdfWriter();
         var pages = new List<PdfSharp.Pdf.PdfPage>();
         var links = new List<(int Page, IReadOnlyList<DjvuLink> Links, double Scale)>();
+        var shared = new Jbig2SharedShapes();
+        var view = (Display: DjvuDisplay.None, Scale: 1.0);
         for (var i = 0; i < document.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var page = document.ReadPage(i, cancellationToken);
-            pages.Add(DjvuPdfWriter.AddPage(writer, page, cancellationToken));
+            if (i == 0)
+                view = (page.Display, DjvuPdfWriter.Scale(page));
+            pages.Add(DjvuPdfWriter.AddPage(writer, page, shared, cancellationToken));
             if (page.Links.Count > 0)
                 links.Add((i, page.Links, DjvuPdfWriter.Scale(page)));
             progress?.Report(0.95 * (i + 1) / document.Count);
@@ -63,6 +68,8 @@ public sealed class DjvuConverter : IConverter, IImageTransformer
         foreach (var (page, pageLinks, scale) in links)
             DjvuPdfWriter.AddLinks(writer.Document, pages[page], pageLinks, scale, pages);
         DjvuPdfWriter.AddOutline(writer.Document, pages, document.Bookmarks, url => document.PageOf(url), cancellationToken);
+        DjvuPdfWriter.AddView(writer.Document, pages, view.Display, view.Scale);
+        shared.Finish(cancellationToken);
         if (step.Output.Allocate("pdf") is not { } target)
             return [];
         writer.Save(target);

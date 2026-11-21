@@ -8,8 +8,11 @@
 // A page is read when asked for: INFO (size, resolution, rotation), the mask (Sjbz, with the shape dictionary Djbz of
 // the page or of a file it includes with INCL; or the G4-coded Smmr), the background (BG44 chunks, or BGjp), the
 // foreground colours (FG44 or FGjp, or the palette FGbz), the hidden text (TXTz / TXTa) and the hyperlinks of the
-// annotations (ANTa / ANTz, also those of the files the page includes). Layers Filee doesn't decode (JPEG 2000 BG2k /
-// FG2k) are counted as pictures left out. Chunks are read one at a time, never more than DjvuLimits.MaxChunkBytes.
+// annotations (ANTa / ANTz, also those of the files the page includes) with the page's initial view and metadata.
+// Layers Filee doesn't decode are counted as pictures left out: JPEG 2000 BG2k / FG2k, which the DjVu v3 specification
+// doesn't define and no DjVu encoder Filee knows writes. Thumbnails (TH44) are skipped: PDF viewers draw their own.
+// A standalone IW44 picture (FORM:PM44 in colour, FORM:BM44 in grey; .iw4, .iw44) is read as a one-page document whose
+// page is the picture, at 100 dpi. Chunks are read one at a time, never more than DjvuLimits.MaxChunkBytes.
 
 using System.Globalization;
 using System.Text;
@@ -40,6 +43,9 @@ internal sealed class DjvuPage
 
     /// <summary>Link areas Filee follows: to a page of the document (<see cref="DjvuLink.Page"/>) or a web address.</summary>
     public IReadOnlyList<DjvuLink> Links { get; init; } = [];
+
+    /// <summary>The initial view and metadata its annotations (and those of the files it includes) give.</summary>
+    public DjvuDisplay Display { get; init; } = DjvuDisplay.None;
 
     /// <summary>Layers of the page Filee couldn't decode.</summary>
     public int LeftOut { get; init; }
@@ -150,6 +156,9 @@ internal sealed class DjvuDocument : IDisposable
                 break;
             case "DJVM":
                 ReadDirectory(start, end, cancellationToken);
+                break;
+            case "PM44" or "BM44":
+                _pages.Add(new Component("", null, start, end, kind));
                 break;
             case "DJVI":
                 throw new InvalidDataException("The file is a part DjVu pages include, not a document.");
@@ -382,6 +391,8 @@ internal sealed class DjvuDocument : IDisposable
     {
         var component = _pages[index];
         var own = ChunksOf(component, cancellationToken);
+        if (component.Kind is "PM44" or "BM44")
+            return ReadPicture(component, own, cancellationToken);
         var info = own.FirstOrDefault(c => c.Id == "INFO") ?? throw new InvalidDataException("A DjVu page has no INFO chunk.");
         var (width, height, dpi, rotation) = ReadInfo(ReadChunk(info));
 
@@ -435,12 +446,18 @@ internal sealed class DjvuDocument : IDisposable
         }
         if (mask is not null && (mask.Width != width || mask.Height != height))
             throw new InvalidDataException("A DjVu page's mask has another size than the page.");
-        // The links of the page and of the files it includes (annotations shared by several pages).
+        // The links and view of the page and of the files it includes (annotations shared by several pages); the
+        // page's own settings come first.
         var links = new List<DjvuLink>();
+        var display = DjvuDisplay.None;
         foreach (var chunk in own.Concat(Included(component, cancellationToken).SelectMany(c => ChunksOf(c, cancellationToken))))
         {
             if (chunk.Id is "ANTa" or "ANTz")
-                links.AddRange(ReadLinks(chunk, index, cancellationToken));
+            {
+                var (chunkLinks, chunkDisplay) = ReadAnnotations(chunk, index, cancellationToken);
+                links.AddRange(chunkLinks);
+                display = display.Or(chunkDisplay);
+            }
         }
         _leftOut += leftOut;
         return new DjvuPage
@@ -455,9 +472,29 @@ internal sealed class DjvuDocument : IDisposable
             Palette = palette,
             Text = text,
             Links = links,
+            Display = display,
             LeftOut = leftOut,
         };
     }
+
+    /// <summary>A standalone IW44 picture: its PM44 / BM44 chunks decoded as the page's background.</summary>
+    private DjvuPage ReadPicture(Component component, List<Chunk> chunks, CancellationToken cancellationToken)
+    {
+        var picture = new Iw44Decoder(_limits);
+        foreach (var chunk in chunks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (chunk.Id == component.Kind)
+                picture.Decode(ReadChunk(chunk), cancellationToken);
+        }
+        if (!picture.HasData)
+            throw new InvalidDataException("The IW44 picture has no data.");
+        var pixmap = picture.ToPixmap(cancellationToken);
+        return new DjvuPage { Width = pixmap.Width, Height = pixmap.Height, Dpi = PictureDpi, Background = pixmap };
+    }
+
+    /// <summary>The resolution a standalone IW44 picture (which names none) is shown at.</summary>
+    internal const int PictureDpi = 100;
 
     private (int Width, int Height, int Dpi, int Rotation) ReadInfo(byte[] data)
     {
@@ -490,8 +527,11 @@ internal sealed class DjvuDocument : IDisposable
         }
     }
 
-    /// <summary>The links of an annotation chunk Filee follows: to a page of the document, or to a web address.</summary>
-    private List<DjvuLink> ReadLinks(Chunk chunk, int page, CancellationToken cancellationToken)
+    /// <summary>
+    /// The links of an annotation chunk Filee follows (to a page of the document, or to a web address) and its display
+    /// settings.
+    /// </summary>
+    private (List<DjvuLink> Links, DjvuDisplay Display) ReadAnnotations(Chunk chunk, int page, CancellationToken cancellationToken)
     {
         string text;
         try
@@ -504,10 +544,11 @@ internal sealed class DjvuDocument : IDisposable
         catch (InvalidDataException)
         {
             // Damaged annotations leave the page without links.
-            return [];
+            return ([], DjvuDisplay.None);
         }
         var links = new List<DjvuLink>();
-        foreach (var link in DjvuAnnotations.ReadLinks(text, _limits))
+        var (read, display) = DjvuAnnotations.Read(text, _limits);
+        foreach (var link in read)
         {
             if (link.Url.StartsWith('#'))
             {
@@ -519,7 +560,7 @@ internal sealed class DjvuDocument : IDisposable
                 links.Add(link);
             }
         }
-        return links;
+        return (links, display);
     }
 
     /// <summary>

@@ -58,12 +58,15 @@ internal sealed class Jb2Dictionary(List<Jb2Shape> shapes)
 }
 
 /// <summary>A decoded JB2 page mask.</summary>
-internal sealed class Jb2Image(int width, int height, List<Jb2Shape> shapes, List<Jb2Blit> blits)
+internal sealed class Jb2Image(int width, int height, List<Jb2Shape> shapes, List<Jb2Blit> blits, Jb2Dictionary? dictionary = null)
 {
     public int Width { get; } = width;
     public int Height { get; } = height;
     public IReadOnlyList<Jb2Shape> Shapes { get; } = shapes;
     public IReadOnlyList<Jb2Blit> Blits { get; } = blits;
+
+    /// <summary>The shared dictionary the mask builds on: its shapes are the first of <see cref="Shapes"/>.</summary>
+    public Jb2Dictionary? Dictionary { get; } = dictionary;
 }
 
 /// <summary>Decodes JB2 streams.</summary>
@@ -105,6 +108,9 @@ internal sealed class Jb2Decoder
 
     private bool _started;
     private bool _usesInherited;
+
+    /// <summary>Whether the inherited dictionary's shapes are the first shapes of this image.</summary>
+    private bool _inheritedFirst;
     private int _columns, _rows;
     private int _lastLeft, _lastRight, _lastBottom, _lastRowLeft, _lastRowBottom;
     private readonly int[] _shortList = new int[3];
@@ -130,7 +136,7 @@ internal sealed class Jb2Decoder
     {
         var decoder = new Jb2Decoder(data, dictionary, limits, cancellationToken);
         decoder.Run(image: true);
-        return new Jb2Image(decoder._columns, decoder._rows, decoder._shapes, decoder._blits);
+        return new Jb2Image(decoder._columns, decoder._rows, decoder._shapes, decoder._blits, decoder._inheritedFirst ? dictionary : null);
     }
 
     /// <summary>Decodes a shared dictionary (Djbz); <paramref name="inherited"/> is a dictionary it may build on.</summary>
@@ -249,6 +255,7 @@ internal sealed class Jb2Decoder
         // The library starts with the inherited dictionary's shapes (all of them were library shapes there).
         if (_usesInherited && _inherited is not null)
         {
+            _inheritedFirst = _shapes.Count == 0;
             foreach (var shape in _inherited.Shapes)
             {
                 _library.Add(_shapes.Count);
