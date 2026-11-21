@@ -108,13 +108,14 @@ internal sealed class XpsGlyphs : XpsNode
     public SKMatrix Frame => Sideways ? SidewaysTurn : SKMatrix.Identity;
 
     /// <summary>
-    /// The skew of an italicised sideways glyph: 20° (ECMA-388 M5.14: its edge across the run skewed by 20°), as
-    /// tan 20° in Skia's SkewX sense (negative leans right). Upright runs keep the renderer's synthetic slant.
+    /// The skew of an ItalicSimulation glyph, upright or sideways: 20° (ECMA-388 §12.1.5, M5.14: the glyph skewed by
+    /// 20°), as tan 20° in Skia's SkewX sense (negative leans right). XPS's own value: synthetic italics of other
+    /// formats keep <see cref="GlyphRun.SyntheticSlant"/> (about 11°, as Skia and browsers slant).
     /// </summary>
-    public const float SidewaysSlant = -0.36397023f;
+    public const float ItalicSlant = -0.36397023f;
 
     /// <summary>The skew the run's glyphs are drawn with (SkewX), 0 without an italic simulation.</summary>
-    public float Slant => !Italic ? 0 : Sideways ? SidewaysSlant : GlyphRun.SyntheticSlant;
+    public float Slant => Italic ? ItalicSlant : 0;
 
     /// <summary>A Skia font of the run as PageContent draws it (unhinted, subpixel positions).</summary>
     public SKFont SkiaFont(SKTypeface typeface) => new(typeface, Size)

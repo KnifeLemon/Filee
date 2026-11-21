@@ -11,7 +11,8 @@
 // bearing, or that ascender. Positions of a sideways run are given in the turned frame (XpsGlyphs.SidewaysTurn).
 //
 // Style simulations (ECMA-388 §12.1.5, M5.13 / M5.14): an emboldened glyph's own advance (hmtx, or vmtx sideways) grows
-// by 2 % of the em; given advances stay. A sideways italic is skewed about its sideways origin (its top centre), not
+// by 2 % of the em; given advances stay. An italic glyph is skewed by 20°, upright or sideways (XpsGlyphs.ItalicSlant;
+// other formats' synthetic italics keep the renderer's 11°). A sideways italic is skewed about its sideways origin (its top centre), not
 // about its baseline: drawn with the skew XpsGlyphs.Slant gives about the baseline, each such glyph moves along the
 // run by the slant times its top, so its top stays on the origin.
 
@@ -94,7 +95,7 @@ internal static class XpsGlyphLayout
         var positions = new SKPoint[entries.Count];
         if (sideways)
         {
-            Sideways(typeface, font, glyphsOut, widths, entries, origin, positions, bold ? BoldAdvance * size : 0, italic ? XpsGlyphs.SidewaysSlant : 0);
+            Sideways(typeface, font, glyphsOut, widths, entries, origin, positions, bold ? BoldAdvance * size : 0, italic ? XpsGlyphs.ItalicSlant : 0);
             return new Layout(glyphsOut, positions, [.. entries.Select(e => e.Cluster)]);
         }
         var pen = origin.X;
