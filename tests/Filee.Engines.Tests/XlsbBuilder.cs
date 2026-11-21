@@ -85,6 +85,9 @@ internal sealed class XlsbBuilder
     /// <summary>Print areas and print titles: the sheet's position, "Print_Area" or "Print_Titles", the ranges (0-based, inclusive).</summary>
     public List<(int Sheet, string Name, (int Top, int Left, int Bottom, int Right)[] Ranges)> Names { get; } = [];
 
+    /// <summary>Differential formats of conditional formats: a fill (background), a font colour, bold.</summary>
+    public List<(XlsbColor? Fill, XlsbColor? Font, bool Bold)> Dxfs { get; } = [];
+
     /// <summary>More parts (drawings, VML) shared by both packages, by zip path.</summary>
     public Dictionary<string, string> Parts { get; } = [];
 
@@ -126,9 +129,9 @@ internal sealed class XlsbBuilder
         };
         for (var i = 0; i < Sheets.Count; i++)
         {
-            parts[$"xl/worksheets/sheet{i + 1}.bin"] = Sheets[i].Bin();
+            parts[$"xl/{Sheets[i].Folder}/sheet{i + 1}.bin"] = Sheets[i].Bin();
             if (Sheets[i].Relationships.Count > 0)
-                parts[$"xl/worksheets/_rels/sheet{i + 1}.bin.rels"] = Utf8(OpcWriter.Declaration + OpcWriter.Relationships(Sheets[i].Relationships));
+                parts[$"xl/{Sheets[i].Folder}/_rels/sheet{i + 1}.bin.rels"] = Utf8(OpcWriter.Declaration + OpcWriter.Relationships(Sheets[i].Relationships));
         }
         return Save(path, parts);
     }
@@ -163,7 +166,7 @@ internal sealed class XlsbBuilder
         return w.ToArray();
     }
 
-    private static byte[] StylesBin()
+    private byte[] StylesBin()
     {
         var w = new RecordWriter();
         w.Record(278, []); // BrtBeginStyleSheet
@@ -200,6 +203,25 @@ internal sealed class XlsbBuilder
         foreach (var xf in Xfs)
             w.Record(47, Xf(0, xf));
         w.Record(618, []);
+        if (Dxfs.Count > 0)
+        {
+            w.Record(505, U32((uint)Dxfs.Count)); // BrtBeginDXFs
+            foreach (var (fill, font, bold) in Dxfs)
+            {
+                var props = new List<byte[]>();
+                if (fill is { } back)
+                {
+                    props.Add([.. U16(0x00), .. U16(5), 1]); // FillPattern: solid
+                    props.Add([.. U16(0x02), .. U16(12), .. back.Bytes()]);
+                }
+                if (font is { } color)
+                    props.Add([.. U16(0x05), .. U16(12), .. color.Bytes()]);
+                if (bold)
+                    props.Add([.. U16(0x19), .. U16(6), .. U16(0x02BC)]);
+                w.Record(507, [.. U16(0), .. U16(0), .. U16((ushort)props.Count), .. props.SelectMany(p => p)]); // BrtDXF
+            }
+            w.Record(506, []);
+        }
         w.Record(279, []);
         return w.ToArray();
     }
@@ -249,9 +271,9 @@ internal sealed class XlsbBuilder
         };
         for (var i = 0; i < Sheets.Count; i++)
         {
-            parts[$"xl/worksheets/sheet{i + 1}.xml"] = Utf8(OpcWriter.Declaration + Sheets[i].Xml());
+            parts[$"xl/{Sheets[i].Folder}/sheet{i + 1}.xml"] = Utf8(OpcWriter.Declaration + Sheets[i].Xml());
             if (Sheets[i].Relationships.Count > 0)
-                parts[$"xl/worksheets/_rels/sheet{i + 1}.xml.rels"] = Utf8(OpcWriter.Declaration + OpcWriter.Relationships(Sheets[i].Relationships));
+                parts[$"xl/{Sheets[i].Folder}/_rels/sheet{i + 1}.xml.rels"] = Utf8(OpcWriter.Declaration + OpcWriter.Relationships(Sheets[i].Relationships));
         }
         return Save(path, parts);
     }
@@ -267,7 +289,7 @@ internal sealed class XlsbBuilder
 
     internal static string Column(int column) => column < 26 ? ((char)('A' + column)).ToString() : Column(column / 26 - 1) + (char)('A' + column % 26);
 
-    private static string StylesXml()
+    private string StylesXml()
     {
         var sb = new StringBuilder();
         sb.Append("<numFmts>");
@@ -303,6 +325,20 @@ internal sealed class XlsbBuilder
                 .Append(xf.Wrap ? " wrapText=\"1\"" : "").Append(xf.Shrink ? " shrinkToFit=\"1\"" : "").Append("/></xf>");
         }
         sb.Append("</cellXfs>");
+        if (Dxfs.Count > 0)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $"<dxfs count=\"{Dxfs.Count}\">");
+            foreach (var (fill, font, bold) in Dxfs)
+            {
+                sb.Append("<dxf>");
+                if (font is not null || bold)
+                    sb.Append("<font>").Append(bold ? "<b/>" : "").Append(font is { } color ? color.Xml("color") : "").Append("</font>");
+                if (fill is { } back)
+                    sb.Append("<fill><patternFill>").Append(back.Xml("bgColor")).Append("</patternFill></fill>");
+                sb.Append("</dxf>");
+            }
+            sb.Append("</dxfs>");
+        }
         return sb.ToString();
     }
 
@@ -331,7 +367,7 @@ internal sealed class XlsbBuilder
     // ───────────────────────── Package ─────────────────────────
 
     private string WorkbookRelationships(string extension) => OpcWriter.Relationships(
-        Sheets.Select((_, i) => ($"rId{i + 1}", "worksheet", $"worksheets/sheet{i + 1}.{extension}"))
+        Sheets.Select((s, i) => ($"rId{i + 1}", s.IsChart ? "chartsheet" : "worksheet", $"{s.Folder}/sheet{i + 1}.{extension}"))
             .Append(("rIdS", "sharedStrings", $"sharedStrings.{extension}"))
             .Append(("rIdT", "styles", $"styles.{extension}")));
 
@@ -479,6 +515,15 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
     public int State => state;
 
     public int FrozenRows { get; set; }
+
+    /// <summary>Conditional formats, one rule each, in priority order.</summary>
+    public List<XlsbRule> Rules { get; } = [];
+
+    /// <summary>A chart sheet: its margins, page setup and drawing (<see cref="DrawingId"/>) only.</summary>
+    public bool IsChart { get; set; }
+
+    /// <summary>The package folder of the sheet's part.</summary>
+    public string Folder => IsChart ? "chartsheets" : "worksheets";
     public bool RightToLeft { get; set; }
 
     /// <summary>Paper code, landscape, scale, fit to page (wide, tall), page order over then down, first page number.</summary>
@@ -572,6 +617,8 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
 
     public byte[] Bin()
     {
+        if (IsChart)
+            return ChartBin();
         var w = new RecordWriter();
         w.Record(129, []); // BrtBeginSheet
         var fit = PageSetup is { Fit: true } ? 0x100 : 0;
@@ -640,6 +687,8 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
                 w.Record(176, [.. XlsbBuilder.U32((uint)top), .. XlsbBuilder.U32((uint)bottom), .. XlsbBuilder.U32((uint)left), .. XlsbBuilder.U32((uint)right)]);
             w.Record(178, []);
         }
+        for (var i = 0; i < Rules.Count; i++)
+            Rules[i].Bin(w, i + 1);
         w.Record(477, XlsbBuilder.U16((ushort)((CenterHorizontally ? 0x01 : 0) | (GridLines ? 0x08 : 0))));
         if (Margins is { } m)
             w.Record(476, [.. m.SelectMany(x => XlsbBuilder.F64(x))]);
@@ -664,6 +713,29 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
         return w.ToArray();
     }
 
+    /// <summary>A chart sheet part ([MS-XLSB] 2.1.7.7): views, margins, BrtCsPageSetup, drawing.</summary>
+    private byte[] ChartBin()
+    {
+        var w = new RecordWriter();
+        w.Record(129, []); // BrtBeginSheet
+        w.Record(139, []); // BrtBeginCsViews
+        w.Record(141, [.. XlsbBuilder.U16(0), .. XlsbBuilder.U32(100), .. XlsbBuilder.U32(0)]); // BrtBeginCsView
+        w.Record(142, []);
+        w.Record(140, []);
+        if (Margins is { } m)
+            w.Record(476, [.. m.SelectMany(x => XlsbBuilder.F64(x))]);
+        if (PageSetup is { } p)
+        {
+            var flags = (ushort)((p.Landscape ? 0x01 : 0) | (p.FirstPage is not null ? 0x10 : 0));
+            w.Record(652, [.. XlsbBuilder.U32((uint)p.Paper), .. XlsbBuilder.U32(600), .. XlsbBuilder.U32(600), .. XlsbBuilder.U32(1),
+                .. XlsbBuilder.U16((ushort)(p.FirstPage ?? 1)), .. XlsbBuilder.U16(flags), .. XlsbBuilder.NullString()]); // BrtCsPageSetup
+        }
+        if (DrawingId is not null)
+            w.Record(550, XlsbBuilder.WideString(DrawingId));
+        w.Record(130, []); // BrtEndSheet
+        return w.ToArray();
+    }
+
     /// <summary>A CellParsedFormula of one PtgInt (1) and no extra data.</summary>
     private static byte[] Formula() => [.. XlsbBuilder.U16(0), .. XlsbBuilder.U32(3), 0x1E, .. XlsbBuilder.U16(1), .. XlsbBuilder.U32(0)];
 
@@ -681,6 +753,18 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
 
     public string Xml()
     {
+        if (IsChart)
+        {
+            var chart = new StringBuilder("<chartsheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">")
+                .Append("<sheetViews><sheetView workbookViewId=\"0\"/></sheetViews>");
+            if (Margins is { } cm)
+                chart.Append(CultureInfo.InvariantCulture, $"<pageMargins left=\"{cm[0]}\" right=\"{cm[1]}\" top=\"{cm[2]}\" bottom=\"{cm[3]}\" header=\"{cm[4]}\" footer=\"{cm[5]}\"/>");
+            if (PageSetup is { } cp)
+                chart.Append(CultureInfo.InvariantCulture, $"<pageSetup paperSize=\"{cp.Paper}\" orientation=\"{(cp.Landscape ? "landscape" : "portrait")}\"/>");
+            if (DrawingId is not null)
+                chart.Append($"<drawing r:id=\"{DrawingId}\"/>");
+            return chart.Append("</chartsheet>").ToString();
+        }
         var sb = new StringBuilder("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">");
         if (PageSetup is { Fit: true })
             sb.Append("<sheetPr><pageSetUpPr fitToPage=\"1\"/></sheetPr>");
@@ -725,6 +809,8 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
                 sb.Append($"<mergeCell ref=\"{XlsbBuilder.Column(left)}{top + 1}:{XlsbBuilder.Column(right)}{bottom + 1}\"/>");
             sb.Append("</mergeCells>");
         }
+        for (var i = 0; i < Rules.Count; i++)
+            sb.Append(Rules[i].Xml(i + 1));
         sb.Append("<printOptions").Append(CenterHorizontally ? " horizontalCentered=\"1\"" : "").Append(GridLines ? " gridLines=\"1\"" : "").Append("/>");
         if (Margins is { } m)
             sb.Append(CultureInfo.InvariantCulture, $"<pageMargins left=\"{m[0]}\" right=\"{m[1]}\" top=\"{m[2]}\" bottom=\"{m[3]}\" header=\"{m[4]}\" footer=\"{m[5]}\"/>");
@@ -762,4 +848,77 @@ internal sealed class XlsbSheet(XlsbBuilder book, string name, int state)
         0x24 => "#NUM!",
         _ => "#N/A",
     };
+}
+
+/// <summary>
+/// One conditional format rule written both ways: as BrtBeginConditionalFormatting / BrtBeginCFRule (with
+/// CFParsedFormula constants, colour scale BrtCFVO and BrtColor) and as conditionalFormatting / cfRule.
+/// </summary>
+/// <param name="Type">CFType: 1 cellIs, 2 expression templates, 3 colour scale, 5 top / bottom.</param>
+/// <param name="Template">CFTemp (8 contains text, 25 above average, 26 below average, ...).</param>
+/// <param name="Parameter">iParam: the CFOper, the text operator, the rank, the standard deviations.</param>
+/// <param name="Formulas">Numbers, or text in double quotes.</param>
+internal sealed record XlsbRule((int Top, int Left, int Bottom, int Right) Range, int Type, int Template, int Dxf, int Parameter, string XlsxType)
+{
+    public string[] Formulas { get; init; } = [];
+    public string? Text { get; init; }
+    public bool Bottom { get; init; }
+    public bool Percent { get; init; }
+    public (XlsbColor Low, XlsbColor High)? Scale { get; init; }
+
+    private static readonly string?[] Operators = [null, "between", "notBetween", "equal", "notEqual", "greaterThan", "lessThan", "greaterThanOrEqual", "lessThanOrEqual"];
+
+    private static byte[] Formula(string formula)
+    {
+        byte[] rgce = formula.StartsWith('"')
+            ? [0x17, .. XlsbBuilder.U16((ushort)(formula.Length - 2)), .. Encoding.Unicode.GetBytes(formula[1..^1])]
+            : [0x1F, .. XlsbBuilder.F64(double.Parse(formula, CultureInfo.InvariantCulture))];
+        return [.. XlsbBuilder.U32((uint)rgce.Length), .. rgce, .. XlsbBuilder.U32(0)];
+    }
+
+    public void Bin(RecordWriter w, int priority)
+    {
+        var (top, left, bottom, right) = Range;
+        w.Record(461, [.. XlsbBuilder.U32(1), .. XlsbBuilder.U32(0), .. XlsbBuilder.U32(1), .. XlsbBuilder.U32((uint)top), .. XlsbBuilder.U32((uint)bottom),
+            .. XlsbBuilder.U32((uint)left), .. XlsbBuilder.U32((uint)right)]); // BrtBeginConditionalFormatting
+        var flags = (ushort)((Type == 2 && Template is 25 or 29 ? 0x04 : 0) | (Bottom ? 0x08 : 0) | (Percent ? 0x10 : 0));
+        w.Record(463, [.. XlsbBuilder.U32((uint)Type), .. XlsbBuilder.U32((uint)Template), .. XlsbBuilder.U32(Scale is null ? (uint)Dxf : 0xFFFFFFFF),
+            .. XlsbBuilder.U32((uint)priority), .. XlsbBuilder.U32((uint)Parameter), .. XlsbBuilder.U32(0), .. XlsbBuilder.U32(0), .. XlsbBuilder.U16(flags),
+            .. XlsbBuilder.U32(Formulas.Length > 0 ? 1u : 0), .. XlsbBuilder.U32(Formulas.Length > 1 ? 1u : 0), .. XlsbBuilder.U32(0),
+            .. (Text is null ? XlsbBuilder.NullString() : XlsbBuilder.WideString(Text)), .. Formulas.SelectMany(Formula)]); // BrtBeginCFRule
+        if (Scale is { } scale)
+        {
+            w.Record(469, []); // BrtBeginColorScale
+            foreach (var kind in new uint[] { 2, 3 })
+                w.Record(471, [.. XlsbBuilder.U32(kind), .. XlsbBuilder.F64(0), .. XlsbBuilder.U32(0), .. XlsbBuilder.U32(0), .. XlsbBuilder.U32(0)]); // BrtCFVO
+            w.Record(564, scale.Low.Bytes());
+            w.Record(564, scale.High.Bytes());
+            w.Record(470, []);
+        }
+        w.Record(464, []);
+        w.Record(462, []);
+    }
+
+    public string Xml(int priority)
+    {
+        var (top, left, bottom, right) = Range;
+        var reference = $"{XlsbBuilder.Column(left)}{top + 1}:{XlsbBuilder.Column(right)}{bottom + 1}";
+        var sb = new StringBuilder($"<conditionalFormatting sqref=\"{reference}\"><cfRule type=\"{XlsxType}\" priority=\"{priority}\"");
+        if (Scale is null)
+            sb.Append(CultureInfo.InvariantCulture, $" dxfId=\"{Dxf}\"");
+        if (Type == 1 && Operators[Parameter] is { } op)
+            sb.Append($" operator=\"{op}\"");
+        if (Text is not null)
+            sb.Append($" text=\"{OpcWriter.Escape(Text)}\"");
+        if (Type == 5)
+            sb.Append(CultureInfo.InvariantCulture, $" rank=\"{Parameter}\"").Append(Bottom ? " bottom=\"1\"" : "").Append(Percent ? " percent=\"1\"" : "");
+        if (XlsxType == "aboveAverage" && Template is 26 or 30)
+            sb.Append(" aboveAverage=\"0\"");
+        sb.Append('>');
+        foreach (var formula in Formulas)
+            sb.Append($"<formula>{OpcWriter.Escape(formula)}</formula>");
+        if (Scale is { } scale)
+            sb.Append("<colorScale><cfvo type=\"min\"/><cfvo type=\"max\"/>").Append(scale.Low.Xml("color")).Append(scale.High.Xml("color")).Append("</colorScale>");
+        return sb.Append("</cfRule></conditionalFormatting>").ToString();
+    }
 }

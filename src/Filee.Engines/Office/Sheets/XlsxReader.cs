@@ -543,13 +543,34 @@ internal sealed class XlsxReader
         return sheet;
     }
 
-    /// <summary>A chart sheet: its page setup and the chart of its drawing; null when it has no chart ChartReader draws.</summary>
+    /// <summary>
+    /// A chart sheet: its page setup, the chart of its drawing with its anchor, and the pictures and shapes over it;
+    /// null when it has no chart ChartReader draws.
+    /// </summary>
     private Worksheet? ChartSheet(string name, XElement xml, string partPath)
     {
-        if (_package.Target(partPath, (string?)xml.Element(S + "drawing")?.Attribute(R + "id")) is not { } drawing
-            || XlsxDrawing.ChartSheet(_package, drawing, _theme?.Root, _charts).Chart is not { } chart)
+        if (_package.Target(partPath, (string?)xml.Element(S + "drawing")?.Attribute(R + "id")) is not { } drawing)
             return null;
-        return new Worksheet(name) { PageSetup = PageSetup(xml, partPath), Chart = chart };
+        var view = xml.Element(S + "sheetViews")?.Elements(S + "sheetView").FirstOrDefault();
+        return ChartSheetOf(_package, drawing, name, PageSetup(xml, partPath), On(view?.Attribute("zoomToFit")), _theme?.Root, _charts);
+    }
+
+    /// <summary>The printed chart sheet of drawing part <paramref name="drawing"/> (XLSX and XLSB); null without a chart ChartReader draws.</summary>
+    internal static Worksheet? ChartSheetOf(OpcPackage package, string drawing, string name, SheetPageSetup setup, bool fillsPage, XElement? theme, ChartBudget charts)
+    {
+        var (chart, over, _) = XlsxDrawing.ChartSheet(package, drawing, theme, charts);
+        if (chart is null)
+            return null;
+        var sheet = new Worksheet(name)
+        {
+            PageSetup = setup,
+            Chart = chart.Chart,
+            ChartAnchor = chart.To is null ? (chart.OffsetX, chart.OffsetY, chart.Width, chart.Height) : null,
+            ChartFillsPage = fillsPage,
+        };
+        // Only drawings placed by position and size share the chart's space (a chart sheet has no cells).
+        sheet.Drawings.AddRange(over.Where(d => d.To is null));
+        return sheet;
     }
 
     // ───────────────────────── Page setup ─────────────────────────

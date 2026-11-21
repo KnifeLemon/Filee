@@ -12,14 +12,25 @@ internal static class SheetRowHeights
     public const double Minimum = 0.75;
 
     /// <summary>A height as printed: 0 stays 0 (hidden), others are kept within one pixel and Excel's 409.5 pt.</summary>
-    private static double Shown(double height) => height > 0 ? Math.Clamp(height, Minimum, 409.5) : 0;
+    internal static double Shown(double height) => height > 0 ? Math.Clamp(height, Minimum, 409.5) : 0;
+
+    /// <summary>The height of a row the file says nothing about and with no text: the sheet's default, else one line of the default font.</summary>
+    internal static double Standard(Worksheet sheet, PixelMetrics defaultFont) =>
+        sheet.DefaultRowHeight is { } stored and > 0 and <= 409 ? Math.Max(stored, Minimum) : defaultFont.LineHeight * 0.75;
+
+    /// <summary>The height of a row past the cells with text (none of its own to measure): hidden, stored, or <paramref name="standard"/>.</summary>
+    internal static double Empty(Worksheet sheet, int row, double standard) =>
+        sheet.HiddenRows.Contains(row) ? 0
+        : sheet.RowHeights.TryGetValue(row, out var custom) ? Shown(custom)
+        : sheet.AutoRowHeights.TryGetValue(row, out var fitted) ? Shown(fitted)
+        : standard;
 
     /// <param name="widths">Column widths in points (wrapped text is measured in them).</param>
     public static double[] Measure(Workbook book, Worksheet sheet, int count, SheetFonts fonts, PixelMetrics defaultFont,
         double[] widths, SheetIndex index, CancellationToken cancellationToken)
     {
         var heights = new double[Math.Max(0, count)];
-        var standard = sheet.DefaultRowHeight is { } stored and > 0 and <= 409 ? Math.Max(stored, Minimum) : defaultFont.LineHeight * 0.75;
+        var standard = Standard(sheet, defaultFont);
         Array.Fill(heights, standard);
         foreach (var (row, cells) in sheet.Rows)
         {
