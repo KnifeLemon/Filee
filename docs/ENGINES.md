@@ -1012,11 +1012,16 @@ services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line
   installed.
 - **Notes and tables.** Notes on cells print when the page setup asks for them (XLSX pageSetup cellComments, XLSB
   BrtPageSetup fNotes / fEndNotes, ODS style:print "annotations"): at the end, as a list after the sheet ("Cell: B2",
-  "Comment: …", Excel's words), or as displayed, the shown notes in their boxes (the legacy VML drawing's anchor and
-  colours, or Calc's annotation box) with a line to their cell (`SheetComments`, `SheetCommentList`). Tables (XLSX
-  table parts, XLSB BrtBeginList / BrtTableStyleClient) take the look of their table style: the 60 built-in styles
-  of ECMA-376's presetTableStyles.xml or the workbook's own (`SheetTables`), under the cells' own formatting.
-- **Not printed yet.** XLSX shapes with text, sparklines; data bars, icon sets and conditional formats
+  "Comment: …", "Reply: …" in the app's language, `SheetWords`), or as displayed, the shown notes in their boxes (the
+  legacy VML drawing's anchor and colours, or Calc's annotation box) with a line to their cell (`SheetComments`,
+  `SheetCommentList`). Threaded comments (threadedComments and persons parts) are read with their authors and
+  replies in place of Excel's legacy copy, and print at the end only. Tables (XLSX table parts, XLSB BrtBeginList /
+  BrtTableStyleClient) take the look of their table style: the 60 built-in styles of ECMA-376's
+  presetTableStyles.xml or the workbook's own (`SheetTables`), then the table's and its columns' own formats
+  (headerRowDxfId / dataDxfId / totalsRowDxfId and the border ones, XLSB nDxf*), under the cells' own formatting.
+  Theme colours with a tint come out as Excel shows them (whole-number HLS out of 240, `OoxmlColors.SpreadsheetTint`).
+  Text in XLSX shapes and text boxes prints with its paragraphs, fonts and the body's anchor and insets.
+- **Not printed yet.** XLSX shape text linked to a cell, sparklines; data bars, icon sets and conditional formats
   with formulas of their own; conditional formats of XLS and ODS files; rich text in XLS cells; text running past the
   edge of a page onto the next one; black-and-white and draft printing; the margins a real printer can't print in
   (a PDF has none).

@@ -1,9 +1,10 @@
 // The pictures and shapes of a worksheet's drawing part (xl/drawings/drawingN.xml, DrawingML's spreadsheet drawing,
 // ECMA-376 Part 1, 20.5), read for the sheet printer: pictures with their turn, mirroring and cropping (a:xfrm rot,
 // flipH, flipV and a:srcRect), preset shapes with one fill and one outline colour (the shape's own or its theme
-// style's, through the slide renderer's preset definitions), and groups of both, each child placed in its share of the
-// group's anchor. What the printer doesn't draw is named instead: charts, SmartArt, embedded objects, ink, text in
-// shapes, freeform shapes, gradient, pattern and picture fills, arrowheads, turned groups, EMF / WMF / TIFF and linked
+// style's, through the slide renderer's preset definitions) with their text (paragraphs and runs of the txBody, the
+// body's anchor, insets and wrap), and groups of both, each child placed in its share of the group's anchor. What the
+// printer doesn't draw is named instead: charts, SmartArt, embedded objects, ink, text linked to a cell, freeform
+// shapes, gradient, pattern and picture fills, arrowheads, turned groups, EMF / WMF / TIFF and linked
 // pictures. SheetCapabilities asks for that name, so such a workbook can go to LibreOffice where it is installed.
 // Charts are read from their chart part (ChartReader, with the workbook's theme) and drawn, Office 2016 charts
 // (chartex) too; those ChartReader doesn't draw (region maps) are named "charts" and Excel's fallback is drawn instead.
@@ -45,6 +46,12 @@ internal sealed class XlsxDrawing
     /// left out (and named). Sheets people make hold a few hundred.
     /// </summary>
     internal const int MaxDrawings = 20_000;
+
+    /// <summary>Paragraphs of one shape's text read at most.</summary>
+    private const int MaxParagraphs = 1000;
+
+    /// <summary>Characters of one shape's text read at most (Excel's limit for a cell's text).</summary>
+    private const int MaxTextCharacters = 32_767;
 
     /// <summary>The largest EMU value taken from a position or size (about 4 km); larger ones are clamped.</summary>
     private const long MaxEmu = 50_000_000_000;
@@ -394,10 +401,9 @@ internal sealed class XlsxDrawing
             LeftOut($"the preset shape {preset}");
             return;
         }
-        // The shape is drawn; its text is not (yet).
-        if (shape.Element(_ns + "txBody")?.Descendants(A + "t").Any(t => !string.IsNullOrWhiteSpace(t.Value)) == true
-            || !string.IsNullOrEmpty((string?)shape.Attribute("textlink")))
-            LeftOut("text in shapes");
+        // Text linked to a cell (textlink="$A$1") would show the cell's value, which isn't followed.
+        if (!string.IsNullOrEmpty((string?)shape.Attribute("textlink")))
+            LeftOut("text linked to cells");
 
         var style = shape.Element(_ns + "style");
         var fill = Fill(properties, style?.Element(A + "fillRef"));
@@ -415,9 +421,127 @@ internal sealed class XlsxDrawing
             Line = line,
             LineWidth = width,
             Dash = dash,
+            Text = TextOf(shape),
         };
         Add(Placed(drawing, box, space, properties?.Element(A + "xfrm")));
     }
+
+    // ───────────────────────── Text in shapes ─────────────────────────
+
+    /// <summary>
+    /// The text of a shape or text box (xdr:txBody, DrawingML text: ECMA-376 Part 1, 21.1.2): its paragraphs (a:p with
+    /// a:pPr algn), runs (a:r, a:fld, a:br) in their a:rPr fonts (latin typeface, sz, b, i, u, strike, solidFill) over
+    /// the shape style's font reference (a:fontRef: the theme's minor or major font and its colour, Excel's 11 pt), and
+    /// a:bodyPr's anchor, insets and wrap; null when it has no text.
+    /// </summary>
+    private ShapeText? TextOf(XElement shape)
+    {
+        if (shape.Element(_ns + "txBody") is not { } body || !body.Descendants(A + "t").Any(t => !string.IsNullOrWhiteSpace(t.Value)))
+            return null;
+        var fontRef = shape.Element(_ns + "style")?.Element(A + "fontRef");
+        var baseColor = _colors.Color(fontRef);
+        var baseFont = (string?)fontRef?.Attribute("idx") == "major" ? MajorFont() : _themeFont;
+        var list = body.Element(A + "lstStyle")?.Element(A + "lvl1pPr");
+        var listRun = Run(list?.Element(A + "defRPr"), new CellRun(""));
+        var characters = 0;
+        var paragraphs = new List<ShapeParagraph>();
+        foreach (var paragraph in body.Elements(A + "p").Take(MaxParagraphs))
+        {
+            var properties = paragraph.Element(A + "pPr");
+            var paragraphRun = Run(properties?.Element(A + "defRPr"), listRun);
+            var runs = new List<CellRun>();
+            foreach (var piece in paragraph.Elements())
+            {
+                if (characters >= MaxTextCharacters)
+                    break;
+                var text = piece.Name.LocalName switch
+                {
+                    "r" or "fld" => piece.Element(A + "t")?.Value ?? "",
+                    "br" => "\n",
+                    _ => null,
+                };
+                if (string.IsNullOrEmpty(text))
+                    continue;
+                text = text[..Math.Min(text.Length, MaxTextCharacters - characters)];
+                characters += text.Length;
+                var run = Run(piece.Element(A + "rPr"), paragraphRun) with { Text = text };
+                if (runs.Count > 0 && runs[^1] with { Text = "" } == run with { Text = "" })
+                    runs[^1] = runs[^1] with { Text = runs[^1].Text + text };
+                else
+                    runs.Add(run);
+            }
+            var align = (string?)properties?.Attribute("algn") ?? (string?)list?.Attribute("algn");
+            paragraphs.Add(new ShapeParagraph(runs, align switch
+            {
+                "ctr" => CellAlign.Center,
+                "r" => CellAlign.Right,
+                _ => CellAlign.Left,
+            }));
+        }
+        var bodyPr = body.Element(A + "bodyPr");
+        double Inset(string name, double fallback) =>
+            bodyPr?.Attribute(name) is { } value ? Math.Clamp(Signed(value) * PointsPerEmu, 0, 1000) : fallback;
+        return new ShapeText(paragraphs)
+        {
+            Font = new CellStyle
+            {
+                FontName = baseFont,
+                FontSize = 11,
+                Color = baseColor is { } color ? Hex(color) : null,
+            },
+            Anchor = (string?)bodyPr?.Attribute("anchor") switch
+            {
+                "ctr" => CellVerticalAlign.Center,
+                "b" => CellVerticalAlign.Bottom,
+                _ => CellVerticalAlign.Top,
+            },
+            Insets = (Inset("lIns", 7.2), Inset("tIns", 3.6), Inset("rIns", 7.2), Inset("bIns", 3.6)),
+            Wrap = (string?)bodyPr?.Attribute("wrap") != "none",
+        };
+    }
+
+    /// <summary>A run's font from DrawingML run properties over <paramref name="under"/> (what they don't set stays).</summary>
+    private CellRun Run(XElement? properties, CellRun under)
+    {
+        if (properties is null)
+            return under;
+        bool? Flag(string name) => (string?)properties.Attribute(name) switch
+        {
+            "1" or "true" => true,
+            "0" or "false" => false,
+            _ => null,
+        };
+        var size = int.TryParse((string?)properties.Attribute("sz"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var hundredths)
+            ? Math.Clamp(hundredths / 100.0, 1, 4000)
+            : (double?)null;
+        var typeface = (string?)properties.Element(A + "latin")?.Attribute("typeface") switch
+        {
+            "+mn-lt" => _themeFont,
+            "+mj-lt" => MajorFont(),
+            { Length: > 0 } name => name,
+            _ => null,
+        };
+        var color = properties.Element(A + "solidFill") is { } fill ? _colors.Color(fill) : null;
+        return under with
+        {
+            Bold = Flag("b") ?? under.Bold,
+            Italic = Flag("i") ?? under.Italic,
+            Underline = (string?)properties.Attribute("u") is { } u ? u != "none" : under.Underline,
+            Strike = (string?)properties.Attribute("strike") is { } strike ? strike != "noStrike" : under.Strike,
+            FontSize = size ?? under.FontSize,
+            FontName = typeface ?? under.FontName,
+            Color = color is { } c ? Hex(c) : under.Color,
+            Script = int.TryParse((string?)properties.Attribute("baseline"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var baseline) && baseline != 0
+                ? Math.Sign(baseline)
+                : under.Script,
+        };
+    }
+
+    /// <summary>The theme's major (headings) latin font, or null.</summary>
+    private string? MajorFont() =>
+        (string?)_theme?.Descendants(A + "majorFont").FirstOrDefault()?.Element(A + "latin")?.Attribute("typeface") is { Length: > 0 } font ? font : null;
+
+    private static string Hex(SKColor color) => $"#{color.Red:X2}{color.Green:X2}{color.Blue:X2}";
 
     private SKColor? Fill(XElement? properties, XElement? reference)
     {

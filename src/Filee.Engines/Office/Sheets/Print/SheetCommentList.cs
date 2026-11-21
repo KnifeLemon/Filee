@@ -1,7 +1,10 @@
 // The notes of a sheet printed after its pages (page setup "at end"): for each note of the printed cells, by row and
-// then column, "Cell: B2", then "Comment: " and the note's text, a blank line between notes, in the workbook's Normal
-// font inside the sheet's margins, broken into lines at the page's width and into pages at its height. The pages get
-// the sheet's paper, header and footer and are numbered on with the sheet's.
+// then column, "Cell: B2", then "Comment: " and the note's text, then "Reply: " and each reply of a threaded comment
+// (the words in the app's language: SheetWords), a blank line between notes, in the workbook's Normal font inside the
+// sheet's margins, broken into lines at the page's width and into pages at its height. The pages get the sheet's
+// paper, header and footer and are numbered on with the sheet's.
+
+using System.Globalization;
 
 using Filee.Engines.Documents;
 using SkiaSharp;
@@ -32,6 +35,7 @@ internal static class SheetCommentList
         var bottom = (float)(height - setup.BottomMargin);
         var room = Math.Max(36, (float)(width - setup.LeftMargin - setup.RightMargin));
         var style = new CellStyle();
+        var words = SheetWords.Of(CultureInfo.CurrentUICulture);
         var y = top;
         var lines = 0;
         var page = new List<Line>();
@@ -62,14 +66,21 @@ internal static class SheetCommentList
                 break;
             if (comment != comments[0])
                 Add(" ", blank: true);
-            Add($"{SheetComments.CellWord} {SheetComments.CellName(comment.Row, comment.Column)}", blank: false);
-            var text = comment.Author is { Length: > 0 } author && !comment.Text.StartsWith(author, StringComparison.Ordinal)
-                ? $"{author}:\n{comment.Text}"
-                : comment.Text;
-            Add($"{SheetComments.CommentWord} {text}", blank: false);
+            Add($"{words.Cell} {SheetComments.CellName(comment.Row, comment.Column)}", blank: false);
+            Add($"{words.Comment} {Message(comment.Author, comment.Text)}", blank: false);
+            foreach (var (author, text) in comment.Replies)
+            {
+                if (lines >= MaxLines)
+                    break;
+                Add($"{words.Reply} {Message(author, text)}", blank: false);
+            }
         }
         if (page.Count > 0)
             pages.Add(page);
         return pages;
     }
+
+    /// <summary>A note's text after its author's name and a colon, unless the text already begins with the name (Excel's own).</summary>
+    private static string Message(string? author, string text) =>
+        author is { Length: > 0 } && !text.StartsWith(author, StringComparison.Ordinal) ? $"{author}:\n{text}" : text;
 }

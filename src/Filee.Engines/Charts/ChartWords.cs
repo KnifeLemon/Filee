@@ -1,8 +1,10 @@
 // Words a chart shows that its file doesn't hold. A waterfall chart's part names none of its legend's three entries,
 // and Excel shows "Increase", "Decrease" and "Total" in its own display language, whatever the workbook's language;
-// Filee shows them in the app's language (CultureInfo.CurrentUICulture, which the app sets),
-// from this table of the languages the app ships, English for any other. The engine has no string resources of its
-// own, so the table lives here; the words are Filee's translations, not checked against Excel's localized builds.
+// a chart template (.crtx) without values gets Office's sample names, "Category 1" … and "Series 1" …, which Office
+// also writes in its display language. Filee shows them in the app's language (CultureInfo.CurrentUICulture, which
+// the app sets), from these tables of the languages the app ships, English for any other. The engine has no string
+// resources of its own, so the tables live here; the words are Filee's translations, not checked against Excel's
+// localized builds.
 
 using System.Globalization;
 
@@ -37,6 +39,42 @@ internal static class ChartWords
         ["zh-CN"] = ["增加", "减少", "汇总"],
         ["zh-TW"] = ["增加", "減少", "總計"],
     };
+
+    /// <summary>Office's sample category and series names ({0} = the number) by the app's language codes.</summary>
+    private static readonly Dictionary<string, (string Category, string Series)> Samples = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ar"] = ("الفئة {0}", "سلسلة {0}"),
+        ["bn-BD"] = ("বিভাগ {0}", "সিরিজ {0}"),
+        ["de"] = ("Kategorie {0}", "Datenreihe {0}"),
+        ["en"] = ("Category {0}", "Series {0}"),
+        ["es"] = ("Categoría {0}", "Serie {0}"),
+        ["fa"] = ("دسته {0}", "سری {0}"),
+        ["fr"] = ("Catégorie {0}", "Série {0}"),
+        ["hi"] = ("श्रेणी {0}", "शृंखला {0}"),
+        ["id"] = ("Kategori {0}", "Seri {0}"),
+        ["it"] = ("Categoria {0}", "Serie {0}"),
+        ["ja"] = ("分類 {0}", "系列 {0}"),
+        ["ko"] = ("항목 {0}", "계열 {0}"),
+        ["mn"] = ("Ангилал {0}", "Цуврал {0}"),
+        ["ne"] = ("वर्ग {0}", "शृङ्खला {0}"),
+        ["pl"] = ("Kategoria {0}", "Seria {0}"),
+        ["pt-BR"] = ("Categoria {0}", "Série {0}"),
+        ["pt-PT"] = ("Categoria {0}", "Série {0}"),
+        ["ru"] = ("Категория {0}", "Ряд {0}"),
+        ["th"] = ("ประเภท {0}", "ชุด {0}"),
+        ["tr"] = ("Kategori {0}", "Seri {0}"),
+        ["vi"] = ("Thể loại {0}", "Chuỗi {0}"),
+        ["zh-CN"] = ("类别 {0}", "系列 {0}"),
+        ["zh-TW"] = ("類別 {0}", "數列 {0}"),
+    };
+
+    /// <summary>Office's name of sample category <paramref name="number"/> (1-based) in <paramref name="culture"/>'s language.</summary>
+    public static string SampleCategory(CultureInfo culture, int number) =>
+        string.Format(CultureInfo.InvariantCulture, Samples[Language(culture)].Category, number);
+
+    /// <summary>Office's name of sample series <paramref name="number"/> (1-based) in <paramref name="culture"/>'s language.</summary>
+    public static string SampleSeries(CultureInfo culture, int number) =>
+        string.Format(CultureInfo.InvariantCulture, Samples[Language(culture)].Series, number);
 
     /// <summary>The legend names of a waterfall's increases, decreases and totals in <paramref name="culture"/>'s language.</summary>
     public static IReadOnlyList<string> Waterfall(CultureInfo culture) => Waterfalls[Language(culture)];
