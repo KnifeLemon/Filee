@@ -5,52 +5,83 @@
 // - Text: one box per paragraph, as wide as its lines (with a little room for a wider font), its first baseline where
 //   the PDF has it. A paragraph of one line doesn't wrap, so a substitute font never breaks it in two; longer ones wrap
 //   at the box's width, so edited text flows. Alignment, indents, tabs and the line distance come from the PDF.
+//   Words far apart on one baseline (columns, table-like layouts, a label and its value) are boxes of their own: a
+//   row's parts that the document reading joins with a tab are split again (not the tab after a list number), and so
+//   is a gap much wider than the page's spaces and the line's other gaps (SlideParagraphs). Lines of a justified
+//   paragraph keep their wide spaces.
+// - Text that runs sideways or turned (any angle) is read the same way in its own direction and becomes text boxes
+//   turned by that angle.
 // - Ruled tables become real tables (the cells' text, borders, shading and sizes as for DOCX); pictures in their
 //   cells stay pictures on top of them.
 // - Pictures are picture shapes at their place, also one as large as the page (a slide's background picture or a
-//   scan): the slides keep everything that is seen, nothing is a "scan under an OCR layer" here.
+//   scan): the slides keep everything that is seen, nothing is a "scan under an OCR layer" here. A picture drawn
+//   turned or mirrored is a turned or flipped picture shape; a stencil mask (an image mask) a picture of its colour.
 // - Vector graphics: a filled or stroked rectangle becomes a rectangle shape, a straight line a line shape, so they
-//   can be moved and recoloured; a rectangle filling the page is the slide's background colour. Everything else
-//   (curves, polygons, more than MaxShapes simple shapes on one page) is drawn into one transparent picture of the
-//   page's remaining graphics (Skia, from PdfPig's paths), in the order the PDF paints them, line widths and dashes
-//   scaled by the transformation they were drawn under.
+//   can be moved and recoloured, with the PDF's transparency (ca / CA); a rectangle filling the page is the slide's
+//   background colour. Paths and "sh" areas filled with an axial or radial shading become shapes with a gradient fill
+//   (their own outline as custom geometry), as do solid fills under a soft mask that is one shading (an alpha
+//   gradient). Everything else (curves, polygons, tiling patterns, other shadings, more than MaxShapes shapes on one
+//   page) is drawn into transparent pictures of the page's graphics (Skia), line widths and dashes as the
+//   transformation they were drawn under makes them.
 //   Rules and shading of a ruled table are the table's own borders and fills, so they are not repeated as shapes.
-// - Drawing order on the slide: graphics and pictures, larger ones behind smaller ones (a background picture, then a
-//   coloured bar, then the logo on it), tables, then the text on top.
+// - Clipping: a clipping rectangle crops the pictures and rectangles it cuts (srcRect, a smaller rectangle); another
+//   clipping path is a picture's custom geometry and is intersected with a shape's outline; strokes it cuts are drawn.
+// - Drawing order on the slide: the PDF's own (PdfSlideDrawing records it): text boxes, tables, shapes and pictures
+//   stack as the page paints them. Drawn graphics share a picture as long as nothing painted between them overlaps
+//   them.
+// - Speaker notes: the contents of the page's comment annotations (sticky notes, free text, highlights and other
+//   text markup), top to bottom, with their author.
 //
-// Not rebuilt (left for later): text that runs sideways or turned (PdfPig's word extractor keeps horizontal text only;
-// a page with nothing but such text is rendered as a picture), pattern and shading fills (gradients), transparency,
-// pictures drawn turned or as stencil masks, clipping of drawings (a clipped drawing is drawn whole, within the page),
-// form fields and annotations.
+// Not rebuilt (left for later): form fields, the appearance of annotations, function-based and mesh shadings, soft
+// masks other than one colour or one shading, blend modes, text inside pattern cells, vertical CJK writing.
 
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
 using SkiaSharp;
 using UglyToad.PdfPig;
+using UglyToad.PdfPig.Annotations;
 using UglyToad.PdfPig.Content;
 using UglyToad.PdfPig.Core;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.WordExtractor;
 using UglyToad.PdfPig.Exceptions;
 using UglyToad.PdfPig.Graphics;
 using UglyToad.PdfPig.Graphics.Colors;
-using UglyToad.PdfPig.Graphics.Core;
 using UglyToad.PdfPig.Graphics.Operations;
 using UglyToad.PdfPig.Graphics.Operations.PathPainting;
 using UglyToad.PdfPig.Graphics.Operations.SpecialGraphicsState;
+using UglyToad.PdfPig.Tokens;
 
 namespace Filee.Engines.Pdf;
 
 /// <summary>A PDF page as the content of one editable slide: its size (points) and what goes on it, back to front.</summary>
 /// <param name="Background">"#RRGGBB" of a rectangle filling the page; null = white.</param>
-internal sealed record PdfSlidePage(double Width, double Height, string? Background, IReadOnlyList<PdfSlideItem> Items);
+/// <param name="Notes">The slide's speaker notes (lines separated by LF); null for none.</param>
+internal sealed record PdfSlidePage(double Width, double Height, string? Background, IReadOnlyList<PdfSlideItem> Items, string? Notes = null);
 
 /// <summary>Something on a slide in its box: points from the page's top-left corner, y downwards.</summary>
-internal abstract record PdfSlideItem(SKRect Bounds);
+internal abstract record PdfSlideItem(SKRect Bounds)
+{
+    /// <summary>Degrees clockwise the box is turned about its centre.</summary>
+    public float Rotation { get; init; }
+}
 
 /// <summary>A text box holding one paragraph; <paramref name="Wrap"/> = its lines wrap at the box's width.</summary>
 internal sealed record PdfSlideText(SKRect Bounds, HParagraph Paragraph, bool Wrap) : PdfSlideItem(Bounds);
 
 /// <summary>A picture (a JPEG or PNG file in the media folder) stretched over its box.</summary>
-internal sealed record PdfSlidePicture(SKRect Bounds, string Path) : PdfSlideItem(Bounds);
+internal sealed record PdfSlidePicture(SKRect Bounds, string Path) : PdfSlideItem(Bounds)
+{
+    public bool FlipHorizontal { get; init; }
+    public bool FlipVertical { get; init; }
+
+    /// <summary>What is cut off the picture on each side (shares of its size: left, top, right, bottom).</summary>
+    public SKRect Crop { get; init; }
+
+    public double Alpha { get; init; } = 1;
+
+    /// <summary>The outline the picture is cut to (a clipping path); null = its box.</summary>
+    public PdfGeometry? Geometry { get; init; }
+}
 
 /// <summary>A ruled table: the model table, its column widths and row heights in points.</summary>
 internal sealed record PdfSlideTable(SKRect Bounds, HTable Table, float[] Columns, float[] Rows) : PdfSlideItem(Bounds);
@@ -61,11 +92,74 @@ internal enum PdfShapeKind
 
     /// <summary>A straight line across its box, from the top-left corner unless flipped.</summary>
     Line,
+
+    /// <summary>An outline of its own (<see cref="PdfSlideShape.Geometry"/>).</summary>
+    Custom,
 }
 
-/// <summary>A rectangle or a line; colours "#RRGGBB", null = none; the line width in points.</summary>
+/// <summary>A rectangle, a line or an outline; colours "#RRGGBB", null = none; the line width in points.</summary>
 internal sealed record PdfSlideShape(SKRect Bounds, PdfShapeKind Kind, string? Fill, string? Line, float LineWidth, bool Dashed,
-    bool FlipHorizontal = false, bool FlipVertical = false) : PdfSlideItem(Bounds);
+    bool FlipHorizontal = false, bool FlipVertical = false) : PdfSlideItem(Bounds)
+{
+    public double FillAlpha { get; init; } = 1;
+    public double LineAlpha { get; init; } = 1;
+
+    /// <summary>A gradient instead of <see cref="PdfSlideShape.Fill"/>.</summary>
+    public PdfSlideGradient? Gradient { get; init; }
+
+    public PdfGeometry? Geometry { get; init; }
+}
+
+/// <summary>
+/// A DrawingML gradient over a shape's box: linear at <paramref name="Angle"/> (degrees clockwise), or circular from the
+/// point <paramref name="Focus"/> (its left and top as shares of the box) outwards; stops at shares of the way.
+/// </summary>
+internal sealed record PdfSlideGradient(bool Radial, double Angle, SKPoint Focus, IReadOnlyList<(double Position, SKColor Color)> Stops);
+
+/// <summary>An outline in its box's coordinates (points from the box's top-left corner).</summary>
+internal sealed record PdfGeometry(IReadOnlyList<(SKPathVerb Verb, SKPoint[] Points)> Commands)
+{
+    /// <summary>Segments a custom outline has at most; a longer one is drawn instead.</summary>
+    internal const int MaxCommands = 5000;
+
+    /// <summary><paramref name="path"/> moved by <paramref name="toBox"/> into its box; null when it is longer than <see cref="MaxCommands"/>.</summary>
+    public static PdfGeometry? From(SKPath path, SKMatrix toBox)
+    {
+        var commands = new List<(SKPathVerb, SKPoint[])>();
+        using var iterator = path.CreateRawIterator();
+        var points = new SKPoint[4];
+        SKPathVerb verb;
+        while ((verb = iterator.Next(points)) != SKPathVerb.Done)
+        {
+            if (commands.Count >= MaxCommands)
+                return null;
+            switch (verb)
+            {
+                case SKPathVerb.Move:
+                    commands.Add((verb, [toBox.MapPoint(points[0])]));
+                    break;
+                case SKPathVerb.Line:
+                    commands.Add((verb, [toBox.MapPoint(points[1])]));
+                    break;
+                case SKPathVerb.Quad:
+                    commands.Add((verb, [toBox.MapPoint(points[1]), toBox.MapPoint(points[2])]));
+                    break;
+                case SKPathVerb.Conic:
+                    var quads = SKPath.ConvertConicToQuads(points[0], points[1], points[2], iterator.ConicWeight(), 1);
+                    for (var i = 1; i + 1 < quads.Length; i += 2)
+                        commands.Add((SKPathVerb.Quad, [toBox.MapPoint(quads[i]), toBox.MapPoint(quads[i + 1])]));
+                    break;
+                case SKPathVerb.Cubic:
+                    commands.Add((verb, [toBox.MapPoint(points[1]), toBox.MapPoint(points[2]), toBox.MapPoint(points[3])]));
+                    break;
+                case SKPathVerb.Close:
+                    commands.Add((verb, []));
+                    break;
+            }
+        }
+        return commands.Count == 0 ? null : new PdfGeometry(commands);
+    }
+}
 
 internal sealed partial class PdfDocumentReader
 {
@@ -78,11 +172,17 @@ internal sealed partial class PdfDocumentReader
     /// <summary>A page's graphics picture has at most this many pixels (the resolution drops for a larger page).</summary>
     internal const double MaxGraphicsPixels = 25_000_000;
 
+    /// <summary>Pictures of drawn graphics one slide gets at most; graphics after that share the last one.</summary>
+    internal const int MaxGraphicsPictures = 32;
+
     /// <summary>How far above its baseline a line's box starts, in ems (about a Latin font's ascender).</summary>
     private const double SlideAscent = 0.92;
 
     /// <summary>How far below the last baseline a text box ends, in ems.</summary>
     private const double SlideDescent = 0.3;
+
+    /// <summary>Characters of speaker notes a slide gets at most.</summary>
+    private const int MaxNotes = 100_000;
 
     private static readonly Dictionary<double, int> NoHeadings = [];
 
@@ -101,7 +201,7 @@ internal sealed partial class PdfDocumentReader
         try
         {
             // Without PdfPig's clipping of paths: it turns curves into a few straight segments, which shows on a large
-            // curve. What a clip hides of a drawing is drawn (within the page) for now.
+            // curve. The paint order, clipping and transparency come from PdfSlideDrawing.
             pdf = PdfDocument.Open(path, new ParsingOptions { UseLenientParsing = true, SkipMissingFonts = true });
         }
         catch (PdfDocumentEncryptedException)
@@ -111,6 +211,7 @@ internal sealed partial class PdfDocumentReader
 
         using (pdf)
         {
+            pdf.AddPageFactory<PdfSlideDrawing, PdfSlideDrawingFactory>();
             var pages = pagesOf(pdf.NumberOfPages);
             if (pages.Count > budget.Limits.MaxPages)
                 throw DocumentLimits.TooLarge($"The PDF has more than {DocumentLimits.Count(budget.Limits.MaxPages)} pages to put on slides.");
@@ -118,69 +219,223 @@ internal sealed partial class PdfDocumentReader
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 Page page;
+                PdfSlideDrawing drawing;
                 try
                 {
                     page = pdf.GetPage(index + 1);
+                    drawing = pdf.GetPage<PdfSlideDrawing>(index + 1);
                 }
                 catch (PdfDocumentEncryptedException)
                 {
                     throw PasswordProtected();
                 }
-                slide(reader.SlidePage(page, dpi, budget, cancellationToken));
+                using (drawing)
+                    slide(reader.SlidePage(page, drawing, dpi, budget, cancellationToken));
             }
         }
     }
 
-    private PdfSlidePage SlidePage(Page page, int dpi, DocumentBudget budget, CancellationToken cancellationToken)
+    private PdfSlidePage SlidePage(Page page, PdfSlideDrawing drawing, int dpi, DocumentBudget budget, CancellationToken cancellationToken)
     {
         var content = ReadPage(page);
         var (width, height) = (content.Width, content.Height);
+        var notes = Notes(page);
         var items = new List<PdfSlideItem>();
         if (content.Scanned)
         {
-            // Text that runs sideways only: the rendered page keeps it.
             if (content.ScanPath is { } scan)
             {
                 budget.Object();
                 items.Add(new PdfSlidePicture(new SKRect(0, 0, (float)width, (float)height), scan));
             }
-            return new PdfSlidePage(width, height, null, items);
+            return new PdfSlidePage(width, height, null, items, notes);
         }
 
-        var ordered = ReadingOrder(content.Items);
-        var texts = ordered.Where(i => !i.IsPicture && !i.IsTable).ToList();
+        var texts = SlideParagraphs(content.Items.Where(i => !i.IsPicture && !i.IsTable).ToList());
+        var ordered = ReadingOrder([.. texts, .. content.Items.Where(i => i.IsPicture || i.IsTable)]);
+        texts = ordered.Where(i => !i.IsPicture && !i.IsTable).ToList();
         var lineRatio = TypicalLineRatio(texts);
         var tables = ordered.Where(i => i.IsTable).ToList();
+        var glyphs = new GlyphIndex([.. drawing.Glyphs.Where(g => !g.Turned)]);
 
-        // Back to front: pictures and graphics by size, then tables, then text.
-        var graphics = SlideGraphics(page, width, height, tables.Select(t => t.Table!.Bounds).ToList(), dpi, budget, cancellationToken);
-        var behind = new List<PdfSlideItem>(graphics.Items);
-        foreach (var picture in ordered.Where(i => i.IsPicture).Concat(tables.SelectMany(t => t.Table!.Cells.SelectMany(c => c.Pictures))))
+        // Everything with the place in the PDF's paint order it is put on the slide at.
+        var tableBoxes = tables.Select(t => Box(t.Table!.Bounds, height)).ToList();
+        var (background, entries, tableOrders) = SlideGraphics(drawing, width, height, tableBoxes, budget);
+        for (var t = 0; t < tables.Count; t++)
         {
             budget.Object();
-            behind.Add(new PdfSlidePicture(Box(picture.PictureBounds!.Value, height), picture.PicturePath!));
+            var order = tableOrders[t] ?? tables[t].Table!.Cells.SelectMany(c => c.Words).Select(glyphs.Order).Min() ?? int.MaxValue;
+            entries.Add(new Entry(order, SlideTable(tables[t], height, lineRatio, budget), null, default));
         }
-        items.AddRange(behind.OrderByDescending(i => i.Bounds.Width * i.Bounds.Height));
-        foreach (var table in tables)
-        {
-            budget.Object();
-            items.Add(SlideTable(table, height, lineRatio, budget));
-        }
+        var pictures = ordered.Where(i => i.IsPicture).Concat(tables.SelectMany(t => t.Table!.Cells.SelectMany(c => c.Pictures))).ToList();
+        entries.AddRange(SlidePictures(pictures, drawing, width, height, budget));
         foreach (var text in texts)
         {
             cancellationToken.ThrowIfCancellationRequested();
             budget.Object();
             budget.Paragraph();
-            items.Add(TextBox(text, height, lineRatio));
+            entries.Add(new Entry(glyphs.Order(text) ?? int.MaxValue, TextBox(text, height, lineRatio), null, default));
         }
-        return new PdfSlidePage(width, height, graphics.Background, items);
+        entries.AddRange(TurnedTexts(page, drawing, height, lineRatio, budget, cancellationToken));
+
+        items.AddRange(Stacked(entries.OrderBy(e => e.Order).ToList(), width, height, dpi, budget, cancellationToken));
+        return new PdfSlidePage(width, height, background, items, notes);
     }
+
+    /// <summary>
+    /// Something for the slide at its place in the paint order: a slide item, or (<paramref name="Item"/> null) a paint
+    /// to draw into a picture over <paramref name="Area"/>. A shape keeps the paint it came from in <paramref name="Paint"/>.
+    /// </summary>
+    private sealed record Entry(int Order, PdfSlideItem? Item, PdfPaint? Paint, SKRect Area);
 
     /// <summary>A PDF box (y upwards) on a page <paramref name="height"/> points high as a slide box (y downwards).</summary>
     private static SKRect Box(PdfRectangle box, double height) =>
         new((float)box.Left, (float)(height - box.Top), (float)box.Right, (float)(height - box.Bottom));
 
+    /// <summary>The upright box a turned item covers.</summary>
+    private static SKRect Shown(PdfSlideItem item)
+    {
+        if (item.Rotation == 0)
+            return item.Bounds;
+        var turn = SKMatrix.CreateRotationDegrees(item.Rotation, item.Bounds.MidX, item.Bounds.MidY);
+        return turn.MapRect(item.Bounds);
+    }
+
+    /// <summary>
+    /// The entries in order as slide items: drawn paints gather into pictures, each one put where its first paint is.
+    /// A paint joins the last picture unless something put after that picture overlaps it (it would end up under
+    /// that); after <see cref="MaxGraphicsPictures"/> pictures it joins the last one anyway.
+    /// </summary>
+    private List<PdfSlideItem> Stacked(List<Entry> entries, double width, double height, int dpi, DocumentBudget budget, CancellationToken cancellationToken)
+    {
+        // Too many shapes (a chart of bars): their paints are drawn instead.
+        if (entries.Count(e => e.Item is PdfSlideShape) > MaxShapes)
+        {
+            var drawn = new HashSet<PdfPaint>(ReferenceEqualityComparer.Instance);
+            entries = [.. entries.Where(e => e.Item is not PdfSlideShape || e.Paint is null || drawn.Add(e.Paint))
+                .Select(e => e.Item is PdfSlideShape && e.Paint is not null ? e with { Item = null } : e)];
+        }
+
+        var slots = new List<PdfSlideItem?>();
+        var groups = new List<(int Slot, List<Entry> Paints, List<SKRect> Above)>();
+        foreach (var entry in entries)
+        {
+            if (entry.Item is { } item)
+            {
+                slots.Add(item);
+                if (groups.Count > 0)
+                    groups[^1].Above.Add(Shown(item));
+                continue;
+            }
+            var area = entry.Area;
+            if (groups.Count > 0 && (groups.Count >= MaxGraphicsPictures || !groups[^1].Above.Any(a => a.IntersectsWith(area))))
+            {
+                groups[^1].Paints.Add(entry);
+                continue;
+            }
+            groups.Add((slots.Count, [entry], []));
+            slots.Add(null);
+        }
+        foreach (var (slot, paints, _) in groups)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (DrawGraphics(paints, width, height, dpi, cancellationToken) is { } picture)
+            {
+                budget.Object();
+                slots[slot] = picture;
+            }
+        }
+        return [.. slots.OfType<PdfSlideItem>()];
+    }
+
     // ───────────────────────── Text ─────────────────────────
+
+    /// <summary>
+    /// The paragraphs of a page's text for slides: where a line has words far apart (a row's parts joined with a tab,
+    /// not the one after a list number; a gap much wider than a space where the line's other gaps are not), its parts
+    /// become lines of their own and the paragraph's lines are stacked into paragraphs again. A line of a justified paragraph
+    /// (one that reaches the paragraph's right edge and is not its last) keeps its spaces however wide.
+    /// </summary>
+    private static List<Item> SlideParagraphs(List<Item> items)
+    {
+        if (items.Count == 0)
+            return items;
+        var gaps = new List<double>();
+        foreach (var line in items.SelectMany(i => i.Lines))
+        {
+            for (var w = 1; w < line.Words.Count; w++)
+            {
+                if (line.Words[w].Left - line.Words[w - 1].Right is > 0 and var gap)
+                    gaps.Add(gap);
+            }
+        }
+        var space = gaps.Count > 0 ? Math.Max(0.5, Median(gaps)) : 3;
+
+        var result = new List<Item>();
+        foreach (var item in items)
+        {
+            var lines = new List<TextLine>();
+            var changed = false;
+            for (var l = 0; l < item.Lines.Count; l++)
+            {
+                var line = item.Lines[l];
+                var justified = l < item.Lines.Count - 1 && Math.Abs(line.Right - item.Right) < 0.5 * line.Size && Math.Abs(line.Left - item.Left) < 0.5 * line.Size;
+                var parts = Parts(line, space, justified);
+                changed |= parts.Count > 1;
+                lines.AddRange(parts);
+            }
+            // The parts stack into paragraphs among themselves only: a label split off its value doesn't join the
+            // label of the next row.
+            if (changed)
+                result.AddRange(Paragraphs([.. lines.OrderBy(l => l.Row).ThenBy(l => l.Left)]));
+            else
+                result.Add(item);
+        }
+        return result;
+    }
+
+    /// <summary>A line split where its words are far apart (see <see cref="SlideParagraphs"/>).</summary>
+    private static List<TextLine> Parts(TextLine line, double space, bool justified)
+    {
+        var words = line.Words;
+        var cuts = new SortedSet<int>();
+        // "1.  Text": the number and its text stay one paragraph with a hanging indent.
+        var number = line.Tabs.Contains(1) && ListStart.IsMatch(words[0].Text);
+        foreach (var tab in line.Tabs)
+        {
+            if (!(tab == 1 && number))
+                cuts.Add(tab);
+        }
+        if (!justified && words.Count > 1)
+        {
+            var gaps = new double[words.Count - 1];
+            for (var i = 1; i < words.Count; i++)
+                gaps[i - 1] = words[i].Left - words[i - 1].Right;
+            var typical = gaps.Length >= 3 ? Median(gaps.Where(g => g > 0)) : 0;
+            for (var i = 1; i < words.Count; i++)
+            {
+                var size = Math.Min(words[i].Size, words[i - 1].Size);
+                var gap = gaps[i - 1];
+                if (!(i == 1 && number) && gap > Math.Max(1.2 * size, 3 * space) && (typical <= 0 || gap > 2.5 * typical))
+                    cuts.Add(i);
+            }
+        }
+        if (cuts.Count == 0)
+            return [line];
+        var parts = new List<TextLine>();
+        var start = 0;
+        foreach (var cut in cuts.Append(words.Count))
+        {
+            if (cut <= start)
+                continue;
+            var part = new TextLine(words.GetRange(start, cut - start), line.Row);
+            // Tabs of the joined row that stay within the part (the one after a list number).
+            part.Tabs.AddRange(line.Tabs.Where(t => t > start && t < cut).Select(t => t - start));
+            parts.Add(part);
+            start = cut;
+        }
+        return parts;
+    }
 
     /// <summary>
     /// The paragraph of <paramref name="item"/> in a box of its own: the box starts at its leftmost line and its first
@@ -235,6 +490,122 @@ internal sealed partial class PdfDocumentReader
         return new PdfSlideText(new SKRect((float)left, (float)top, (float)right, (float)Math.Max(bottom, top + 1)), paragraph, wrap);
     }
 
+    /// <summary>
+    /// Text that runs at an angle (sideways, upside down, slanted): the letters of each direction turned upright, read
+    /// into paragraphs like the page's other text, and put back as text boxes turned by their angle.
+    /// </summary>
+    private List<Entry> TurnedTexts(Page page, PdfSlideDrawing drawing, double height, double lineRatio, DocumentBudget budget,
+        CancellationToken cancellationToken)
+    {
+        var entries = new List<Entry>();
+        var turned = page.Letters
+            .Where(l => l.TextOrientation != TextOrientation.Horizontal && !string.IsNullOrWhiteSpace(l.Value)
+                        && (l.RenderingMode != TextRenderingMode.Neither || _ocrLayer))
+            .Select(l => (Letter: l, Angle: Angle(l)))
+            .Where(l => l.Angle is not null)
+            .GroupBy(l => l.Angle!.Value);
+        foreach (var direction in turned)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var radians = direction.Key * Math.PI / 180;
+            var (cos, sin) = (Math.Cos(radians), Math.Sin(radians));
+            // Into the text's own frame (turned back by the angle) and out of it again.
+            PdfPoint Upright(PdfPoint p) => new(p.X * cos + p.Y * sin, -p.X * sin + p.Y * cos);
+            PdfPoint Page(double x, double y) => new(x * cos - y * sin, x * sin + y * cos);
+
+            var letters = direction.Select(d => Turned(d.Letter, Upright)).ToList();
+            var words = new List<TextWord>();
+            foreach (var word in NearestNeighbourWordExtractor.Instance.GetWords(letters))
+            {
+                if (word.TextOrientation != TextOrientation.Horizontal || string.IsNullOrWhiteSpace(word.Text))
+                    continue;
+                var visible = word.Letters.Where(l => !string.IsNullOrWhiteSpace(l.Value)).ToList();
+                if (visible.Count == 0)
+                    continue;
+                var size = Median(visible.Select(LetterSize));
+                var box = word.BoundingBox;
+                words.Add(new TextWord(CleanText(word.Text), box.Left, box.Right, box.Top, box.Bottom, visible[0].StartBaseLine.Y, Math.Max(1, size),
+                    Format(visible[0], size), null));
+            }
+            if (words.Count == 0)
+                continue;
+            var glyphs = new GlyphIndex([.. drawing.Glyphs.Where(g => g.Turned).Select(g =>
+            {
+                var p = Upright(new PdfPoint(g.X, g.Y));
+                return g with { X = p.X, Y = p.Y };
+            })]);
+            foreach (var item in ReadingOrder(SlideParagraphs(TextItems(words))))
+            {
+                budget.Object();
+                budget.Paragraph();
+                // The box in the turned frame (y down from 0 there), its centre back on the page.
+                var box = TextBox(item, 0, lineRatio);
+                var centre = Page(box.Bounds.MidX, -box.Bounds.MidY);
+                var (x, y) = ((float)centre.X, (float)(height - centre.Y));
+                var bounds = new SKRect(x - box.Bounds.Width / 2, y - box.Bounds.Height / 2, x + box.Bounds.Width / 2, y + box.Bounds.Height / 2);
+                var rotation = (float)((360 - direction.Key) % 360);
+                entries.Add(new Entry(glyphs.Order(item) ?? int.MaxValue, box with { Bounds = bounds, Rotation = rotation }, null, default));
+            }
+        }
+        return entries;
+    }
+
+    /// <summary>The direction a letter's baseline runs in, whole degrees anticlockwise (PDF y up); null for a letter without a width.</summary>
+    private static int? Angle(Letter letter)
+    {
+        var (dx, dy) = (letter.EndBaseLine.X - letter.StartBaseLine.X, letter.EndBaseLine.Y - letter.StartBaseLine.Y);
+        if (Math.Abs(dx) + Math.Abs(dy) < 1e-3 || !double.IsFinite(dx) || !double.IsFinite(dy))
+            return null;
+        var degrees = (int)Math.Round(Math.Atan2(dy, dx) * 180 / Math.PI);
+        degrees = (degrees % 360 + 360) % 360;
+        return degrees == 0 ? null : degrees;
+    }
+
+    /// <summary>A letter moved by <paramref name="turn"/> (its boxes as the upright boxes of their turned corners).</summary>
+    private static Letter Turned(Letter letter, Func<PdfPoint, PdfPoint> turn)
+    {
+        PdfRectangle Upright(PdfRectangle box)
+        {
+            var corners = new[] { turn(box.BottomLeft), turn(box.BottomRight), turn(box.TopLeft), turn(box.TopRight) };
+            return new PdfRectangle(corners.Min(c => c.X), corners.Min(c => c.Y), corners.Max(c => c.X), corners.Max(c => c.Y));
+        }
+
+        return new Letter(letter.Value, Upright(letter.BoundingBox), Upright(letter.GlyphRectangleLoose), turn(letter.StartBaseLine), turn(letter.EndBaseLine),
+            letter.Width, letter.FontSize, letter.FontDetails, letter.RenderingMode, letter.StrokeColor, letter.FillColor, letter.PointSize, letter.TextSequence);
+    }
+
+    /// <summary>Where glyphs start (PdfSlideDrawing), sorted by height, to tell when the words of a paragraph were drawn.</summary>
+    private sealed class GlyphIndex(List<PdfGlyphOrder> glyphs)
+    {
+        private readonly PdfGlyphOrder[] _sorted = [.. glyphs.OrderBy(g => g.Y)];
+
+        /// <summary>When the first glyph of <paramref name="word"/> was drawn; null when none is found there.</summary>
+        public int? Order(TextWord word)
+        {
+            var tolerance = 0.3 * word.Size + 0.5;
+            var (low, high) = (word.Baseline - tolerance, word.Baseline + tolerance);
+            int from = 0, to = _sorted.Length;
+            while (from < to)
+            {
+                var middle = (from + to) / 2;
+                if (_sorted[middle].Y < low)
+                    from = middle + 1;
+                else
+                    to = middle;
+            }
+            int? best = null;
+            for (var i = from; i < _sorted.Length && _sorted[i].Y <= high; i++)
+            {
+                var glyph = _sorted[i];
+                if (glyph.X >= word.Left - 0.5 * word.Size && glyph.X <= word.Right && (best is null || glyph.Order < best))
+                    best = glyph.Order;
+            }
+            return best;
+        }
+
+        public int? Order(Item item) => item.Lines.SelectMany(l => l.Words).Select(Order).Min();
+    }
+
     // ───────────────────────── Tables ─────────────────────────
 
     private static PdfSlideTable SlideTable(Item item, double pageHeight, double lineRatio, DocumentBudget budget)
@@ -257,151 +628,502 @@ internal sealed partial class PdfDocumentReader
         return new PdfSlideTable(Box(grid.Bounds, pageHeight), table, columns, rows);
     }
 
+    // ───────────────────────── Pictures ─────────────────────────
+
+    /// <summary>
+    /// The page's pictures where the drawing paints them: <paramref name="pictures"/> (the files ReadPage wrote) found
+    /// by their box, placed with the matrix they are drawn with (turned, mirrored) and cut by their clipping path;
+    /// stencil masks as pictures of their colour. Pictures the drawing doesn't show go behind everything at their box.
+    /// </summary>
+    private List<Entry> SlidePictures(List<Item> pictures, PdfSlideDrawing drawing, double width, double height, DocumentBudget budget)
+    {
+        var entries = new List<Entry>();
+        var used = new bool[pictures.Count];
+        var page = new SKRect(0, 0, (float)width, (float)height);
+        foreach (var image in drawing.Paints.OfType<PdfPaintedImage>())
+        {
+            var shown = image.Matrix.MapRect(SKRect.Create(0, 0, 1, 1));
+            if (image.Image is { IsImageMask: true })
+            {
+                if (shown.Width < 1 || shown.Height < 1 || !shown.IntersectsWith(page) || _pictures >= 200)
+                    continue;
+                if (Stencil(image) is { } stencil && Placed(stencil, image, true) is { } placed)
+                {
+                    budget.Object();
+                    entries.Add(new Entry(image.Order, placed, null, default));
+                }
+                continue;
+            }
+            // ReadPage's box of the picture is PdfPig's (PDF coordinates, y up, within the page): the upright box of the
+            // unit square under the matrix for most pictures, but for some turned ones the box of two corners or of
+            // PdfPig's turned rectangle. Any of them finds the picture.
+            var m = image.Matrix;
+            var pdf = TransformationMatrix.FromValues(m.ScaleX, -m.SkewY, m.SkewX, -m.ScaleY, m.TransX, height - m.TransY);
+            var turned = pdf.Transform(new PdfRectangle(0, 0, 1, 1));
+            var (origin, corner) = (pdf.Transform(new PdfPoint(0, 0)), pdf.Transform(new PdfPoint(1, 1)));
+            SKRect OnPage(double left, double bottom, double right, double top) =>
+                new((float)Math.Max(0, left), (float)Math.Max(0, bottom), (float)Math.Min(width, right), (float)Math.Min(height, top));
+            SKRect[] expected =
+            [
+                OnPage(shown.Left, height - shown.Bottom, shown.Right, height - shown.Top),
+                OnPage(Math.Min(origin.X, corner.X), Math.Min(origin.Y, corner.Y), Math.Max(origin.X, corner.X), Math.Max(origin.Y, corner.Y)),
+                OnPage(turned.Left, turned.Bottom, turned.Right, turned.Top),
+            ];
+            var match = -1;
+            for (var i = 0; i < pictures.Count && match < 0; i++)
+            {
+                var bounds = pictures[i].PictureBounds!.Value;
+                var found = new SKRect((float)bounds.Left, (float)bounds.Bottom, (float)bounds.Right, (float)bounds.Top);
+                if (!used[i] && expected.Any(e => Close(found, e)))
+                    match = i;
+            }
+            if (match < 0)
+                continue;
+            used[match] = true;
+            var path = pictures[match].PicturePath!;
+            var natural = image.Image is { } source && PictureSize(path) is { } size && size == (source.WidthInSamples, source.HeightInSamples);
+            // A picture cut out of the rendered page is the part of the page it shows, upright.
+            var picture = natural ? Placed(path, image, false) : new PdfSlidePicture(Box(pictures[match].PictureBounds!.Value, height), path);
+            if (picture is not null)
+            {
+                budget.Object();
+                entries.Add(new Entry(image.Order, picture, null, default));
+            }
+        }
+        for (var i = 0; i < pictures.Count; i++)
+        {
+            if (used[i])
+                continue;
+            budget.Object();
+            entries.Add(new Entry(-1, new PdfSlidePicture(Box(pictures[i].PictureBounds!.Value, height), pictures[i].PicturePath!), null, default));
+        }
+        return entries;
+    }
+
+    private static bool Close(SKRect a, SKRect b) =>
+        Math.Abs(a.Left - b.Left) < 1 && Math.Abs(a.Top - b.Top) < 1 && Math.Abs(a.Right - b.Right) < 1 && Math.Abs(a.Bottom - b.Bottom) < 1;
+
+    private static (int Width, int Height)? PictureSize(string path)
+    {
+        using var codec = SKCodec.Create(path);
+        return codec is null ? null : (codec.Info.Width, codec.Info.Height);
+    }
+
+    /// <summary>
+    /// The picture <paramref name="path"/> drawn by <paramref name="image"/>'s matrix: its size, turn and mirroring, and
+    /// the clipping path as a crop (a rectangle across an upright picture) or as its outline; null when the clip hides it.
+    /// </summary>
+    private static PdfSlidePicture? Placed(string path, PdfPaintedImage image, bool stencil)
+    {
+        var m = image.Matrix;
+        var topLeft = m.MapPoint(0, 1);
+        var across = m.MapPoint(1, 1) - topLeft;
+        var down = m.MapPoint(0, 0) - topLeft;
+        var (width, height) = (across.Length, down.Length);
+        if (width < 0.5f || height < 0.5f || !float.IsFinite(width) || !float.IsFinite(height))
+            return null;
+        var rotation = (float)(Math.Atan2(across.Y, across.X) * 180 / Math.PI);
+        var mirrored = across.X * down.Y - across.Y * down.X < 0;
+        var (flipH, flipV) = (false, mirrored);
+        if (mirrored && Math.Abs(Math.Abs(rotation) - 180) < 0.5)
+            (rotation, flipH, flipV) = (0, true, false);
+        rotation = (rotation % 360 + 360) % 360;
+        if (rotation < 0.05 || rotation > 359.95)
+            rotation = 0;
+        var centre = m.MapPoint(0.5f, 0.5f);
+        var bounds = new SKRect(centre.X - width / 2, centre.Y - height / 2, centre.X + width / 2, centre.Y + height / 2);
+        var picture = new PdfSlidePicture(bounds, path) { Rotation = rotation, FlipHorizontal = flipH, FlipVertical = flipV };
+        // A stencil's colour carries its alpha already.
+        var alpha = (stencil ? 1 : image.Alpha) * (image.Mask is { Shading: null } mask ? mask.Alpha : 1);
+        if (alpha < 1)
+            picture = picture with { Alpha = alpha };
+
+        using var shown = new SKPath();
+        shown.AddPoly([m.MapPoint(0, 0), m.MapPoint(1, 0), m.MapPoint(1, 1), m.MapPoint(0, 1)]);
+        if (image.Clip is not { } clip || !Cuts(clip, shown))
+            return picture;
+        if (rotation == 0 && clip.Rectangular)
+        {
+            var visible = SKRect.Intersect(clip.Bounds, bounds);
+            if (visible.Width < 0.5f || visible.Height < 0.5f)
+                return null;
+            var (left, top, right, bottom) = ((visible.Left - bounds.Left) / width, (visible.Top - bounds.Top) / height,
+                (bounds.Right - visible.Right) / width, (bounds.Bottom - visible.Bottom) / height);
+            // The crop is of the picture itself, before it is mirrored.
+            if (flipH)
+                (left, right) = (right, left);
+            if (flipV)
+                (top, bottom) = (bottom, top);
+            return picture with { Bounds = visible, Crop = new SKRect(left, top, right, bottom) };
+        }
+        // Other clips: the visible part of the box as the picture's outline, in the box's own (unturned) coordinates.
+        var toBox = ToBox(bounds, rotation, flipH, flipV);
+        using var outline = new SKPath(clip.Path);
+        outline.Transform(toBox);
+        using var box = new SKPath();
+        box.AddRect(SKRect.Create(0, 0, width, height));
+        using var part = outline.Op(box, SKPathOp.Intersect);
+        if (part is null || part.IsEmpty || part.Bounds.Width < 0.5f || part.Bounds.Height < 0.5f)
+            return null;
+        return PdfGeometry.From(part, SKMatrix.Identity) is { } geometry ? picture with { Geometry = geometry } : picture;
+    }
+
+    /// <summary>From slide coordinates into those of a box turned and flipped as a shape's xfrm says.</summary>
+    private static SKMatrix ToBox(SKRect bounds, float rotation, bool flipH, bool flipV) =>
+        SKMatrix.CreateTranslation(-bounds.MidX, -bounds.MidY)
+            .PostConcat(SKMatrix.CreateRotationDegrees(-rotation))
+            .PostConcat(SKMatrix.CreateScale(flipH ? -1 : 1, flipV ? -1 : 1))
+            .PostConcat(SKMatrix.CreateTranslation(bounds.Width / 2, bounds.Height / 2));
+
+    /// <summary>
+    /// Whether <paramref name="clip"/> hides part of <paramref name="outline"/> (grown by <paramref name="grow"/> for
+    /// a stroke): it doesn't hold its box, or (a clipping path) some of the outline lies outside it. A stroke inside the
+    /// box of a clipping path other than a rectangle is taken as cut.
+    /// </summary>
+    private static bool Cuts(PdfClip clip, SKPath outline, float grow = 0, bool stroked = false)
+    {
+        var box = outline.TightBounds;
+        if (!Contains(clip.Bounds, SKRect.Inflate(box, grow, grow)))
+            return true;
+        if (clip.Rectangular)
+            return false;
+        if (stroked)
+            return true;
+        // A long outline: taken as cut (its picture is drawn through the clip, which is right either way).
+        if (outline.PointCount > PdfGeometry.MaxCommands)
+            return true;
+        using var outside = outline.Op(clip.Path, SKPathOp.Difference);
+        return outside is not null && !outside.IsEmpty && outside.TightBounds is { Width: > 0.25f, Height: > 0.25f };
+    }
+
+    private static bool Contains(SKRect outer, SKRect inner) =>
+        inner.Left >= outer.Left - 0.5f && inner.Top >= outer.Top - 0.5f && inner.Right <= outer.Right + 0.5f && inner.Bottom <= outer.Bottom + 0.5f;
+
+    /// <summary>A stencil mask as a PNG of its colour, transparent where it paints nothing; null when it can't be read.</summary>
+    private string? Stencil(PdfPaintedImage image)
+    {
+        if (image.Image is not { } mask || !mask.TryGetBytesAsMemory(out var memory))
+            return null;
+        var (width, height) = (mask.WidthInSamples, mask.HeightInSamples);
+        var row = (width + 7) / 8;
+        if (width <= 0 || height <= 0 || (long)width * height > MaxGraphicsPixels || memory.Length < (long)row * height)
+            return null;
+        // Samples of 0 paint, or of 1 with the decode array [1 0].
+        var paintsOne = mask.Decode is [> 0.5, ..];
+        var bytes = memory.Span;
+        using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
+        var pixels = bitmap.GetPixelSpan();
+        var color = image.MaskColor;
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var bit = (bytes[y * row + x / 8] >> (7 - x % 8)) & 1;
+                var offset = (y * width + x) * 4;
+                var paint = bit == 1 == paintsOne;
+                pixels[offset] = color.Red;
+                pixels[offset + 1] = color.Green;
+                pixels[offset + 2] = color.Blue;
+                pixels[offset + 3] = paint ? color.Alpha : (byte)0;
+            }
+        }
+        var file = NewMediaPath("png");
+        using (var encoded = bitmap.Encode(SKEncodedImageFormat.Png, 100))
+        using (var output = File.Create(file))
+            encoded.SaveTo(output);
+        return file;
+    }
+
     // ───────────────────────── Graphics ─────────────────────────
 
     /// <summary>
-    /// The page's vector graphics: rectangles and straight lines as shapes, the rest drawn into one picture, and the
-    /// colour of a first rectangle that fills the page. Straight-edged paths inside a ruled table are its rules and
-    /// shading, which the table has itself.
+    /// The page's vector graphics in paint order: rectangles and straight lines as shapes, gradient fills as shapes
+    /// with a gradient, the rest as paints to draw, and the colour of a first rectangle that fills the page.
+    /// Straight-edged paths inside a ruled table are its rules and shading, which the table has itself: the first of
+    /// them gives the table its place in the order.
     /// </summary>
-    private (string? Background, List<PdfSlideItem> Items) SlideGraphics(Page page, double width, double height,
-        List<PdfRectangle> tables, int dpi, DocumentBudget budget, CancellationToken cancellationToken)
+    private static (string? Background, List<Entry> Entries, int?[] TableOrders) SlideGraphics(PdfSlideDrawing drawing, double width, double height,
+        List<SKRect> tables, DocumentBudget budget)
     {
-        var paths = page.Paths;
-        var scales = StrokeScales(page.Operations, paths);
-        double LineWidth(PdfPath path) => path.LineWidth * (scales?.GetValueOrDefault(path, 1) ?? 1);
         string? background = null;
-        var shapes = new List<PdfSlideShape>();
-        var drawn = new List<PdfPath>();
-        var kept = new List<PdfPath>();
+        var entries = new List<Entry>();
+        var tableOrders = new int?[tables.Count];
+        var page = new SKRect(0, 0, (float)width, (float)height);
         var first = true;
-        foreach (var path in paths)
+        foreach (var paint in drawing.Paints)
         {
-            if (path.IsClipping || (!path.IsFilled && !path.IsStroked) || path.Count == 0)
-                continue;
-            var fill = path.IsFilled ? PaintColor(path.FillColor) : null;
-            var line = path.IsStroked ? PaintColor(path.StrokeColor) : null;
-            if (fill is null && line is null)
-                continue; // pattern and shading fills are not rebuilt
-            var straight = path.All(s => s.Commands.All(c => c is not PdfSubpath.BezierCurve));
-            var bounds = path.GetBoundingRectangle();
-            if (straight && bounds is { } extent && tables.Any(t => Within(extent, t, 3 + LineWidth(path))))
-                continue;
-
-            var simple = straight ? SimpleShapes(path, fill, line, LineWidth(path), height) : null;
-            // Outlined in its own colour at most (PdfPig's writer and some drivers fill and stroke a background).
-            if (first && simple is [{ Kind: PdfShapeKind.Rectangle, Fill: { } color } only] && (only.Line is null || only.Line == color)
-                && only.Bounds.Width >= 0.98 * width && only.Bounds.Height >= 0.98 * height)
+            switch (paint)
             {
-                background = color;
-                first = false;
-                continue;
+                case PdfPaintedPath path:
+                    {
+                        if (path.Fill is null && path.Stroke is null)
+                            continue; // pattern fills that can't be drawn
+                        var bounds = path.Outline.TightBounds;
+                        var half = path.Stroke is null ? 0 : Math.Max(0.5f, path.LineWidth / 2);
+                        var area = SKRect.Inflate(bounds, half, half);
+                        if (!path.Curved && tables.FindIndex(t => Within(bounds, t, 3 + path.LineWidth)) is >= 0 and var table)
+                        {
+                            tableOrders[table] ??= path.Order;
+                            continue;
+                        }
+                        if (path.Clip is { } clip)
+                            area.Intersect(clip.Bounds);
+                        if (area.Width <= 0 || area.Height <= 0 || !area.IntersectsWith(page))
+                            continue; // clipped away, or off the page
+                        var cut = path.Clip is { } c && Cuts(c, path.Outline, half, path.Stroke is not null);
+                        if (first)
+                        {
+                            first = false;
+                            // Outlined in its own colour at most (PdfPig's writer and some drivers fill and stroke a background).
+                            if (!cut && path.Mask is null && path.Fill is { IsSolid: true, Color.Alpha: 255 } fill && path.Outline.IsRect
+                                && (path.Stroke is null || path.Stroke.Color == fill.Color)
+                                && bounds.Width >= 0.98 * width && bounds.Height >= 0.98 * height)
+                            {
+                                background = Hex(fill.Color);
+                                continue;
+                            }
+                        }
+                        var shapes = PathShapes(path, cut ? path.Clip : null);
+                        if (shapes is null)
+                        {
+                            entries.Add(new Entry(path.Order, null, path, area));
+                            continue;
+                        }
+                        foreach (var shape in shapes)
+                        {
+                            budget.Object();
+                            entries.Add(new Entry(path.Order, shape, path, area));
+                        }
+                        break;
+                    }
+                case PdfPaintedShading shading:
+                    {
+                        var area = shading.Clip?.Bounds ?? ShadingBox(shading) ?? page;
+                        area.Intersect(page);
+                        if (area.Width <= 0 || area.Height <= 0)
+                            continue;
+                        first = false;
+                        if (ShadingShape(shading, page) is { } shape)
+                        {
+                            budget.Object();
+                            entries.Add(new Entry(shading.Order, shape, shading, area));
+                        }
+                        else
+                        {
+                            entries.Add(new Entry(shading.Order, null, shading, area));
+                        }
+                        break;
+                    }
             }
-            first = false;
-            kept.Add(path);
-            if (simple is null)
-                drawn.Add(path);
-            else
-                shapes.AddRange(simple);
         }
-
-        var items = new List<PdfSlideItem>();
-        if (shapes.Count > MaxShapes)
-        {
-            // A chart of bars or a pattern of lines: one picture, not a thousand shapes to click through.
-            drawn = kept;
-            shapes.Clear();
-        }
-        foreach (var shape in shapes)
-        {
-            budget.Object();
-            items.Add(shape);
-        }
-        if (drawn.Count > 0 && DrawGraphics(drawn, LineWidth, width, height, dpi, cancellationToken) is { } picture)
-        {
-            budget.Object();
-            items.Add(picture);
-        }
-        return (background, items);
+        return (background, entries, tableOrders);
     }
 
-    /// <summary>"#RRGGBB" of a fill or stroke colour; null for pattern and shading colours.</summary>
-    private static string? PaintColor(IColor? color) => color is PatternColor ? null : Color(color) ?? "#000000";
+    private static string Hex(SKColor color) => $"#{color.Red:X2}{color.Green:X2}{color.Blue:X2}";
 
-    private static bool Within(PdfRectangle box, PdfRectangle area, double tolerance) =>
-        box.Left >= area.Left - tolerance && box.Right <= area.Right + tolerance && box.Bottom >= area.Bottom - tolerance && box.Top <= area.Top + tolerance;
+    private static bool Within(SKRect box, SKRect area, double tolerance) =>
+        box.Left >= area.Left - tolerance && box.Right <= area.Right + tolerance && box.Top >= area.Top - tolerance && box.Bottom <= area.Bottom + tolerance;
+
+    /// <summary>The box of a shading painted without a clipping path (its own BBox), on the slide.</summary>
+    private static SKRect? ShadingBox(PdfPaintedShading shading)
+    {
+        if (shading.Fill.Shading.BBox is not { } box)
+            return null;
+        return shading.Fill.Space.MapRect(new SKRect((float)box.Left, (float)box.Bottom, (float)box.Right, (float)box.Top));
+    }
+
+    /// <summary>
+    /// The shapes a path becomes, or null when it is drawn: rectangles and straight lines in solid colours (cut by a
+    /// clipping rectangle when <paramref name="clip"/> is given), or the outline (intersected with the clipping path) of
+    /// a fill with an axial or radial shading, or of a solid fill under a shading soft mask.
+    /// </summary>
+    private static List<PdfSlideShape>? PathShapes(PdfPaintedPath path, PdfClip? clip)
+    {
+        var (fill, stroke) = (path.Fill, path.Stroke);
+        if (stroke is { IsSolid: false })
+            return null;
+        var maskAlpha = path.Mask is { Shading: null } mask ? mask.Alpha : 1;
+        if (fill is null or { IsSolid: true } && path.Mask?.Shading is null && !path.Curved)
+        {
+            if (clip is { Rectangular: false })
+                return null;
+            return SimpleShapes(path, clip?.Bounds, maskAlpha);
+        }
+        // A gradient: of the fill's shading, or the solid colour faded by the mask's shading.
+        if (fill is null || clip is not null && stroke is not null)
+            return null;
+        using var outline = clip is null ? new SKPath(path.Outline) : path.Outline.Op(clip.Path, SKPathOp.Intersect);
+        if (outline is null || outline.IsEmpty)
+            return null;
+        var bounds = outline.TightBounds;
+        PdfSlideGradient? gradient;
+        if (fill.Shading is { } shading && path.Mask?.Shading is null)
+        {
+            var alpha = fill.Alpha * maskAlpha;
+            gradient = Gradient(shading, bounds, c => c.WithAlpha((byte)Math.Round(alpha * 255)));
+        }
+        else if (fill.IsSolid && path.Mask?.Shading is { } fade)
+        {
+            var color = fill.Color;
+            gradient = Gradient(fade, bounds, c => color.WithAlpha((byte)Math.Round(color.Alpha * PdfShadings.Luminosity(c) * path.Mask.Alpha)));
+        }
+        else
+        {
+            return null;
+        }
+        if (gradient is null)
+            return null;
+        var line = stroke is null ? null : Hex(stroke.Color);
+        var lineAlpha = stroke is null ? 1 : stroke.Alpha * maskAlpha;
+        var dashed = path.Dash is not null;
+        if (outline.IsRect)
+            return [new PdfSlideShape(bounds, PdfShapeKind.Rectangle, null, line, path.LineWidth, dashed) { Gradient = gradient, LineAlpha = lineAlpha }];
+        if (PdfGeometry.From(outline, SKMatrix.CreateTranslation(-bounds.Left, -bounds.Top)) is not { } geometry)
+            return null;
+        return [new PdfSlideShape(bounds, PdfShapeKind.Custom, null, line, path.LineWidth, dashed) { Gradient = gradient, Geometry = geometry, LineAlpha = lineAlpha }];
+    }
+
+    /// <summary>A shading painted over its clipping path (or its box, or the page) as a shape with a gradient; null when it is drawn.</summary>
+    private static PdfSlideShape? ShadingShape(PdfPaintedShading shading, SKRect page)
+    {
+        if (shading.Mask?.Shading is not null)
+            return null;
+        using var area = new SKPath();
+        if (shading.Clip is { } clip)
+            area.AddPath(clip.Path);
+        else
+            area.AddRect(ShadingBox(shading) ?? page);
+        using var pageArea = new SKPath();
+        pageArea.AddRect(page);
+        using var visible = area.Op(pageArea, SKPathOp.Intersect);
+        if (visible is null || visible.IsEmpty)
+            return null;
+        var bounds = visible.TightBounds;
+        var alpha = shading.Alpha * (shading.Mask?.Alpha ?? 1);
+        if (Gradient(shading.Fill, bounds, c => c.WithAlpha((byte)Math.Round(alpha * 255))) is not { } gradient)
+            return null;
+        if (visible.IsRect)
+            return new PdfSlideShape(bounds, PdfShapeKind.Rectangle, null, null, 0, false) { Gradient = gradient };
+        return PdfGeometry.From(visible, SKMatrix.CreateTranslation(-bounds.Left, -bounds.Top)) is { } geometry
+            ? new PdfSlideShape(bounds, PdfShapeKind.Custom, null, null, 0, false) { Gradient = gradient, Geometry = geometry }
+            : null;
+    }
 
     /// <summary>
     /// The shapes a path of straight segments is made of when every subpath is an upright rectangle or (stroked) a
-    /// single straight line; null for anything else (a polygon, a polyline).
+    /// single straight line, each cut by <paramref name="clip"/>; null for anything else (a polygon, a polyline).
     /// </summary>
-    private static List<PdfSlideShape>? SimpleShapes(PdfPath path, string? fill, string? line, double lineWidth, double height)
+    private static List<PdfSlideShape>? SimpleShapes(PdfPaintedPath path, SKRect? clip, double maskAlpha)
     {
-        var width = (float)Math.Max(0, lineWidth);
-        var dashed = path.LineDashPattern is { } dash && !IsSolid(dash);
+        var fill = path.Fill is { } f ? Hex(f.Color) : null;
+        var line = path.Stroke is { } s ? Hex(s.Color) : null;
+        var fillAlpha = (path.Fill?.Alpha ?? 1) * maskAlpha;
+        var lineAlpha = (path.Stroke?.Alpha ?? 1) * maskAlpha;
+        var width = Math.Max(0, path.LineWidth);
+        var dashed = path.Dash is not null;
         var shapes = new List<PdfSlideShape>();
-        foreach (var subpath in path)
+        using var iterator = path.Outline.CreateRawIterator();
+        var buffer = new SKPoint[4];
+        var points = new List<SKPoint>();
+        var closed = false;
+
+        bool Flush()
         {
-            var points = new List<PdfPoint>();
-            var closed = false;
-            foreach (var command in subpath.Commands)
-            {
-                switch (command)
-                {
-                    case PdfSubpath.Move move:
-                        if (points.Count > 0)
-                            return null;
-                        points.Add(move.Location);
-                        break;
-                    case PdfSubpath.Line segment:
-                        if (points.Count == 0)
-                            points.Add(segment.From);
-                        points.Add(segment.To);
-                        break;
-                    case PdfSubpath.Close:
-                        closed = true;
-                        break;
-                    default:
-                        return null;
-                }
-            }
             if (points.Count > 1 && Same(points[0], points[^1]))
             {
                 points.RemoveAt(points.Count - 1);
                 closed = true;
             }
             if (points.Count < 2)
-                continue; // a lone point paints nothing
-            if (points.Count == 2 && !closed || points.Count == 2 && fill is null)
+                return true; // a lone point paints nothing
+            if (points.Count == 2 && (!closed || fill is null))
             {
                 if (line is null)
-                    continue; // a filled line has no area
+                    return true; // a filled line has no area
                 var (a, b) = (points[0], points[1]);
-                var box = new SKRect((float)Math.Min(a.X, b.X), (float)(height - Math.Max(a.Y, b.Y)), (float)Math.Max(a.X, b.X), (float)(height - Math.Min(a.Y, b.Y)));
+                if (clip is { } box && !ClipSegment(box, ref a, ref b))
+                    return true;
+                var bounds = new SKRect(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Max(a.X, b.X), Math.Max(a.Y, b.Y));
                 // Slide y runs down: a line rising to the right goes from the bottom-left corner (flipped vertically).
-                var rising = (b.X - a.X) * (b.Y - a.Y) > 0;
-                shapes.Add(new PdfSlideShape(box, PdfShapeKind.Line, null, line, width, dashed, FlipVertical: rising));
-                continue;
+                var rising = (b.X - a.X) * (b.Y - a.Y) < 0;
+                shapes.Add(new PdfSlideShape(bounds, PdfShapeKind.Line, null, line, width, dashed, FlipVertical: rising) { LineAlpha = lineAlpha });
+                return true;
             }
             if (points.Count != 4 || !Upright(points))
-                return null;
-            var left = points.Min(p => p.X);
-            var right = points.Max(p => p.X);
-            var bottom = points.Min(p => p.Y);
-            var top = points.Max(p => p.Y);
-            var rectangle = new SKRect((float)left, (float)(height - top), (float)right, (float)(height - bottom));
-            // An open rectangle that is only stroked misses its last side: not a rectangle shape.
-            if (!closed && fill is null)
-                return null;
-            shapes.Add(new PdfSlideShape(rectangle, PdfShapeKind.Rectangle, fill, line, width, dashed));
+                return false;
+            // An open rectangle that is only stroked misses its last side: not a rectangle shape. A stroked one cut by a
+            // clip would get the clip's edge as its outline: drawn.
+            if (!closed && fill is null || clip is not null && line is not null)
+                return false;
+            var rectangle = new SKRect(points.Min(p => p.X), points.Min(p => p.Y), points.Max(p => p.X), points.Max(p => p.Y));
+            if (clip is { } area)
+            {
+                rectangle.Intersect(area);
+                if (rectangle.Width <= 0 || rectangle.Height <= 0)
+                    return true;
+            }
+            shapes.Add(new PdfSlideShape(rectangle, PdfShapeKind.Rectangle, fill, line, width, dashed) { FillAlpha = fillAlpha, LineAlpha = lineAlpha });
+            return true;
         }
-        return shapes;
+
+        SKPathVerb verb;
+        while ((verb = iterator.Next(buffer)) != SKPathVerb.Done)
+        {
+            switch (verb)
+            {
+                case SKPathVerb.Move:
+                    if (!Flush())
+                        return null;
+                    points.Clear();
+                    closed = false;
+                    points.Add(buffer[0]);
+                    break;
+                case SKPathVerb.Line:
+                    if (points.Count == 0)
+                        points.Add(buffer[0]);
+                    points.Add(buffer[1]);
+                    break;
+                case SKPathVerb.Close:
+                    closed = true;
+                    break;
+                default:
+                    return null;
+            }
+        }
+        return Flush() ? shapes : null;
     }
 
-    private static bool Same(PdfPoint a, PdfPoint b) => Math.Abs(a.X - b.X) < 0.01 && Math.Abs(a.Y - b.Y) < 0.01;
+    /// <summary>Cuts the segment a → b to <paramref name="box"/> (Liang–Barsky); false when none of it is inside.</summary>
+    private static bool ClipSegment(SKRect box, ref SKPoint a, ref SKPoint b)
+    {
+        double t0 = 0, t1 = 1;
+        double dx = b.X - a.X, dy = b.Y - a.Y;
+        foreach (var (p, q) in new[] { (-dx, a.X - box.Left), (dx, box.Right - a.X), (-dy, a.Y - box.Top), (dy, box.Bottom - a.Y) })
+        {
+            if (Math.Abs(p) < 1e-9)
+            {
+                if (q < -0.01)
+                    return false;
+                continue;
+            }
+            var r = q / p;
+            if (p < 0)
+                t0 = Math.Max(t0, r);
+            else
+                t1 = Math.Min(t1, r);
+            if (t0 > t1)
+                return false;
+        }
+        var start = a;
+        a = new SKPoint((float)(start.X + t0 * dx), (float)(start.Y + t0 * dy));
+        b = new SKPoint((float)(start.X + t1 * dx), (float)(start.Y + t1 * dy));
+        return true;
+    }
+
+    private static bool Same(SKPoint a, SKPoint b) => Math.Abs(a.X - b.X) < 0.01 && Math.Abs(a.Y - b.Y) < 0.01;
 
     /// <summary>Four corners joined by horizontal and vertical sides.</summary>
-    private static bool Upright(List<PdfPoint> corners)
+    private static bool Upright(List<SKPoint> corners)
     {
         for (var i = 0; i < 4; i++)
         {
@@ -412,94 +1134,143 @@ internal sealed partial class PdfDocumentReader
         return true;
     }
 
-    private static bool IsSolid(LineDashPattern dash) => dash.Array.Count == 0 || dash.Array.All(d => d <= 0);
-
     /// <summary>
-    /// <paramref name="paths"/> drawn in their order into a transparent PNG over the part of the page they cover, at
-    /// <paramref name="dpi"/> (less for a large area); null when they cover nothing.
+    /// A DrawingML gradient over <paramref name="box"/> that paints like <paramref name="fill"/> (an axial shading, or a
+    /// radial one whose circles share about one centre, drawn without stretching), each colour through
+    /// <paramref name="color"/>; null for other shadings and for ones it can't show (they are drawn).
     /// </summary>
-    private PdfSlidePicture? DrawGraphics(List<PdfPath> paths, Func<PdfPath, double> lineWidth, double width, double height, int dpi,
-        CancellationToken cancellationToken)
+    internal static PdfSlideGradient? Gradient(PdfShadingFill fill, SKRect box, Func<SKColor, SKColor> color)
     {
-        // The outlines first: their extent includes the curves (PdfPig's bounding box of a path is that of its end
-        // points without clipping).
-        var outlines = new List<(PdfPath Path, SKPath Outline)>();
-        try
+        if (box.Width < 0.01f || box.Height < 0.01f)
+            return null;
+        var shading = fill.Shading;
+        var space = fill.Space;
+        var (extendStart, extendEnd) = PdfShadings.Extend(shading);
+        var centre = new SKPoint(box.MidX, box.MidY);
+        switch (shading)
         {
-            var segments = 0;
-            foreach (var path in paths)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (Outline(path, height, ref segments) is not { } outline)
-                    break;
-                outlines.Add((path, outline));
-            }
-            var page = new SKRect(0, 0, (float)width, (float)height);
-            var area = SKRect.Empty;
-            foreach (var (path, outline) in outlines)
-            {
-                var rect = outline.TightBounds;
-                var half = (float)Math.Max(0.5, lineWidth(path) / 2);
-                rect.Inflate(half, half);
-                area = area.IsEmpty ? rect : SKRect.Union(area, rect);
-            }
-            if (!area.IntersectsWith(page))
+            case AxialShading { Coords: [var x0, var y0, var x1, var y1, ..] } when PdfShadings.Finite(x0, y0, x1, y1) && (x0 != x1 || y0 != y1):
+                {
+                    var start = space.MapPoint((float)x0, (float)y0);
+                    var end = space.MapPoint((float)x1, (float)y1);
+                    // The lines of one colour run across the axis in the shading's space; on the slide, where the matrix takes them.
+                    var across = space.MapVector((float)-(y1 - y0), (float)(x1 - x0));
+                    var normal = new SKPoint(across.Y, -across.X);
+                    var length = normal.Length;
+                    if (length < 1e-9f)
+                        return null;
+                    normal = new SKPoint(normal.X / length, normal.Y / length);
+                    var distance = Dot(end - start, normal);
+                    if (Math.Abs(distance) < 1e-6)
+                        return null;
+                    if (distance < 0)
+                        (normal, distance) = (new SKPoint(-normal.X, -normal.Y), -distance);
+                    var angle = Math.Atan2(normal.Y, normal.X);
+                    // DrawingML's line through the box's centre, as long as the box is across that direction.
+                    var half = (Math.Abs(box.Width * Math.Cos(angle)) + Math.Abs(box.Height * Math.Sin(angle))) / 2;
+                    var offset = Dot(centre - start, normal);
+                    var degrees = (angle * 180 / Math.PI % 360 + 360) % 360;
+                    return new PdfSlideGradient(false, degrees, default,
+                        Stops((offset - half) / distance, 2 * half / distance, shading, extendStart, extendEnd, color));
+                }
+            case RadialShading { Coords: [var x0, var y0, var r0, var x1, var y1, var r1, ..] } when PdfShadings.Finite(x0, y0, r0, x1, y1, r1) && r0 >= 0 && r1 >= 0:
+                {
+                    // Circles stay circles only under a matrix that turns and scales evenly.
+                    var (u, v) = (space.MapVector(1, 0), space.MapVector(0, 1));
+                    if (Math.Abs(u.Length - v.Length) > 0.02 * Math.Max(u.Length, v.Length) || Math.Abs(Dot(u, v)) > 0.02 * u.Length * v.Length)
+                        return null;
+                    var scale = u.Length;
+                    var (inner, outer) = (r0 * scale, r1 * scale);
+                    var focus = space.MapPoint((float)x1, (float)y1);
+                    var other = space.MapPoint((float)x0, (float)y0);
+                    if (Math.Abs(outer - inner) < 1e-6 || (other - focus).Length > 0.02 * Math.Max(inner, outer) + 0.5)
+                        return null;
+                    if (!box.Contains(focus))
+                        return null;
+                    // DrawingML's circle runs from the focus to the box's farthest corner.
+                    var reach = new[] { new SKPoint(box.Left, box.Top), new SKPoint(box.Right, box.Top), new SKPoint(box.Left, box.Bottom), new SKPoint(box.Right, box.Bottom) }
+                        .Max(p => (p - focus).Length);
+                    return new PdfSlideGradient(true, 0, new SKPoint((focus.X - box.Left) / box.Width, (focus.Y - box.Top) / box.Height),
+                        Stops(-inner / (outer - inner), reach / (outer - inner), shading, extendStart, extendEnd, color));
+                }
+            default:
                 return null;
-            area.Intersect(page);
-            area = SKRect.Create(MathF.Floor(area.Left), MathF.Floor(area.Top), MathF.Ceiling(area.Right) - MathF.Floor(area.Left),
-                MathF.Ceiling(area.Bottom) - MathF.Floor(area.Top));
-            if (area.Width < 1 || area.Height < 1)
-                return null;
-            return Drawn(outlines, lineWidth, area, dpi, cancellationToken);
-        }
-        finally
-        {
-            foreach (var (_, outline) in outlines)
-                outline.Dispose();
         }
     }
 
-    /// <summary>The outlines filled and stroked into a transparent PNG of <paramref name="area"/> (points).</summary>
-    private PdfSlidePicture Drawn(List<(PdfPath Path, SKPath Outline)> outlines, Func<PdfPath, double> lineWidth, SKRect area, int dpi,
-        CancellationToken cancellationToken)
+    private static double Dot(SKPoint a, SKPoint b) => a.X * b.X + a.Y * b.Y;
+
+    /// <summary>
+    /// Gradient stops for a shading whose parameter is <paramref name="t0"/> + <paramref name="slope"/> × s along the
+    /// DrawingML gradient (s from 0 to 1): its colours sampled, transparent beyond an end that doesn't extend.
+    /// </summary>
+    private static List<(double Position, SKColor Color)> Stops(double t0, double slope, Shading shading, bool extendStart, bool extendEnd,
+        Func<SKColor, SKColor> color)
     {
+        const int Samples = 16;
+        SKColor At(double t) => color(PdfShadings.ColorAt(shading, t));
+        var positions = new SortedSet<double> { 0, 1 };
+        if (Math.Abs(slope) > 1e-9)
+        {
+            for (var k = 0; k <= Samples; k++)
+            {
+                var s = (k / (double)Samples - t0) / slope;
+                if (s is > 0 and < 1)
+                    positions.Add(s);
+            }
+        }
+        var stops = new List<(double, SKColor)>();
+        foreach (var s in positions)
+        {
+            var t = t0 + slope * s;
+            var before = t < 0 ? (extendStart ? At(0) : At(0).WithAlpha(0)) : t > 1 ? (extendEnd ? At(1) : At(1).WithAlpha(0)) : At(t);
+            // A hard edge where the shading stops without extending: the colour, then nothing (or the other way round).
+            var atStart = Math.Abs(t) < 1e-6;
+            var edge = atStart && !extendStart || Math.Abs(t - 1) < 1e-6 && !extendEnd;
+            if (edge && s is > 0 and < 1)
+            {
+                var outside = atStart ? At(0).WithAlpha(0) : At(1).WithAlpha(0);
+                // Outside first where the way runs into the shading.
+                var rising = slope > 0 == atStart;
+                stops.Add((s, rising ? outside : At(t)));
+                stops.Add((s, rising ? At(t) : outside));
+                continue;
+            }
+            stops.Add((s, before));
+        }
+        return stops;
+    }
+
+    /// <summary>
+    /// <paramref name="paints"/> drawn in their order into a transparent PNG over the part of the page they cover, at
+    /// <paramref name="dpi"/> (less for a large area); null when they cover nothing.
+    /// </summary>
+    private PdfSlidePicture? DrawGraphics(List<Entry> paints, double width, double height, int dpi, CancellationToken cancellationToken)
+    {
+        var page = new SKRect(0, 0, (float)width, (float)height);
+        var area = SKRect.Empty;
+        foreach (var entry in paints)
+            area = area.IsEmpty ? entry.Area : SKRect.Union(area, entry.Area);
+        if (!area.IntersectsWith(page))
+            return null;
+        area.Intersect(page);
+        area = SKRect.Create(MathF.Floor(area.Left), MathF.Floor(area.Top), MathF.Ceiling(area.Right) - MathF.Floor(area.Left),
+            MathF.Ceiling(area.Bottom) - MathF.Floor(area.Top));
+        if (area.Width < 1 || area.Height < 1)
+            return null;
+
         var scale = dpi / 72.0;
         if (area.Width * scale * area.Height * scale > MaxGraphicsPixels)
             scale = Math.Sqrt(MaxGraphicsPixels / (area.Width * area.Height));
         var pixelWidth = Math.Max(1, (int)Math.Ceiling(area.Width * scale));
         var pixelHeight = Math.Max(1, (int)Math.Ceiling(area.Height * scale));
-
         using var bitmap = new SKBitmap(new SKImageInfo(pixelWidth, pixelHeight, SKColorType.Rgba8888, SKAlphaType.Premul));
         using (var canvas = new SKCanvas(bitmap))
         {
             canvas.Clear(SKColors.Transparent);
             canvas.Scale((float)scale);
             canvas.Translate(-area.Left, -area.Top);
-            foreach (var (path, outline) in outlines)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (path.IsFilled && PaintColor(path.FillColor) is { } fill)
-                {
-                    using var paint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill, Color = SKColor.Parse(fill) };
-                    canvas.DrawPath(outline, paint);
-                }
-                if (path.IsStroked && PaintColor(path.StrokeColor) is { } stroke)
-                {
-                    using var paint = new SKPaint
-                    {
-                        IsAntialias = true,
-                        Style = SKPaintStyle.Stroke,
-                        Color = SKColor.Parse(stroke),
-                        // A width of 0 is the thinnest line the device can show: one pixel.
-                        StrokeWidth = (float)Math.Max(lineWidth(path), 1 / scale),
-                        StrokeCap = path.LineCapStyle switch { LineCapStyle.Round => SKStrokeCap.Round, LineCapStyle.ProjectingSquare => SKStrokeCap.Square, _ => SKStrokeCap.Butt },
-                        StrokeJoin = path.LineJoinStyle switch { LineJoinStyle.Round => SKStrokeJoin.Round, LineJoinStyle.Bevel => SKStrokeJoin.Bevel, _ => SKStrokeJoin.Miter },
-                    };
-                    using var dash = Dash(path.LineDashPattern, path.LineWidth > 0 ? lineWidth(path) / path.LineWidth : 1);
-                    paint.PathEffect = dash;
-                    canvas.DrawPath(outline, paint);
-                }
-            }
+            PdfSlideRaster.Draw(canvas, paints.Select(p => p.Paint!), cancellationToken: cancellationToken);
         }
 
         var file = NewMediaPath("png");
@@ -508,69 +1279,6 @@ internal sealed partial class PdfDocumentReader
         using (var output = File.Create(file))
             data.SaveTo(output);
         return new PdfSlidePicture(area, file);
-    }
-
-    /// <summary>
-    /// The path in slide coordinates; null once the page's segments pass <see cref="MaxGraphicsSegments"/> (the rest of
-    /// a pathological drawing is left out rather than drawn for minutes).
-    /// </summary>
-    private static SKPath? Outline(PdfPath path, double height, ref int segments)
-    {
-        var outline = new SKPath { FillType = path.FillingRule == FillingRule.EvenOdd ? SKPathFillType.EvenOdd : SKPathFillType.Winding };
-        SKPoint P(PdfPoint point) => new((float)point.X, (float)(height - point.Y));
-        foreach (var subpath in path)
-        {
-            var open = false;
-            foreach (var command in subpath.Commands)
-            {
-                if (++segments > MaxGraphicsSegments)
-                {
-                    outline.Dispose();
-                    return null;
-                }
-                switch (command)
-                {
-                    case PdfSubpath.Move move:
-                        outline.MoveTo(P(move.Location));
-                        open = true;
-                        break;
-                    case PdfSubpath.Line line:
-                        if (!open)
-                            outline.MoveTo(P(line.From));
-                        outline.LineTo(P(line.To));
-                        open = true;
-                        break;
-                    case PdfSubpath.CubicBezierCurve curve:
-                        if (!open)
-                            outline.MoveTo(P(curve.StartPoint));
-                        outline.CubicTo(P(curve.FirstControlPoint), P(curve.SecondControlPoint), P(curve.EndPoint));
-                        open = true;
-                        break;
-                    case PdfSubpath.QuadraticBezierCurve curve:
-                        if (!open)
-                            outline.MoveTo(P(curve.StartPoint));
-                        outline.QuadTo(P(curve.ControlPoint), P(curve.EndPoint));
-                        open = true;
-                        break;
-                    case PdfSubpath.Close:
-                        outline.Close();
-                        open = false;
-                        break;
-                }
-            }
-        }
-        return outline;
-    }
-
-    /// <summary>A dash pattern in page units: the PDF's lengths times the <paramref name="scale"/> they were drawn at.</summary>
-    private static SKPathEffect? Dash(LineDashPattern? pattern, double scale)
-    {
-        if (pattern is not { } dash || IsSolid(dash))
-            return null;
-        var intervals = dash.Array.Take(16).Select(d => (float)Math.Max(0.1, d * scale)).ToList();
-        if (intervals.Count % 2 == 1)
-            intervals.AddRange(intervals); // "[3] 0 d": 3 on, 3 off
-        return SKPathEffect.CreateDash([.. intervals], (float)(dash.Phase * scale));
     }
 
     /// <summary>
@@ -615,5 +1323,53 @@ internal sealed partial class PdfDocumentReader
         for (var i = 0; i < painted.Count; i++)
             result[painted[i]] = scales[i];
         return result;
+    }
+
+    // ───────────────────────── Notes ─────────────────────────
+
+    /// <summary>
+    /// The page's comments for the speaker notes: the text of its sticky notes, free text and text markup
+    /// annotations, top to bottom, "Author: text"; null when there are none (or PdfPig can't read them).
+    /// </summary>
+    private static string? Notes(Page page)
+    {
+        List<Annotation> annotations;
+        try
+        {
+            annotations = [.. page.GetAnnotations()];
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
+        {
+            return null; // the notes are an extra: broken annotations leave them out, not the page
+        }
+        var lines = new List<string>();
+        var length = 0;
+        foreach (var annotation in annotations
+                     .Where(a => a.Type is AnnotationType.Text or AnnotationType.FreeText or AnnotationType.Highlight or AnnotationType.Underline
+                         or AnnotationType.StrikeOut or AnnotationType.Squiggly or AnnotationType.Caret)
+                     .Where(a => !string.IsNullOrWhiteSpace(a.Content))
+                     .OrderByDescending(a => a.Rectangle.Top).ThenBy(a => a.Rectangle.Left))
+        {
+            var text = annotation.Content!.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Trim();
+            if (Author(annotation) is { } author)
+                text = $"{author}: {text}";
+            if (length + text.Length > MaxNotes)
+                break;
+            length += text.Length;
+            lines.Add(text);
+        }
+        return lines.Count == 0 ? null : string.Join('\n', lines);
+    }
+
+    private static string? Author(Annotation annotation)
+    {
+        if (!annotation.AnnotationDictionary.TryGet(NameToken.Create("T"), out var token))
+            return null;
+        return token switch
+        {
+            StringToken text => NullIfBlank(text.Data),
+            HexToken hex => NullIfBlank(hex.Data),
+            _ => null,
+        };
     }
 }
