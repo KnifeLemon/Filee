@@ -1061,6 +1061,139 @@ public class PdfEditableSlidesTests(EngineFixture fx) : IClassFixture<EngineFixt
         });
     }
 
+    /// <summary>
+    /// A page of what a backdrop used to miss, each under a blue Screen bar: a JBIG2 picture (left half black, right
+    /// half white) PdfPig can't decode, a red Type 3 glyph whose procedure paints a 30 pt square but whose text is ".",
+    /// and an unembedded Arial code whose text is the ligature "ffi" (60 pt, 800/1000 em wide).
+    /// </summary>
+    internal static string MakeBackdropsPdf(string folder)
+    {
+        var content =
+            "q 200 0 0 200 60 200 cm /Jb Do Q\n" +
+            "BT /T3 40 Tf 1 0 0 rg 400 250 Td (.) Tj ET\n" +
+            "BT /Lg 60 Tf 0 0 0 rg 600 250 Td <01> Tj ET\n" +
+            "q /GS1 gs 0 0 1 rg 40 180 820 120 re f Q\n";
+        return RawPdf(Path.Combine(folder, "backdrops.pdf"), content, (document, page) =>
+        {
+            // JBIG2: a 32 × 64 black shape at the left of a 64 × 64 picture.
+            var shape = new Filee.Engines.Djvu.Jb2Shape(32, 64);
+            Array.Fill(shape.Bits, (byte)1);
+            shape.ComputeBox();
+            var data = Filee.Engines.Djvu.Jbig2Encoder.Encode(64, 64, [shape], [new Filee.Engines.Djvu.Jb2Blit(0, 0, 0)], Token);
+            var picture = new Sharp.PdfDictionary(document);
+            picture.Elements.SetName("/Type", "/XObject");
+            picture.Elements.SetName("/Subtype", "/Image");
+            picture.Elements.SetInteger("/Width", 64);
+            picture.Elements.SetInteger("/Height", 64);
+            picture.Elements.SetInteger("/BitsPerComponent", 1);
+            picture.Elements.SetName("/ColorSpace", "/DeviceGray");
+            picture.Elements.SetName("/Filter", "/JBIG2Decode");
+            picture.CreateStream(data);
+            Resource(document, page, "/XObject", "/Jb", picture);
+            Resource(document, page, "/Font", "/T3", Type3Font(document, "1000 0 0 0 750 750 d1 0 0 750 750 re f"));
+            Resource(document, page, "/Font", "/Lg", LigatureFont(document));
+            Resource(document, page, "/ExtGState", "/GS1", BlendState(document, "/Screen"));
+        });
+    }
+
+    /// <summary>A Type 3 font whose code 46 (".") draws <paramref name="procedure"/> (glyph space of 1000 units an em).</summary>
+    private static Sharp.PdfDictionary Type3Font(Sharp.PdfDocument document, string procedure)
+    {
+        var glyph = new Sharp.PdfDictionary(document);
+        glyph.CreateStream(Encoding.ASCII.GetBytes(procedure));
+        document.Internals.AddObject(glyph);
+        var procedures = new Sharp.PdfDictionary(document);
+        procedures.Elements.SetReference("/period", glyph);
+        var encoding = new Sharp.PdfDictionary(document);
+        encoding.Elements.SetName("/Type", "/Encoding");
+        encoding.Elements["/Differences"] = new Sharp.PdfArray(document, new Sharp.PdfInteger(46), new Sharp.PdfName("/period"));
+        var font = new Sharp.PdfDictionary(document);
+        font.Elements.SetName("/Type", "/Font");
+        font.Elements.SetName("/Subtype", "/Type3");
+        font.Elements["/FontBBox"] = Numbers(document, 0, 0, 1000, 1000);
+        font.Elements["/FontMatrix"] = Numbers(document, 0.001, 0, 0, 0.001, 0, 0);
+        font.Elements["/CharProcs"] = procedures;
+        font.Elements["/Encoding"] = encoding;
+        font.Elements.SetInteger("/FirstChar", 46);
+        font.Elements.SetInteger("/LastChar", 46);
+        font.Elements["/Widths"] = Numbers(document, 1000);
+        font.Elements["/Resources"] = new Sharp.PdfDictionary(document);
+        return font;
+    }
+
+    /// <summary>
+    /// Arial (a TrueType font, not embedded) whose code 1 is a ligature, 800/1000 em wide, with no glyph name: its text
+    /// is "ffi" by ToUnicode only.
+    /// </summary>
+    private static Sharp.PdfDictionary LigatureFont(Sharp.PdfDocument document)
+    {
+        var text = new Sharp.PdfDictionary(document);
+        text.CreateStream(Encoding.ASCII.GetBytes(
+            "/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /Lg def 1 begincodespacerange <00> <FF> endcodespacerange " +
+            "1 beginbfchar <01> <006600660069> endbfchar endcmap CMapName currentdict /CMap defineresource pop end end"));
+        document.Internals.AddObject(text);
+        var descriptor = new Sharp.PdfDictionary(document);
+        descriptor.Elements.SetName("/Type", "/FontDescriptor");
+        descriptor.Elements.SetName("/FontName", "/Arial");
+        descriptor.Elements.SetInteger("/Flags", 32);
+        descriptor.Elements["/FontBBox"] = Numbers(document, -665, -325, 2000, 1040);
+        descriptor.Elements.SetInteger("/ItalicAngle", 0);
+        descriptor.Elements.SetInteger("/Ascent", 905);
+        descriptor.Elements.SetInteger("/Descent", -212);
+        descriptor.Elements.SetInteger("/CapHeight", 716);
+        descriptor.Elements.SetInteger("/StemV", 80);
+        document.Internals.AddObject(descriptor);
+        var font = new Sharp.PdfDictionary(document);
+        font.Elements.SetName("/Type", "/Font");
+        font.Elements.SetName("/Subtype", "/TrueType");
+        font.Elements.SetName("/BaseFont", "/Arial");
+        font.Elements.SetName("/Encoding", "/WinAnsiEncoding");
+        font.Elements.SetInteger("/FirstChar", 1);
+        font.Elements.SetInteger("/LastChar", 1);
+        font.Elements["/Widths"] = Numbers(document, 800);
+        font.Elements.SetReference("/FontDescriptor", descriptor);
+        font.Elements.SetReference("/ToUnicode", text);
+        return font;
+    }
+
+    /// <summary>
+    /// The backdrop of a blend has what PdfPig alone can't draw: a JBIG2 picture (Filee's decoder), a Type 3 glyph
+    /// (its procedure, not its text) and a ligature (all its letters, not the first).
+    /// </summary>
+    [Fact]
+    public async Task Backdrops_have_jbig2_pictures_type_3_glyphs_and_whole_ligatures()
+    {
+        var pptx = await ConvertAsync(MakeBackdropsPdf(fx.NewFolder()));
+        var deck = PptxSlideReader.Read(pptx, cancellationToken: Token);
+        using var bitmap = SlideOutput.ToBitmaps(deck, 72, cancellationToken: Token).Single();
+        SKColor At(double x, double y) => bitmap.GetPixel((int)x, (int)(Height - y));
+        static bool Blue(SKColor c) => c is { Red: < 60, Green: < 60, Blue: > 200 };
+        static bool White(SKColor c) => c is { Red: > 220, Green: > 220, Blue: > 220 };
+
+        // JBIG2: black screened blue is blue, white stays white.
+        Assert.True(Blue(At(100, 250)), At(100, 250).ToString());
+        Assert.True(White(At(220, 250)), At(220, 250).ToString());
+        // Type 3: the red square (400–430, 250–280) screened blue is magenta all over, not a red dot.
+        var magenta = 0;
+        for (var x = 402; x < 428; x++)
+        {
+            for (var y = 252; y < 278; y++)
+                magenta += At(x, y) is { Red: > 200, Green: < 60, Blue: > 200 } ? 1 : 0;
+        }
+        Assert.True(magenta > 26 * 26 * 0.9, $"{magenta} magenta pixels");
+        // The ligature: black screened blue across most of its 48 pt, not just the width of an "f".
+        var (left, right) = (int.MaxValue, int.MinValue);
+        for (var x = 590; x < 680; x++)
+        {
+            for (var y = 252; y < 290; y++)
+            {
+                if (Blue(At(x, y)))
+                    (left, right) = (Math.Min(left, x), Math.Max(right, x));
+            }
+        }
+        Assert.True(right - left > 30, $"ligature ink from {left} to {right}");
+    }
+
     private static Sharp.PdfDictionary RgbPicture(Sharp.PdfDocument document, int width, int height, Func<int, (int R, int G, int B)> pixel)
     {
         var picture = new Sharp.PdfDictionary(document);
@@ -1172,6 +1305,47 @@ public class PdfEditableSlidesTests(EngineFixture fx) : IClassFixture<EngineFixt
         {
             Resource(document, page, "/XObject", "/Ph", RgbPicture(document, 256, 144, i => (i % 256, i / 256, 128)));
             Resource(document, page, "/ExtGState", "/GS1", BlendState(document, "/Screen"));
+        });
+
+        var stopwatch = Stopwatch.StartNew();
+        var pptx = await ConvertAsync(pdf);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(60), stopwatch.Elapsed.ToString());
+        Assert.Single(Slides(pptx));
+        // A late blend (the 2,880th) still sees the picture under it: its red and green, full blue (white before).
+        var deck = PptxSlideReader.Read(pptx, cancellationToken: Token);
+        using var bitmap = SlideOutput.ToBitmaps(deck, 72, cancellationToken: Token).Single();
+        var pixel = bitmap.GetPixel(951, (int)(Height - 475));
+        Assert.True(Math.Abs(pixel.Red - 253) <= 30 && Math.Abs(pixel.Green - 17) <= 30 && pixel.Blue > 225, pixel.ToString());
+    }
+
+    /// <summary>
+    /// Type 3 glyphs that are expensive or odd: a procedure of 2,000 rectangles shown 5,000 times (drawn once), one
+    /// that shows its own font's glyph (not followed into), 300 fonts of their own (past the procedures drawn a page),
+    /// all under a blend over them.
+    /// </summary>
+    [Fact]
+    public async Task Type_3_glyphs_that_paint_much_or_show_themselves_finish_quickly()
+    {
+        var heavy = new StringBuilder("1000 0 0 0 1000 1000 d1 ");
+        for (var i = 0; i < 2000; i++)
+            heavy.Append(Inv($"{i % 50 * 20} {i / 50 * 25} 10 10 re f "));
+        var content = new StringBuilder("BT /H 8 Tf\n");
+        for (var i = 0; i < 5000; i++)
+            content.Append(Inv($"1 0 0 1 {i % 100 * 9.6} {i / 100 * 10.8} Tm (.) Tj\n"));
+        content.Append("ET BT /S 20 Tf 100 100 Td (.) Tj ET\nBT\n");
+        for (var i = 0; i < 300; i++)
+            content.Append(Inv($"/F{i} 12 Tf 1 0 0 1 {i % 30 * 32} {200 + i / 30 * 30} Tm (.) Tj\n"));
+        content.Append("ET q /GS1 gs 0 0 1 rg 0 0 960 540 re f Q\n");
+        var pdf = RawPdf(Path.Combine(fx.NewFolder(), "type3.pdf"), content.ToString(), (document, page) =>
+        {
+            Resource(document, page, "/Font", "/H", Type3Font(document, heavy.ToString()));
+            var self = Type3Font(document, "1000 0 0 0 1000 1000 d0 BT /S 500 Tf (.) Tj ET 0 0 500 500 re f");
+            self.Elements.GetDictionary("/Resources")!.Elements["/Font"] = new Sharp.PdfDictionary(document);
+            Resource(document, page, "/Font", "/S", self);
+            self.Elements.GetDictionary("/Resources")!.Elements.GetDictionary("/Font")!.Elements.SetReference("/S", self);
+            for (var i = 0; i < 300; i++)
+                Resource(document, page, "/Font", $"/F{i}", Type3Font(document, Inv($"1000 0 0 0 1000 1000 d1 0 0 {i + 100} 600 re f")));
+            Resource(document, page, "/ExtGState", "/GS1", BlendState(document, "/Multiply"));
         });
 
         var stopwatch = Stopwatch.StartNew();
