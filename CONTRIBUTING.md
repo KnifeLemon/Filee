@@ -60,7 +60,7 @@ local package without it needs the glibc of the machine that built it. Check a p
 
 - **Linux:** drag gestures require X11 by default. Install the Avalonia desktop dependencies (fontconfig, FreeType, X11,
   Xrandr, Xi, Xtst, Xt, XkbCommon, ICE and SM) and CJK fonts for document comparisons. File actions are installed for
-  Thunar, Nautilus, Nemo and Dolphin. The first enabled keyboard shortcut uses Thunar's native custom action;
+  Thunar, Nautilus, Nemo, Dolphin and Flea (in Flea, unhide "Run script" in its menu settings to show the action). The first enabled keyboard shortcut uses Thunar's native custom action;
   close Thunar before changing or pausing that shortcut and reopen it afterwards. Global selected-file queries
   and hold gestures are not supported. Wayland can use file actions, the drop zone, watch folders and CLI.
   On KDE Plasma 6 and Hyprland, the drag gesture can also run there, experimentally with `FILEE_WAYLAND_GESTURES=1`. It needs

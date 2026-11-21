@@ -368,6 +368,38 @@ public class OcrTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task A_searchable_pdf_of_a_page_scanned_at_an_angle_converts_to_text()
+    {
+        // Tesseract writes the lines of a skewed scan along their slanted baselines; PDF → TXT read none of them (#1538).
+        Assert.SkipUnless(Installed, Skip);
+        var scan = Scan(fx.NewFolder(), "skewed.png", "Filee reads scanned pages", "into searchable documents");
+        using (var image = new MagickImage(scan))
+        {
+            image.BackgroundColor = MagickColors.White;
+            image.Rotate(4);
+            image.Write(scan);
+        }
+        var searchable = (await fx.ConvertAsync([scan], Ocr("pdf"))).Outputs.Single();
+
+        var job = await fx.ConvertAsync([searchable], new Preset { TargetFormat = "txt" });
+
+        AssertDone(job);
+        var text = await File.ReadAllTextAsync(job.Outputs.Single(), TestContext.Current.CancellationToken);
+        var scanned = text.IndexOf("scanned pages", StringComparison.OrdinalIgnoreCase);
+        var searchableDocuments = text.IndexOf("searchable documents", StringComparison.OrdinalIgnoreCase);
+        Assert.True(scanned >= 0 && searchableDocuments > scanned, text);
+
+        // With "Recognize text" the layer is the page's text in a DOCX too, instead of the scan.
+        var docx = await fx.ConvertAsync([searchable], Ocr("docx"));
+        AssertDone(docx);
+        using var zip = ZipFile.OpenRead(docx.Outputs.Single());
+        using var reader = new StreamReader(zip.GetEntry("word/document.xml")!.Open());
+        var xml = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("searchable", xml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<w:drawing", xml);
+    }
+
+    [Fact]
     public async Task Pages_with_text_stay_as_they_are_and_only_scans_are_recognized()
     {
         Assert.SkipUnless(Installed, Skip);
