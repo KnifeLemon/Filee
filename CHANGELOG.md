@@ -24,6 +24,8 @@ ko: GitHub에서 업데이트 파일을 받지 못하면 Filee 다운로드 서�
 en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't answer
 ko: 비스듬히 스캔하거나 찍은 페이지로 만든 검색 가능한 PDF도 TXT로 변환하면 텍스트가 나와요
 en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT with their text
+ko: PowerPoint를 Markdown으로 바꾸면 슬라이드마다 한 구역이 되고 제목, 목록, 표, 그림, 발표자 노트가 남아요 (reveal.js)
+en: PowerPoint to Markdown keeps the slides, titles, lists, tables, pictures and speaker notes, ready for reveal.js
 -->
 
 - **Updating from Settings → About works when GitHub's downloads don't answer** (#1593). The in-app update on Windows
@@ -38,6 +40,11 @@ en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT 
   PDF readers select its text: Tesseract writes each line along its slanted baseline, and Filee only read level text.
   The recognized text now comes out line by line, also in Markdown without pictures and in a DOCX or HWPX made with
   "Recognize text". PDFs with visible text read as before.
+- **PowerPoint → Markdown keeps the slides, ready for reveal.js** (#1702). A presentation converted to Markdown now
+  has one section per slide with `---` between them, the slide titles as headings, bullet and numbered lists at
+  their levels, links, bold and italic, tables, the pictures next to the file and the speaker notes after `Note:`,
+  which is what [reveal.js](https://revealjs.com/markdown/) reads. Before, the text of all slides ran together with
+  titles as plain paragraphs. Charts, SmartArt and equations aren't converted.
 
 ## 2.5.0
 
