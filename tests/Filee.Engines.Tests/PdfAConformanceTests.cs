@@ -57,41 +57,36 @@ public class PdfAConformanceTests(EngineFixture fx) : IClassFixture<EngineFixtur
 
     private static string Latin1(byte[] bytes) => Encoding.Latin1.GetString(bytes);
 
-    /// <summary>The header of an ICC profile of <paramref name="space"/> (nothing else: what PDF/A looks at).</summary>
-    private static byte[] IccHeader(string deviceClass, string space)
+    /// <summary>
+    /// A whole ICC profile of <paramref name="space"/> and <paramref name="deviceClass"/>: Filee's own CMYK or sRGB
+    /// profile with its class changed (a press profile's class is prtr).
+    /// </summary>
+    internal static byte[] IccProfile(string deviceClass, string space)
     {
-        var icc = new byte[132];
-        BinaryPrimitives.WriteUInt32BigEndian(icc, (uint)icc.Length);
-        BinaryPrimitives.WriteUInt32BigEndian(icc.AsSpan(8), 0x02100000);
+        var icc = space == "CMYK" ? CmykProfile.Bytes : SrgbProfile.Bytes;
         Encoding.ASCII.GetBytes(deviceClass, icc.AsSpan(12));
-        Encoding.ASCII.GetBytes(space, icc.AsSpan(16));
-        Encoding.ASCII.GetBytes("Lab ", icc.AsSpan(20));
-        Encoding.ASCII.GetBytes("acsp", icc.AsSpan(36));
         return icc;
     }
 
-    private const string Embedded =
-        "<< /Type /Font /Subtype /TrueType /BaseFont /Dummy /FirstChar 72 /LastChar 105 /FontDescriptor 6 0 R >>";
+    private static string Embedded => PdfATestFonts.TrueTypeFont(6);
 
-    private const string Descriptor =
-        "<< /Type /FontDescriptor /FontName /Dummy /Flags 32 /FontBBox [0 0 1000 1000] /ItalicAngle 0 /Ascent 800 " +
-        "/Descent -200 /CapHeight 700 /StemV 80 /FontFile2 7 0 R >>";
+    private static string Descriptor => PdfATestFonts.Descriptor("FileeTest-TrueType", 7);
 
     /// <summary>
     /// One page drawing <paramref name="content"/> with an embedded font (its program is a stand-in: the rules ask
     /// that it be there), objects 5 … 7 the font; <paramref name="extra"/> objects are 8 ….
     /// </summary>
     private static string Simple(string path, string content = "BT /F1 12 Tf 72 700 Td (Hi) Tj ET 0 0 1 rg 72 600 200 100 re f",
-        string annotations = "", string catalog = "", string resources = "", IReadOnlyList<string>? extra = null, string font = Embedded) =>
+        string annotations = "", string catalog = "", string resources = "", IReadOnlyList<string>? extra = null, string? font = null) =>
         RawPdf.Write(path,
         [
             $"<< /Type /Catalog /Pages 2 0 R {catalog} >>",
             "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
             $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> {resources} >> {annotations} >>",
             RawPdf.Stream("", content),
-            font,
+            font ?? Embedded,
             Descriptor,
-            RawPdf.Stream("/Length1 4", "true"),
+            PdfATestFonts.Program(),
             .. extra ?? [],
         ]);
 
@@ -116,18 +111,17 @@ public class PdfAConformanceTests(EngineFixture fx) : IClassFixture<EngineFixtur
             /* 7 */ "<< /Type /Annot /Subtype /Square /Rect [300 600 400 650] /F 2 /AP << /N 12 0 R >> /NM (hidden) >>",
             /* 8 */ "<< /Type /Annot /Subtype /FileAttachment /Rect [300 500 320 520] /FS << /Type /Filespec /F (a.txt) >> /NM (attachment) >>",
             /* 9 */ "<< /Type /Annot /Subtype /Square /Rect [300 400 400 450] /AP << /N 12 0 R /D 12 0 R /R 12 0 R >> /NM (square) >>",
-            /* 10 */ "<< /Type /Font /Subtype /TrueType /BaseFont /Dummy /FirstChar 72 /LastChar 105 /FontDescriptor 13 0 R >>",
+            /* 10 */ PdfATestFonts.TrueTypeFont(13),
             /* 11 */ "<< /Type /Font /Subtype /Type0 /BaseFont /DummyCID /Encoding /Identity-H /DescendantFonts [<< /Type /Font " +
                      "/Subtype /CIDFontType2 /BaseFont /DummyCID /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> " +
                      "/FontDescriptor 13 0 R >>] >>",
             /* 12 */ RawPdf.Stream("/Type /XObject /Subtype /Form /BBox [0 0 100 50]", "0 g 0 0 100 50 re f"),
-            /* 13 */ "<< /Type /FontDescriptor /FontName /Dummy /Flags 32 /FontBBox [0 0 1000 1000] /ItalicAngle 0 /Ascent 800 " +
-                     "/Descent -200 /CapHeight 700 /StemV 80 /FontFile2 17 0 R >>",
+            /* 13 */ PdfATestFonts.Descriptor("FileeTest-TrueType", 17),
             /* 14 */ "<< /Type /ExtGState /TR /Identity /TR2 /Identity /HTO [0 0] /BM /Weird /RI /Bogus /ca 0.5 >>",
             /* 15 */ RawPdf.Stream("/Type /XObject /Subtype /Image /Width 4 /Height 4 /ColorSpace /DeviceGray /BitsPerComponent 8 " +
                      "/Interpolate true /Alternates [] /OPI << >> /Filter /LZWDecode", Latin1(Lzw(picture))),
             /* 16 */ RawPdf.Stream("/Type /XObject /Subtype /Form /BBox [0 0 10 10] /Ref << /F (other.pdf) /Page 0 >> /OPI << >>", "0 g 0 0 10 10 re f"),
-            /* 17 */ RawPdf.Stream("/Length1 4", "true"),
+            /* 17 */ PdfATestFonts.Program(),
             /* 18 */ "<< /Type /Annot /Subtype /Popup /Rect [400 700 500 750] /F 2 /NM (popup) >>",
             /* 19 */ "<< /Type /Annot /Subtype /Text /Rect [100 100 120 120] /AS /On /AP << /N << /On 12 0 R /Off 12 0 R >> >> /NM (note) >>",
             /* 20 */ "<< /Type /Annot /Subtype /Widget /FT /Btn /T (ok) /Rect [100 200 200 220] /AP << /N 12 0 R >> " +
@@ -262,8 +256,6 @@ public class PdfAConformanceTests(EngineFixture fx) : IClassFixture<EngineFixtur
     public static TheoryData<string, string> Refused() => new()
     {
         { "font", PdfAConformance.FontNotEmbedded },
-        { "cmyk", PdfAConformance.DeviceCmyk },
-        { "cmyk-and-rgb", PdfAConformance.DeviceCmyk },
         { "appearance", PdfAConformance.NoAppearance },
         { "xfa", PdfAConformance.Unsupported },
         { "postscript", PdfAConformance.Unsupported },
@@ -279,11 +271,10 @@ public class PdfAConformanceTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var path = Path.Combine(fx.NewFolder(), kind + ".pdf");
         _ = kind switch
         {
-            "font" => Simple(path, font: "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"),
-            "cmyk" => Simple(path, content: "0 0 0 1 k 72 600 200 100 re f"),
-            "cmyk-and-rgb" => Simple(path, content: "0 0 0 1 k 72 600 200 100 re f 1 0 0 rg 0 0 10 10 re f",
-                extra: [IccHeaderObject("prtr", "CMYK")], catalog: Intent("GTS_PDFA1", 8)),
-            "appearance" => Simple(path, annotations: "/Annots [<< /Type /Annot /Subtype /Square /Rect [10 10 50 50] >>]"),
+            "font" => Simple(path, font: "<< /Type /Font /Subtype /Type1 /BaseFont /FileeNoSuchFont-Bold >>"),
+            // Text Helvetica's WinAnsiEncoding has no codes for.
+            "appearance" => Simple(path, annotations: "/Annots [<< /Type /Annot /Subtype /FreeText /Rect [10 10 150 50] /DA (/Helv 12 Tf 0 g) " +
+                "/Contents <FEFFD55CAE00> >>]"),
             "xfa" => Simple(path, catalog: "/NeedsRendering true /AcroForm << /Fields [] /XFA (x) >>"),
             "postscript" => Simple(path, resources: "/XObject << /P 8 0 R >>", content: "/P Do",
                 extra: [RawPdf.Stream("/Type /XObject /Subtype /PS", "showpage")]),
@@ -295,15 +286,17 @@ public class PdfAConformanceTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var bytes = File.ReadAllBytes(path);
         var work = fx.NewFolder();
 
-        var refused = Assert.Throws<ConversionRefusedException>(() => PdfSharpConverter.Archive(path, changed: true, work, Ct));
+        var refused = Assert.Throws<ConversionRefusedException>(() => PdfSharpConverter.Archive(path, changed: true, work, Ct, PdfATestFonts.None));
 
         Assert.Equal(reason, refused.ErrorKey);
+        if (kind == "font")
+            Assert.Equal("FileeNoSuchFont-Bold", refused.Detail);
         Assert.Equal(bytes, File.ReadAllBytes(path));
         Assert.Empty(Directory.EnumerateFileSystemEntries(work));
     }
 
     private static string IccHeaderObject(string deviceClass, string space) =>
-        RawPdf.Stream($"/N {(space == "CMYK" ? 4 : 3)}", Latin1(IccHeader(deviceClass, space)));
+        RawPdf.Stream($"/N {(space == "CMYK" ? 4 : 3)}", Latin1(IccProfile(deviceClass, space)));
 
     private static string Intent(string kind, int profile, string identifier = "FOGRA39") =>
         $"/OutputIntents [<< /Type /OutputIntent /S /{kind} /OutputConditionIdentifier ({identifier}) /DestOutputProfile {profile} 0 R >>]";
@@ -450,7 +443,7 @@ public class PdfAConformanceTests(EngineFixture fx) : IClassFixture<EngineFixtur
     {
         var dir = fx.NewFolder();
         var good = Simple(Path.Combine(dir, "good.pdf"));
-        var helvetica = Simple(Path.Combine(dir, "helvetica.pdf"), font: "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+        var helvetica = Simple(Path.Combine(dir, "missing.pdf"), font: "<< /Type /Font /Subtype /Type1 /BaseFont /FileeNoSuchFont >>");
 
         var job = await fx.ConvertAsync([good, helvetica], BuiltInData.CreatePresets().Single(p => p.Id == BuiltInData.PdfAId), WithoutGhostscript());
 
@@ -460,6 +453,7 @@ public class PdfAConformanceTests(EngineFixture fx) : IClassFixture<EngineFixtur
         PdfA2bChecks.Assert2b(first.Outputs.Single());
         Assert.Equal("notice.pdfa_needs_ghostscript", second.NoticeKey);
         Assert.Equal(PdfAConformance.FontNotEmbedded, second.NoticeReasonKey);
+        Assert.Equal("FileeNoSuchFont", second.NoticeDetail);
         Assert.False(GhostscriptConverter.DeclaresPdfA(second.Outputs.Single()));
     }
 }

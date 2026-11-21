@@ -25,7 +25,7 @@ internal static class SrgbProfile
     public static byte[] Bytes => (byte[])Profile.Value.Clone();
 
     // D50, the profile connection space's white (ICC.1 7.2.16), and D65, sRGB's own (IEC 61966-2-1 table 1).
-    private static readonly double[] D50 = [0.9642, 1.0, 0.8249];
+    internal static readonly double[] D50 = [0.9642, 1.0, 0.8249];
     private static readonly (double X, double Y)[] Primaries = [(0.64, 0.33), (0.30, 0.60), (0.15, 0.06)];
     private static readonly (double X, double Y) D65 = (0.3127, 0.3290);
 
@@ -126,9 +126,9 @@ internal static class SrgbProfile
     }
 
     /// <summary>s15Fixed16Number (ICC.1 4.6).</summary>
-    private static int Fixed(double value) => (int)Math.Round(value * 65536);
+    internal static int Fixed(double value) => (int)Math.Round(value * 65536);
 
-    private static byte[] Xyz(double[] value)
+    internal static byte[] Xyz(double[] value)
     {
         var bytes = new byte[20];
         Ascii(bytes, "XYZ ");
@@ -150,7 +150,7 @@ internal static class SrgbProfile
         return bytes;
     }
 
-    private static byte[] Text(string text)
+    internal static byte[] Text(string text)
     {
         var bytes = new byte[8 + text.Length + 1];
         Ascii(bytes, "text");
@@ -159,7 +159,7 @@ internal static class SrgbProfile
     }
 
     /// <summary>textDescriptionType (ICC.1:2001-04 6.5.17): the ASCII name, no Unicode or ScriptCode names.</summary>
-    private static byte[] Description(string text)
+    internal static byte[] Description(string text)
     {
         var bytes = new byte[12 + text.Length + 1 + 4 + 4 + 2 + 1 + 67];
         Ascii(bytes, "desc");
@@ -168,9 +168,9 @@ internal static class SrgbProfile
         return bytes;
     }
 
-    private static void Ascii(Span<byte> target, string text) => Encoding.ASCII.GetBytes(text, target);
+    internal static void Ascii(Span<byte> target, string text) => Encoding.ASCII.GetBytes(text, target);
 
-    private static void Append(MemoryStream stream, byte[] bytes)
+    internal static void Append(MemoryStream stream, byte[] bytes)
     {
         stream.Write(bytes);
         while (stream.Length % 4 != 0)

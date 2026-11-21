@@ -2819,12 +2819,33 @@ next.
   - one `GTS_PDFA1` output intent: a CMYK or RGB PDF/A intent the PDF already has for the device colours it draws in
     (a PDF/X file keeps its CMYK profile), else **sRGB made in code** (`SrgbProfile`, below); PDFsharp's page
     transparency groups get the intent's colour space;
+  - the other device space made **device independent** (ISO 19005-2 6.2.4.3): device CMYK under an RGB intent (no CMYK
+    intent of its own, or CMYK and RGB together) and device RGB under a CMYK one. Where an object names it (pictures,
+    shadings, groups, colour space resources, bases and alternates) it names an ICCBased space instead, and every
+    resource dictionary (and a page or form that draws in it without one) gets that space as `DefaultCMYK` or
+    `DefaultRGB` for `k`/`K`/`rg`/`RG` and inline pictures. The CMYK profile is **made in code** (`CmykProfile`): an ICC
+    2.1 input profile whose A2B0 table (7 points a channel, ~15 KB) is the plain conversion viewers use for device CMYK
+    without a profile (R = (1 − C)(1 − K) …, then sRGB → Lab D50), so the PDF/A looks as the PDF did in pdf.js or
+    PDFium; no profile file of unclear licence is shipped. Chosen over converting the colours to RGB because pictures
+    (CMYK JPEGs) keep their data and nothing in the content has to be rewritten;
   - no encryption, no LZW (unpacked and deflated), no external stream data; graphics states lose `TR`, `TR2` (but
     `/Default`), `HT`, `HTO`, unknown `RI` and blend modes; pictures lose `Alternates`, `OPI`, `Interpolate`; forms
     lose `OPI`, `PS`, `Ref`;
   - annotations: 3D, sound, screen, movie, rich media, file attachments and hidden ones go; the rest print and keep
     only their normal appearance (a button's single stream becomes its one state, a state set outside buttons the
-    state shown); popups lose flags PDF/A forbids;
+    state shown); popups lose flags PDF/A forbids. One **without an appearance gets one drawn** (`PdfAAppearances`) from
+    its entries: shapes, lines, ink, text markup (QuadPoints), carets, notes, stamps, free text (in its DA font,
+    wrapped), a link's visible border; check boxes and radio buttons get Off and on states with their MK mark as a
+    path, text and choice fields their value in the field's DA font and quadding, push buttons their caption,
+    signature fields an empty box. Text uses the form's DA font when it can encode it, else Helvetica, and is embedded
+    like any font. Links, popups and annotations of no width and no height need none;
+  - **fonts that aren't embedded are embedded** (`PdfAFonts`) from the installed fonts: by the PDF's name and its
+    metric-compatible replacements (Helvetica → Arial → Liberation Sans, Times → Times New Roman → Liberation Serif,
+    Courier → Courier New → Liberation Mono), in the style asked for, and only when the widths the PDF gives (or the
+    standard font's own metrics) match the installed font's for the codes drawn. The program is a subset whose
+    advances are the PDF's widths; simple fonts become symbolic TrueType fonts with a (3,0) cmap of their codes and a
+    ToUnicode map, Identity-encoded Type 0 fonts CIDFontType2 with a CIDToGIDMap (CIDs through their ToUnicode map, or
+    as glyph IDs for a TrueType CIDFont found by its own name). A font listed but never drawn is left as it is;
   - JavaScript, launch and the other forbidden actions (also in `/Next` chains, open actions, outlines), every `AA`,
     the actions of fields and widgets, XFA, `NeedAppearances`, embedded files, alternate presentations, `PresSteps`,
     `Requirements`, `Collection`, other `Perms` than UR3/DocMDP, XMP of pages and pictures; optional-content
@@ -2838,19 +2859,26 @@ next.
   creator tool, producer and dates the same in both (text cleaned of what XML can't carry, so both always match),
   the trailer's `/ID` kept, `/Prev` to PDFsharp's table. Custom information entries and `Trapped` are dropped.
 
-  It **refuses** (`pdfa.reason.*`, the PDF left as it is) a font drawn with that isn't embedded (any font listed in a
-  `/Resources` dictionary; a form's `/DR` doesn't count), device CMYK without a CMYK intent or CMYK and RGB together,
-  an annotation or field without its own appearance (but links, popups, zero-size ones), XFA-only forms, PostScript
+  It **refuses** (`pdfa.reason.*`, the PDF left as it is) a font drawn with that isn't embedded and has no installed
+  match (a predefined CMap such as UniJIS-UCS2-H included; the font's name goes into the notice), an annotation it
+  can't draw an appearance for (text its font can't encode), XFA-only forms, PostScript
   XObjects, external stream data, LZW mixed with filters PDFsharp can't unpack, inline pictures with LZW or
   interpolation, content streams it can't read, a password-protected PDF, more than `MaxObjects` objects or more
   content tokens than `PdfFontUses` reads (`error.document_too_complex`), and more content bytes than it reads
   (`error.document_too_large`).
 
-  **Not checked**: that embedded fonts hold every glyph drawn and their widths match the dictionary, TrueType
-  symbolic/non-symbolic encodings and cmaps, the document's own ICC-based colour spaces, JPEG 2000 specifics, halftone
-  details beyond dropping `HT`, the implementation limits (string, name and number sizes, `q` nesting), page-level
-  colour spaces through `DefaultCMYK`, and content stream operators outside ISO 32000-1. Conformance is tested by a
-  structural check of the rules above (`tests/Filee.Engines.Tests/PdfA2bChecks.cs`); veraPDF isn't run.
+  **Not checked**: that fonts the PDF embedded itself hold every glyph drawn and their widths match the dictionary,
+  their TrueType symbolic/non-symbolic encodings and cmaps, the document's own ICC-based colour spaces, JPEG 2000
+  specifics, halftone details beyond dropping `HT`, the implementation limits (string, name and number sizes, `q`
+  nesting), and content stream operators outside ISO 32000-1. Conformance is tested by an in-test checker of the
+  PDF/A-2b clauses (`tests/Filee.Engines.Tests/PdfA2bChecks.cs`, numbered as veraPDF's published rule list): the file
+  structure of every incremental update (cross-reference offsets, `/Prev`, object and stream syntax, stream lengths,
+  the same file ID), one XMP stream with `pdfaid` 2 B of predefined schemas matching the document information,
+  output intent and ICCBased profiles (header, class, colour space, required tags), device colours against the intent
+  and the `Default` spaces of the resources content is drawn with, transparency groups, no encryption, JavaScript or
+  LZW (inline pictures too), TrueType widths against the dictionary, symbolic/non-symbolic encodings and cmaps and
+  `.notdef` for the codes drawn, ToUnicode streams, annotations, forms, actions and optional content. It runs on the
+  renderer's PDFs, on PDFs the job queue converts, and on PDF/A made from existing PDFs; veraPDF isn't run.
 - **sRGB profile** (`Pdf/SrgbProfile.cs`): built from the numbers of IEC 61966-2-1 rather than shipped: primaries
   and D65 adapted to D50 with the Bradford transform, the sRGB curve sampled at 1024 points shared by the three
   channels, an ICC version 2.1 display profile of about 2.3 KB with the description "sRGB IEC61966-2.1" and the

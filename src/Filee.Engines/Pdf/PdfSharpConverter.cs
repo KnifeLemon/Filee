@@ -60,7 +60,9 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, IP
     public Task<PdfArchiveOutcome> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken) =>
         Task.Run(() => Archive(path, changed, workDirectory, cancellationToken), cancellationToken);
 
-    internal static PdfArchiveOutcome Archive(string path, bool changed, string workDirectory, CancellationToken cancellationToken)
+    /// <param name="fonts">Fonts to embed missing ones from (tests); the installed ones when null.</param>
+    internal static PdfArchiveOutcome Archive(string path, bool changed, string workDirectory, CancellationToken cancellationToken,
+        Typesetting.IFontCollection? fonts = null)
     {
         if (!changed && GhostscriptConverter.DeclaresPdfA(path))
             return PdfArchiveOutcome.Archived;
@@ -80,7 +82,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, IP
             using (document)
             {
                 var info = PdfAMetadata.InfoOf(document);
-                PdfAConformance.Prepare(document, cancellationToken);
+                PdfAConformance.Prepare(document, cancellationToken, fonts);
                 cancellationToken.ThrowIfCancellationRequested();
                 Directory.CreateDirectory(workDirectory);
                 using var stream = File.Create(target);

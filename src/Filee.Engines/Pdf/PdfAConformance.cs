@@ -6,28 +6,35 @@
 // What is changed (clause of ISO 19005-2):
 // - 6.1.3/6.1.7: no encryption, no streams kept in external files, no LZW (such streams are unpacked and deflated).
 // - 6.2.2-6.2.4: one GTS_PDFA1 output intent. The sRGB profile made in code (SrgbProfile) unless the PDF already has
-//   a PDF/A intent of the device colours it uses; a PDF drawn in CMYK keeps a CMYK intent it brings.
+//   a PDF/A intent of the device colours it uses; a PDF drawn in CMYK keeps a CMYK intent it brings. The other device
+//   space (DeviceCMYK under an RGB intent, DeviceRGB under a CMYK one) is made device independent (6.2.4.3): its
+//   names in objects (pictures, shadings, groups, colour spaces) become an ICCBased space, and every resource
+//   dictionary gets DefaultCMYK (CmykProfile, made in code) or DefaultRGB (sRGB) for the operators in content.
 // - 6.2.5: graphics states lose transfer functions (TR, TR2 other than Default), halftone overrides and unknown
 //   rendering intents and blend modes. 6.2.8/6.2.9: pictures lose alternates, OPI and interpolation; forms lose OPI,
 //   PostScript and their reference to another PDF (their own content stays).
 // - 6.3: annotations of types PDF/A forbids (3D, sound, screen, movie, rich media, file attachments for level B) and
-//   hidden ones are left out; every other one prints and keeps only its normal appearance, as the rules want.
+//   hidden ones are left out; every other one prints and keeps only its normal appearance, as the rules want. One
+//   without an appearance gets one drawn from its own entries (PdfAAppearances); links and annotations whose
+//   rectangle has no width and no height need none.
+// - 6.2.11.4: fonts drawn with that aren't embedded are embedded from installed fonts of the same widths (PdfAFonts).
 // - 6.4: forms lose XFA, NeedAppearances and the actions of fields and widgets; 6.5: JavaScript, launch and the other forbidden actions, and every
 //   additional-actions entry, are removed (links, go-to and URI actions stay); 6.8: embedded files go (level B).
 // - 6.9: optional content configurations get unique names, no AS entry and an order listing every group.
 // - Other XMP packets (pages, pictures) go: the document's own is written new by PdfAMetadata.
 //
 // What makes it give up (ConversionRefusedException with a pdfa.reason.* key; the job queue then tries Ghostscript,
-// and without it the file says why it isn't PDF/A): a font drawn with that isn't embedded, DeviceCMYK without a CMYK
-// intent (or CMYK and RGB device colours together), an annotation or field that has no appearance of its own,
+// and without it the file says why it isn't PDF/A): a font drawn with that isn't embedded and has no installed match
+// (the font's name as the detail), an annotation Filee can't draw an appearance for (text its font can't encode),
 // XFA-only forms, PostScript, external stream data, LZW mixed with filters PDFsharp can't unpack, inline pictures
 // with LZW or interpolation, and content it can't read. A document past the walk's limits is refused as too complex.
 //
-// Not checked (docs/ENGINES.md lists them): that embedded fonts hold every glyph drawn and their widths match, the
-// symbolic/non-symbolic TrueType encodings, ICC profiles of the document's own ICCBased colour spaces, JPEG 2000
-// details and the implementation limits of 6.1.13 (string, name and number sizes, q nesting).
+// Not checked (docs/ENGINES.md lists them): that fonts embedded by the PDF hold every glyph drawn and their widths
+// match, the symbolic/non-symbolic TrueType encodings of those fonts, ICC profiles of the document's own ICCBased
+// colour spaces, JPEG 2000 details and the implementation limits of 6.1.13 (string, name and number sizes, q nesting).
 
 using Filee.Core.Conversion;
+using Filee.Engines.Typesetting;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.Advanced;
 using Name = Filee.Engines.Pdf.PdfContentLexer.Name;
@@ -40,9 +47,6 @@ internal static class PdfAConformance
 {
     /// <summary>Why a PDF can't become PDF/A: a font it draws with isn't embedded.</summary>
     public const string FontNotEmbedded = "pdfa.reason.font_not_embedded";
-
-    /// <summary>Its colours are CMYK without a CMYK profile, or device CMYK and RGB together.</summary>
-    public const string DeviceCmyk = "pdfa.reason.cmyk";
 
     /// <summary>An annotation or form field has no appearance of its own.</summary>
     public const string NoAppearance = "pdfa.reason.no_appearance";
@@ -104,10 +108,11 @@ internal static class PdfAConformance
     /// Changes <paramref name="document"/> to keep the rules of PDF/A-2b and gives it its output intent. Save it with
     /// <see cref="PdfAMetadata.Save"/>, which writes the XMP and document information to match.
     /// </summary>
+    /// <param name="fonts">The fonts to embed missing ones from; the installed ones when null.</param>
     /// <exception cref="ConversionRefusedException">It can't keep them (a <c>pdfa.reason.*</c> key, or
     /// <c>error.document_too_complex</c>, or <c>error.document_too_large</c> for its content streams' bytes). The
     /// document may be changed in part then.</exception>
-    public static void Prepare(PdfDocument document, CancellationToken cancellationToken = default)
+    public static void Prepare(PdfDocument document, CancellationToken cancellationToken = default, IFontCollection? fonts = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var catalog = document.Internals.Catalog;
@@ -118,10 +123,11 @@ internal static class PdfAConformance
         CleanForm(catalog);
         CleanOutline(catalog);
         CleanOptionalContent(catalog);
+        var form = Resolve(catalog.Elements["/AcroForm"]) as PdfDictionary;
         foreach (var page in document.Pages)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            CleanPage(document, page);
+            CleanPage(document, page, form);
         }
 
         var walk = Walk(catalog, cancellationToken);
@@ -129,13 +135,14 @@ internal static class PdfAConformance
             CleanObject(dictionary);
         foreach (var state in walk.GraphicsStates)
             CleanGraphicsState(state);
+        PdfAFonts.Embed(document, [.. walk.Fonts.Where(f => !PdfAFonts.IsEmbedded(f))], fonts ?? SystemFonts.Instance, cancellationToken);
         foreach (var font in walk.Fonts)
             CheckFont(font);
 
         var colours = new Colours();
         colours.ReadNames(walk);
         colours.ReadContent(walk.ContentStreams, cancellationToken);
-        catalog.Elements["/OutputIntents"] = OutputIntents(document, intents, colours);
+        catalog.Elements["/OutputIntents"] = OutputIntents(document, intents, colours, walk);
 
         if (document.SecuritySettings.IsEncrypted)
             document.SecurityHandler.SetEncryptionToNoneAndResetPasswords();
@@ -298,7 +305,7 @@ internal static class PdfAConformance
 
     // ---- pages and annotations
 
-    private static void CleanPage(PdfDocument document, PdfPage page)
+    private static void CleanPage(PdfDocument document, PdfPage page, PdfDictionary? form)
     {
         page.Elements.Remove("/AA");
         page.Elements.Remove("/PresSteps");
@@ -306,13 +313,13 @@ internal static class PdfAConformance
             return;
         for (var i = annotations.Elements.Count - 1; i >= 0; i--)
         {
-            if (Resolve(annotations.Elements[i]) is not PdfDictionary annotation || !KeepAnnotation(document, annotation))
+            if (Resolve(annotations.Elements[i]) is not PdfDictionary annotation || !KeepAnnotation(document, annotation, form))
                 annotations.Elements.RemoveAt(i);
         }
     }
 
     /// <summary>Whether the annotation may stay; it is made to keep the rules when it does.</summary>
-    private static bool KeepAnnotation(PdfDocument document, PdfDictionary annotation)
+    private static bool KeepAnnotation(PdfDocument document, PdfDictionary annotation, PdfDictionary? form)
     {
         var subtype = Name(annotation, "/Subtype");
         if (!Annotations.Contains(subtype))
@@ -342,47 +349,61 @@ internal static class PdfAConformance
         if ((flags & HiddenFlags) != 0)
             return false; // never shown: PDF/A has no hidden annotations
         annotation.Elements["/F"] = new PdfInteger(flags | Print);
-        CleanAppearance(document, annotation, subtype);
+        CleanAppearance(document, annotation, subtype, form);
         return true;
     }
 
-    /// <summary>6.3.3: an appearance dictionary with only the normal appearance, a stream, or for buttons a set of states.</summary>
-    private static void CleanAppearance(PdfDocument document, PdfDictionary annotation, string subtype)
+    /// <summary>
+    /// 6.3.3: an appearance dictionary with only the normal appearance, a stream, or for buttons a set of states; one
+    /// drawn from the annotation's entries when it has none that fits.
+    /// </summary>
+    private static void CleanAppearance(PdfDocument document, PdfDictionary annotation, string subtype, PdfDictionary? form)
     {
-        var exempt = subtype == "/Link" || HasNoArea(annotation);
-        if (Resolve(annotation.Elements["/AP"]) is not PdfDictionary appearance || Resolve(appearance.Elements["/N"]) is not PdfDictionary normal)
+        var button = subtype == "/Widget" && FieldType(annotation) == "/Btn";
+        if (Resolve(annotation.Elements["/AP"]) is PdfDictionary appearance && Resolve(appearance.Elements["/N"]) is PdfDictionary normal)
         {
-            if (!exempt)
-                throw Refuse(NoAppearance);
+            foreach (var key in appearance.Elements.Keys.Where(k => k != "/N").ToList())
+                appearance.Elements.Remove(key);
+            var state = Name(annotation, "/AS");
+            if (normal.Stream is not null && button)
+            {
+                // A button's appearance is a set of states: the one it has becomes its only state.
+                if (state.Length == 0)
+                    state = "/Off";
+                var states = new PdfDictionary(document);
+                states.Elements[state] = appearance.Elements["/N"];
+                appearance.Elements["/N"] = states;
+                annotation.Elements.SetName("/AS", state);
+                return;
+            }
+            if (normal.Stream is not null || (button && normal.Elements.Values.Any(v => Resolve(v) is PdfDictionary { Stream: not null })))
+                return;
+            // States outside a button: the one it shows becomes its appearance.
+            if (!button && state.Length > 0 && Resolve(normal.Elements[state]) is PdfDictionary { Stream: not null })
+            {
+                appearance.Elements["/N"] = normal.Elements[state];
+                return;
+            }
+        }
+        if (HasNoArea(annotation))
+        {
             annotation.Elements.Remove("/AP");
             return;
         }
-        foreach (var key in appearance.Elements.Keys.Where(k => k != "/N").ToList())
-            appearance.Elements.Remove(key);
-        var button = subtype == "/Widget" && FieldType(annotation) == "/Btn";
-        var state = Name(annotation, "/AS");
-        if (normal.Stream is not null && button)
+        var made = PdfAAppearances.Make(document, annotation, subtype, form);
+        if (made is null)
         {
-            // A button's appearance is a set of states: the one it has becomes its only state.
-            if (state.Length == 0)
-                state = "/Off";
-            var states = new PdfDictionary(document);
-            states.Elements[state] = appearance.Elements["/N"];
-            appearance.Elements["/N"] = states;
-            annotation.Elements.SetName("/AS", state);
-        }
-        else if (normal.Stream is null && !button)
-        {
-            // States outside a button: the one it shows becomes its appearance.
-            if (state.Length > 0 && Resolve(normal.Elements[state]) is PdfDictionary { Stream: not null })
-                appearance.Elements["/N"] = normal.Elements[state];
-            else if (exempt)
-                annotation.Elements.Remove("/AP");
-            else
+            if (subtype != "/Link")
                 throw Refuse(NoAppearance);
+            annotation.Elements.Remove("/AP"); // a link needs none (6.3.3)
+            return;
         }
+        var drawn = new PdfDictionary(document);
+        drawn.Elements["/N"] = made;
+        annotation.Elements["/AP"] = drawn;
     }
 
+    /// <summary>A rectangle of no width and no height (6.3.3 asks no appearance of those).</summary>
     private static bool HasNoArea(PdfDictionary annotation)
     {
         if (Resolve(annotation.Elements["/Rect"]) is not PdfArray { Elements.Count: 4 } rect)
@@ -395,7 +416,7 @@ internal static class PdfAConformance
             PdfRealObject value => value.Value,
             _ => 0,
         };
-        return At(0) == At(2) || At(1) == At(3);
+        return At(0) == At(2) && At(1) == At(3);
     }
 
     /// <summary>A widget's field type, from it or the fields it is a kid of.</summary>
@@ -599,36 +620,16 @@ internal static class PdfAConformance
         }
     }
 
-    /// <summary>6.2.11.4: every font drawn with is embedded (Type 3 fonts are drawings themselves).</summary>
+    /// <summary>6.2.11.3.2: a CIDFontType2 says how CIDs map to glyphs; Identity is what PDF readers assume without it.</summary>
     private static void CheckFont(PdfDictionary font)
     {
-        switch (Name(font, "/Subtype"))
+        if (Name(font, "/Subtype") != "/Type0" || Resolve(font.Elements["/DescendantFonts"]) is not PdfArray descendants)
+            return;
+        foreach (var cidFont in descendants.Elements.Select(Resolve).OfType<PdfDictionary>())
         {
-            case "/Type3":
-                return;
-            case "/Type0":
-                if (Resolve(font.Elements["/DescendantFonts"]) is not PdfArray descendants
-                    || descendants.Elements.Select(Resolve).OfType<PdfDictionary>().ToList() is not [_, ..] cidFonts)
-                    throw Refuse(FontNotEmbedded);
-                foreach (var cidFont in cidFonts)
-                    CheckEmbedded(cidFont);
-                return;
-            case "/Type1" or "/MMType1" or "/TrueType" or "/CIDFontType0" or "/CIDFontType2":
-                CheckEmbedded(font);
-                return;
-            default:
-                throw Refuse(FontNotEmbedded);
+            if (Name(cidFont, "/Subtype") == "/CIDFontType2" && !cidFont.Elements.ContainsKey("/CIDToGIDMap"))
+                cidFont.Elements.SetName("/CIDToGIDMap", "/Identity");
         }
-    }
-
-    private static void CheckEmbedded(PdfDictionary font)
-    {
-        if (Resolve(font.Elements["/FontDescriptor"]) is not PdfDictionary descriptor
-            || !new[] { "/FontFile", "/FontFile2", "/FontFile3" }.Any(key => Resolve(descriptor.Elements[key]) is PdfDictionary { Stream: not null }))
-            throw Refuse(FontNotEmbedded);
-        // 6.2.11.3.2: a CIDFontType2 says how CIDs map to glyphs; Identity is what PDF readers assume without it.
-        if (Name(font, "/Subtype") == "/CIDFontType2" && !font.Elements.ContainsKey("/CIDToGIDMap"))
-            font.Elements.SetName("/CIDToGIDMap", "/Identity");
     }
 
     // ---- colours and the output intent
@@ -642,15 +643,21 @@ internal static class PdfAConformance
         public bool Rgb { get; private set; }
         public bool Cmyk { get; private set; }
 
+        /// <summary>Content streams that draw in a device space (DeviceRGB or DeviceCMYK), and whether they use resources.</summary>
+        public Dictionary<PdfDictionary, (bool Rgb, bool Cmyk, bool Resources)> Streams { get; } = new(ReferenceEqualityComparer.Instance);
+
+        private bool _streamRgb;
+        private bool _streamCmyk;
+
         private void See(string name)
         {
             switch (name)
             {
                 case "DeviceRGB" or "RGB":
-                    Rgb = true;
+                    Rgb = _streamRgb = true;
                     break;
                 case "DeviceCMYK" or "CMYK":
-                    Cmyk = true;
+                    Cmyk = _streamCmyk = true;
                     break;
             }
         }
@@ -698,19 +705,26 @@ internal static class PdfAConformance
                 _bytes += data.Length;
                 if (_bytes > PdfFontUses.MaxContentBytes)
                     throw new ConversionRefusedException(Documents.DocumentLimits.TooLargeKey);
+                bool resources;
+                (_streamRgb, _streamCmyk) = (false, false);
                 try
                 {
-                    Read(new PdfContentLexer(data));
+                    resources = Read(new PdfContentLexer(data));
                 }
                 catch (InvalidDataException)
                 {
                     throw Refuse(Unreadable);
                 }
+                if (_streamRgb || _streamCmyk)
+                    Streams[stream] = (_streamRgb, _streamCmyk, resources);
             }
         }
 
-        private void Read(PdfContentLexer lexer)
+        /// <summary>Reads the colours of one stream; true when it names resources (fonts, forms, states, spaces …).</summary>
+        private bool Read(PdfContentLexer lexer)
         {
+            var resources = false;
+            object? previous = null;
             while (lexer.Next() is { } token)
             {
                 if (++_tokens > PdfFontUses.MaxWork)
@@ -718,10 +732,10 @@ internal static class PdfAConformance
                 switch (token)
                 {
                     case Operator { Name: "k" or "K" }:
-                        Cmyk = true;
+                        See("CMYK");
                         break;
                     case Operator { Name: "rg" or "RG" }:
-                        Rgb = true;
+                        See("RGB");
                         break;
                     case Name { Value: "DeviceRGB" or "DeviceCMYK" } name:
                         See(name.Value);
@@ -729,8 +743,15 @@ internal static class PdfAConformance
                     case Operator { Name: "BI" }:
                         InlineImage(lexer.ReadInlineImage(_ => null).Parameters);
                         break;
+                    case Operator { Name: "cs" or "CS" } when previous is Name { Value: "DeviceRGB" or "DeviceCMYK" or "DeviceGray" }:
+                        break;
+                    case Operator { Name: "Tf" or "Do" or "gs" or "sh" or "cs" or "CS" or "scn" or "SCN" or "BDC" or "DP" }:
+                        resources = true;
+                        break;
                 }
+                previous = token;
             }
+            return resources;
         }
 
         private void InlineImage(Dictionary<string, object?> parameters)
@@ -809,20 +830,23 @@ internal static class PdfAConformance
     }
 
     /// <summary>
-    /// The PDF/A output intent: one the PDF brings for the device colours it draws in (a PDF/A intent first), else
-    /// sRGB. A PDF in device CMYK without a CMYK intent, or in device CMYK and RGB together, can't have one.
+    /// The PDF/A output intent: a CMYK one the PDF brings when it draws in device CMYK, else an RGB one it brings, else
+    /// sRGB (a PDF/A intent first). The device space the intent isn't for is made device independent
+    /// (<see cref="MakeIndependent"/>).
     /// </summary>
     private static PdfArray OutputIntents(PdfDocument document, List<(PdfDictionary Intent, PdfDictionary Profile, int Components, bool PdfA)> existing,
-        Colours colours)
+        Colours colours, Reached walk)
     {
-        if (colours.Cmyk && colours.Rgb)
-            throw Refuse(DeviceCmyk);
-        var wanted = colours.Cmyk ? 4 : 3;
-        var kept = existing.Where(e => e.Components == wanted).OrderByDescending(e => e.PdfA).FirstOrDefault();
-        if (kept.Profile is null && colours.Cmyk)
-            throw Refuse(DeviceCmyk);
+        var kept = colours.Cmyk ? existing.Where(e => e.Components == 4).OrderByDescending(e => e.PdfA).FirstOrDefault() : default;
+        var cmyk = kept.Profile is not null;
+        if (!cmyk)
+            kept = existing.Where(e => e.Components == 3).OrderByDescending(e => e.PdfA).FirstOrDefault();
         // PDFsharp gives every page without one a transparency group in this colour space when it saves.
-        document.Options.ColorMode = colours.Cmyk ? PdfColorMode.Cmyk : PdfColorMode.Rgb;
+        document.Options.ColorMode = cmyk ? PdfColorMode.Cmyk : PdfColorMode.Rgb;
+        if (cmyk && colours.Rgb)
+            MakeIndependent(document, walk, colours, rgb: true);
+        else if (!cmyk && colours.Cmyk)
+            MakeIndependent(document, walk, colours, rgb: false);
 
         var intent = new PdfDictionary(document);
         intent.Elements.SetName("/Type", "/OutputIntent");
@@ -843,15 +867,103 @@ internal static class PdfAConformance
             intent.Elements.SetString("/OutputConditionIdentifier", SrgbProfile.Name);
             intent.Elements.SetString("/RegistryName", "http://www.color.org");
             intent.Elements.SetString("/Info", SrgbProfile.Name);
-            var profile = new PdfDictionary(document);
-            profile.Elements.SetInteger("/N", 3);
-            profile.CreateStream(SrgbProfile.Bytes);
-            profile.Stream.Zip();
-            document.Internals.AddObject(profile);
-            intent.Elements["/DestOutputProfile"] = profile.Reference;
+            intent.Elements["/DestOutputProfile"] = Profile(document, SrgbProfile.Bytes, 3).Reference;
         }
         var intents = new PdfArray(document);
         intents.Elements.Add(intent);
         return intents;
+    }
+
+    private static PdfDictionary Profile(PdfDocument document, byte[] bytes, int components)
+    {
+        var profile = new PdfDictionary(document);
+        profile.Elements.SetInteger("/N", components);
+        profile.CreateStream(bytes);
+        profile.Stream.Zip();
+        document.Internals.AddObject(profile);
+        return profile;
+    }
+
+    /// <summary>
+    /// 6.2.4.3: DeviceCMYK under an RGB intent (or DeviceRGB under a CMYK one) used device independently. Where an
+    /// object names the device space (a picture's, shading's or group's colour space, a colour space resource, the base
+    /// or alternate of another space), it names an ICCBased space of <see cref="CmykProfile"/> (or sRGB) instead; for
+    /// the operators of content streams (k, K, the device space by name, inline pictures), every resource dictionary
+    /// gets the same space as DefaultCMYK (or DefaultRGB), and so does a page without resources, or a form that draws
+    /// in the device space and names no resources.
+    /// </summary>
+    private static void MakeIndependent(PdfDocument document, Reached walk, Colours colours, bool rgb)
+    {
+        var device = rgb ? "/DeviceRGB" : "/DeviceCMYK";
+        var key = rgb ? "/DefaultRGB" : "/DefaultCMYK";
+        var space = new PdfArray(document);
+        space.Elements.Add(new PdfName("/ICCBased"));
+        space.Elements.Add(Profile(document, rgb ? SrgbProfile.Bytes : CmykProfile.Bytes, rgb ? 3 : 4).Reference!);
+        document.Internals.AddObject(space);
+
+        foreach (var dictionary in walk.Dictionaries)
+        {
+            // An ICC profile's alternate is used only when the profile can't be.
+            var icc = dictionary.Stream is not null && dictionary.Elements.ContainsKey("/N");
+            foreach (var name in dictionary.Elements.Keys.ToList())
+            {
+                if (!(name == "/Alternate" && icc) && Resolve(dictionary.Elements[name]) is PdfName value && value.Value == device)
+                    dictionary.Elements[name] = space.Reference!;
+            }
+        }
+        foreach (var array in walk.Arrays)
+        {
+            for (var i = 0; i < array.Elements.Count; i++)
+            {
+                if (Resolve(array.Elements[i]) is PdfName value && value.Value == device)
+                    array.Elements[i] = space.Reference!;
+            }
+        }
+
+        void SetDefault(PdfDictionary resources)
+        {
+            if (Resolve(resources.Elements["/ColorSpace"]) is not PdfDictionary spaces)
+            {
+                spaces = new PdfDictionary(document);
+                resources.Elements["/ColorSpace"] = spaces;
+            }
+            if (!spaces.Elements.ContainsKey(key))
+                spaces.Elements[key] = space.Reference!;
+        }
+
+        foreach (var dictionary in walk.Dictionaries)
+        {
+            if (Resolve(dictionary.Elements["/Resources"]) is PdfDictionary resources)
+                SetDefault(resources);
+        }
+        foreach (var (stream, use) in colours.Streams)
+        {
+            if (!(rgb ? use.Rgb : use.Cmyk) || stream.Elements.ContainsKey("/Resources") || use.Resources)
+                continue;
+            var resources = new PdfDictionary(document);
+            SetDefault(resources);
+            stream.Elements["/Resources"] = resources;
+        }
+        foreach (var page in document.Pages)
+        {
+            if (!HasResources(page))
+            {
+                var resources = new PdfDictionary(document);
+                SetDefault(resources);
+                page.Elements["/Resources"] = resources;
+            }
+        }
+
+        static bool HasResources(PdfDictionary page)
+        {
+            PdfDictionary? node = page;
+            for (var depth = 0; node is not null && depth < 64; depth++)
+            {
+                if (Resolve(node.Elements["/Resources"]) is PdfDictionary)
+                    return true;
+                node = Resolve(node.Elements["/Parent"]) as PdfDictionary;
+            }
+            return false;
+        }
     }
 }
