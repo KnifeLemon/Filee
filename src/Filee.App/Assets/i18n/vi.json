@@ -263,6 +263,8 @@
   "notice.renderer_left_out.videos_one": "bỏ qua 1 video",
   "notice.renderer_left_out.pictures": "bỏ qua {0} hình ảnh",
   "notice.renderer_left_out.pictures_one": "bỏ qua 1 hình ảnh",
+  "notice.renderer_left_out.fonts": "đã thay {0} phông chữ nhúng",
+  "notice.renderer_left_out.fonts_one": "đã thay 1 phông chữ nhúng",
   "notice.renderer_left_out.objects_pictured": "{0} đối tượng nhúng được vẽ từ ảnh đã lưu của chúng",
   "notice.renderer_left_out.objects_pictured_one": "1 đối tượng nhúng được vẽ từ ảnh đã lưu của nó",
   "notice.renderer_left_out.charts_pictured": "{0} biểu đồ được vẽ từ ảnh đã lưu của chúng",

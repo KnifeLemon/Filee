@@ -39,12 +39,23 @@ internal sealed class XpsCanvas : XpsNode
     public List<XpsNode> Children { get; } = [];
 }
 
+/// <summary>The end of a stroke (StrokeStartLineCap, StrokeEndLineCap, StrokeDashCap).</summary>
+internal enum XpsLineCap
+{
+    Flat,
+    Round,
+    Square,
+
+    /// <summary>A triangle half the thickness long past the end.</summary>
+    Triangle,
+}
+
 /// <summary>Stroke settings of a path.</summary>
 internal sealed record XpsStrokeStyle(
     float Thickness = 1,
-    SKStrokeCap StartCap = SKStrokeCap.Butt,
-    SKStrokeCap EndCap = SKStrokeCap.Butt,
-    SKStrokeCap DashCap = SKStrokeCap.Square,
+    XpsLineCap StartCap = XpsLineCap.Flat,
+    XpsLineCap EndCap = XpsLineCap.Flat,
+    XpsLineCap DashCap = XpsLineCap.Square,
     SKStrokeJoin Join = SKStrokeJoin.Miter,
     float MiterLimit = 10,
     float[]? Dashes = null,
@@ -83,6 +94,18 @@ internal sealed class XpsGlyphs : XpsNode
     public bool Bold { get; init; }
 
     public bool Italic { get; init; }
+
+    /// <summary>
+    /// IsSideways: each glyph turned 90° counter-clockwise about its top centre. <see cref="Positions"/> are then in
+    /// the turned frame: <see cref="SidewaysTurn"/> maps them (and the glyphs drawn there) to the element's coordinates.
+    /// </summary>
+    public bool Sideways { get; init; }
+
+    /// <summary>The quarter turn counter-clockwise of sideways glyphs: (x, y) → (y, −x).</summary>
+    public static readonly SKMatrix SidewaysTurn = new(0, 1, 0, -1, 0, 0, 0, 0, 1);
+
+    /// <summary>The run's frame → the element's coordinates: <see cref="SidewaysTurn"/> or identity.</summary>
+    public SKMatrix Frame => Sideways ? SidewaysTurn : SKMatrix.Identity;
 
     /// <summary>A Skia font of the run as PageContent draws it (unhinted, subpixel positions).</summary>
     public SKFont SkiaFont(SKTypeface typeface) => new(typeface, Size)
@@ -182,7 +205,70 @@ internal sealed class XpsImageBrush : XpsTileBrush
     public SKMatrix PixelsToUnits => SKMatrix.CreateScale(Image.Width / Image.Image.Width, Image.Height / Image.Image.Height);
 }
 
-internal sealed class XpsVisualBrush : XpsTileBrush
+internal sealed class XpsVisualBrush : XpsTileBrush, IDisposable
 {
+    private readonly Lock _lock = new();
+    private long _elements = -1;
+    private SKImage? _picture;
+
     public required XpsNode Visual { get; init; }
+
+    /// <summary>Elements drawing the visual once draws (its canvases, paths and glyph runs, and the visuals of its brushes).</summary>
+    public long Elements
+    {
+        get
+        {
+            if (_elements < 0)
+                _elements = Count(Visual);
+            return _elements;
+        }
+    }
+
+    private static long Count(XpsNode node)
+    {
+        long count = 1 + (node.OpacityMask is XpsVisualBrush mask ? mask.Elements : 0);
+        switch (node)
+        {
+            case XpsCanvas canvas:
+                foreach (var child in canvas.Children)
+                    count += Count(child);
+                break;
+            case XpsPath path:
+                count += (path.Fill as XpsVisualBrush)?.Elements ?? 0;
+                count += (path.Stroke as XpsVisualBrush)?.Elements ?? 0;
+                break;
+            case XpsGlyphs glyphs:
+                count += (glyphs.Fill as XpsVisualBrush)?.Elements ?? 0;
+                break;
+        }
+        return Math.Min(count, 1L << 40);
+    }
+
+    /// <summary>
+    /// One tile as a picture of <paramref name="width"/> × <paramref name="height"/> pixels, drawn by
+    /// <paramref name="draw"/> the first time and kept (the first size asked for is the one kept).
+    /// </summary>
+    public SKImage? Picture(int width, int height, Action<SKCanvas, XpsVisualBrush, int, int> draw)
+    {
+        lock (_lock)
+        {
+            if (_picture is not null)
+                return _picture;
+            using var surface = SKSurface.Create(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
+            if (surface is null)
+                return null;
+            surface.Canvas.Clear(SKColors.Transparent);
+            draw(surface.Canvas, this, width, height);
+            return _picture = surface.Snapshot();
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_lock)
+        {
+            _picture?.Dispose();
+            _picture = null;
+        }
+    }
 }

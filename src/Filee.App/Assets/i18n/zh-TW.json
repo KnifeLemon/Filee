@@ -263,6 +263,8 @@
   "notice.renderer_left_out.videos_one": "略過了 1 個影片",
   "notice.renderer_left_out.pictures": "略過了 {0} 張圖片",
   "notice.renderer_left_out.pictures_one": "略過了 1 張圖片",
+  "notice.renderer_left_out.fonts": "替換了 {0} 個內嵌字型",
+  "notice.renderer_left_out.fonts_one": "替換了 1 個內嵌字型",
   "notice.renderer_left_out.objects_pictured": "{0} 個內嵌物件以其儲存的圖片繪製",
   "notice.renderer_left_out.objects_pictured_one": "1 個內嵌物件以其儲存的圖片繪製",
   "notice.renderer_left_out.charts_pictured": "{0} 個圖表以其儲存的圖片繪製",

@@ -3,15 +3,17 @@
 // one page at a time as they are drawn (XpsPageReader → XpsPageWriter → PageContent), so pictures of a few pages don't
 // read the whole document. The drawing converter writes the pages as PDF (PdfPageWriter, fonts subset), PNG and SVG.
 //
-// Embedded fonts (obfuscated or not) are checked by Filee's own SFNT parser before Skia sees them; a run whose font is
-// missing or damaged draws its UnicodeString with an installed font. Pictures: PNG, JPEG, GIF and BMP through Skia,
-// TIFF through ImageMagick; their resolution sets their size (96 dpi when they have none). JPEG XR pictures (HD Photo,
-// which Windows' XPS writer may use) and pictures that are damaged or claim more than MaxPicturePixels are left out and
-// counted: the converter names them in the file's result.
+// Embedded fonts (obfuscated or not) are checked by Filee's own SFNT parser before Skia sees them, and the glyphs a run
+// uses by the PDF writer's subsetter (CanSubset); a run whose font is missing or damaged draws its UnicodeString with an
+// installed font, and the fonts replaced are named in the file's result. Pictures: PNG, JPEG, GIF and BMP through Skia,
+// TIFF through ImageMagick, JPEG XR (HD Photo, which Windows' XPS writer uses) through Filee's own decoder (JpegXr/);
+// their resolution sets their size (96 dpi when they have none). A picture's own ICC profile, or the one a
+// ColorConvertedBitmap names, brings it into sRGB. Pictures that are damaged or claim more than MaxPicturePixels are
+// left out and counted: the converter names them too. ContextColor colours go through their ICC profile
+// (XpsColorProfile), or follow ECMA-388's rules when it isn't usable.
 //
-// Not drawn: IsSideways glyphs are drawn upright, the Triangle line cap is flat, scRGB gradients interpolate in sRGB,
-// ICC profiles of ContextColor and ColorConvertedBitmap are not applied, and print tickets, signatures, document
-// structure and story fragments are not read.
+// Not drawn: scRGB gradients interpolate in sRGB, sideways glyphs keep the horizontal metrics' bold and italic
+// simulation, and print tickets, signatures, document structure and story fragments are not read.
 
 using System.Buffers.Binary;
 using System.Xml.Linq;
@@ -19,6 +21,7 @@ using Filee.Core.Conversion;
 using Filee.Engines.Documents;
 using Filee.Engines.Drawings;
 using Filee.Engines.Fonts;
+using Filee.Engines.JpegXr;
 using Filee.Engines.Rendering;
 using Filee.Engines.Typesetting;
 using ImageMagick;
@@ -42,6 +45,9 @@ internal sealed class XpsDocument : IFixedPages
     private readonly Dictionary<string, XpsImage?> _images = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, XElement?> _dictionaries = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<IDisposable> _owned = [];
+    private readonly Dictionary<PageFont, HashSet<int>> _subsettable = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<string, XpsColorProfile?> _profiles = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _fontsReplaced = new(StringComparer.OrdinalIgnoreCase);
     private PageFont? _fallback;
     private bool _fallbackLooked;
     private int _picturesLeftOut;
@@ -156,8 +162,18 @@ internal sealed class XpsDocument : IFixedPages
     /// <summary>True the first time a link target is placed (a PDF destination is defined once).</summary>
     internal bool PlaceDestination(string name) => _targets.Contains(name) && _destinations.Add(name);
 
-    public IReadOnlyList<LeftOutPart> LeftOut =>
-        _picturesLeftOut > 0 ? [new LeftOutPart("notice.renderer_left_out.pictures", _picturesLeftOut)] : [];
+    public IReadOnlyList<LeftOutPart> LeftOut
+    {
+        get
+        {
+            var parts = new List<LeftOutPart>();
+            if (_picturesLeftOut > 0)
+                parts.Add(new LeftOutPart("notice.renderer_left_out.pictures", _picturesLeftOut));
+            if (_fontsReplaced.Count > 0)
+                parts.Add(new LeftOutPart("notice.renderer_left_out.fonts", _fontsReplaced.Count));
+            return parts;
+        }
+    }
 
     // ───────────────────────── Resources ─────────────────────────
 
@@ -206,6 +222,37 @@ internal sealed class XpsDocument : IFixedPages
         return font;
     }
 
+    /// <summary>
+    /// True when the PDF writer can subset <paramref name="font"/> with <paramref name="glyphs"/>: a font whose outlines,
+    /// metrics or cmap are damaged where these glyphs need them would fail the whole PDF, so such a run is drawn with
+    /// the fallback font instead. Each glyph is tried once; a font the subsetter doesn't take is embedded whole.
+    /// </summary>
+    internal bool CanSubset(PageFont font, ushort[] glyphs)
+    {
+        if (!_subsettable.TryGetValue(font, out var known))
+        {
+            if (!FontSubsetter.CanSubset(font.Sfnt, out _))
+                return true;
+            _subsettable[font] = known = [];
+        }
+        var fresh = glyphs.Select(g => (int)g).Where(g => !known.Contains(g)).Distinct().ToList();
+        if (fresh.Count == 0)
+            return true;
+        try
+        {
+            _ = FontSubsetter.Subset(font.Sfnt, fresh).Write();
+        }
+        catch (Exception ex) when (ex is InvalidDataException or ArgumentException or IndexOutOfRangeException or OverflowException or NotSupportedException)
+        {
+            return false;
+        }
+        known.UnionWith(fresh);
+        return true;
+    }
+
+    /// <summary>Notes that runs of the font part <paramref name="part"/> were drawn with the fallback font.</summary>
+    internal void FontReplaced(string part) => _fontsReplaced.Add(part);
+
     /// <summary>An installed font for runs whose own font is missing.</summary>
     internal PageFont? FallbackFont
     {
@@ -227,29 +274,60 @@ internal sealed class XpsDocument : IFixedPages
         }
     }
 
-    /// <summary>A picture part; null (and counted as left out) when it can't be drawn.</summary>
-    internal XpsImage? Image(string? part)
+    /// <summary>A colour of the markup written in part <paramref name="where"/>, its ContextColor profile applied.</summary>
+    internal SKColor? Color(string? text, string where)
+    {
+        if (XpsValues.ContextColor(text) is not var (reference, values))
+            return XpsValues.Color(text);
+        if (Profile(XpsPackage.Resolve(where, reference)) is { } profile && profile.Channels == values.Length - 1)
+            return profile.Convert(values[0], values.AsSpan(1));
+        return XpsValues.ContextFallback(values);
+    }
+
+    /// <summary>An ICC profile part sampled; null when it is missing, too large or not usable.</summary>
+    private XpsColorProfile? Profile(string? part)
     {
         if (part is null)
             return null;
-        if (_images.TryGetValue(part, out var image))
+        if (_profiles.TryGetValue(part, out var profile))
+            return profile;
+        profile = _profiles.Count < Budget.Limits.MaxProfiles && _package.Bytes(part, Budget.Limits.MaxProfileBytes) is { } icc
+            ? XpsColorProfile.Create(icc)
+            : null;
+        _profiles[part] = profile;
+        return profile;
+    }
+
+    /// <summary>
+    /// A picture part read through the ICC profile part <paramref name="profile"/> (null: its own profile, if any);
+    /// null (and counted as left out) when it can't be drawn.
+    /// </summary>
+    internal XpsImage? Image(string? part, string? profile = null)
+    {
+        if (part is null)
+            return null;
+        var key = profile is null ? part : $"{part}|{profile}";
+        if (_images.TryGetValue(key, out var image))
             return image;
-        image = Decode(_package.Bytes(part, Budget.Limits.Document.MaxPartBytes));
+        var icc = profile is null ? null : _package.Bytes(profile, Budget.Limits.MaxProfileBytes);
+        image = Decode(_package.Bytes(part, Budget.Limits.Document.MaxPartBytes), icc);
         if (image is null)
             _picturesLeftOut++;
         else
             Track(image.Image);
-        _images[part] = image;
+        _images[key] = image;
         return image;
     }
 
-    private XpsImage? Decode(byte[]? bytes)
+    private XpsImage? Decode(byte[]? bytes, byte[]? icc)
     {
         if (bytes is null or { Length: < 8 })
             return null;
         var maxPixels = Budget.Limits.Document.MaxPicturePixels;
         try
         {
+            if (JpegXrDecoder.IsJpegXr(bytes))
+                return JpegXr(bytes, icc, maxPixels);
             if (bytes is [0x49, 0x49, 0x2A, 0x00, ..] or [0x4D, 0x4D, 0x00, 0x2A, ..])
             {
                 var settings = new MagickReadSettings { Format = MagickFormat.Tiff };
@@ -258,24 +336,102 @@ internal sealed class XpsDocument : IFixedPages
                     return null;
                 using var tiff = new MagickImage(bytes, settings);
                 var dpi = Resolution(tiff.Density);
+                ToSrgb(tiff, icc);
                 var png = tiff.ToByteArray(MagickFormat.Png);
                 return SKImage.FromEncodedData(png) is { } decoded ? Sized(decoded, dpi) : null;
             }
-            // PNG, JPEG, GIF, BMP; anything else (JPEG XR among them) has no codec here.
+            // PNG, JPEG, GIF, BMP; anything else has no codec here.
             if (bytes is not ([0x89, 0x50, 0x4E, 0x47, ..] or [0xFF, 0xD8, 0xFF, ..] or [0x47, 0x49, 0x46, 0x38, ..] or [0x42, 0x4D, ..]))
                 return null;
+            var resolution = PngResolution(bytes) ?? JpegResolution(bytes) ?? (96, 96);
             using var data = SKData.CreateCopy(bytes);
             using (var codec = SKCodec.Create(data))
             {
                 if (codec is null || codec.Info.Width <= 0 || codec.Info.Height <= 0 || (long)codec.Info.Width * codec.Info.Height > maxPixels)
                     return null;
+                if (icc is not null)
+                {
+                    // The profile the markup names replaces the picture's own.
+                    using var picture = new MagickImage(bytes);
+                    ToSrgb(picture, icc);
+                    return SKImage.FromEncodedData(picture.ToByteArray(MagickFormat.Png)) is { } converted ? Sized(converted, resolution) : null;
+                }
+                if (codec.Info.ColorSpace is { IsSrgb: false })
+                {
+                    // An embedded profile other than sRGB: Skia's codec converts the pixels into sRGB.
+                    var info = codec.Info.WithColorSpace(SKColorSpace.CreateSrgb()).WithColorType(SKColorType.Rgba8888);
+                    using var bitmap = new SKBitmap(info);
+                    var result = codec.GetPixels(info, bitmap.GetPixels());
+                    if (result is not (SKCodecResult.Success or SKCodecResult.IncompleteInput))
+                        return null;
+                    bitmap.SetImmutable();
+                    return SKImage.FromBitmap(bitmap) is { } srgb ? Sized(srgb, resolution) : null;
+                }
             }
-            return SKImage.FromEncodedData(data) is { } image ? Sized(image, PngResolution(bytes) ?? JpegResolution(bytes) ?? (96, 96)) : null;
+            return SKImage.FromEncodedData(data) is { } image ? Sized(image, resolution) : null;
         }
-        catch (MagickException)
+        catch (Exception ex) when (ex is MagickException or NotSupportedException or ArgumentException)
         {
+            // A damaged picture, or an ICC profile ImageMagick can't read.
             return null;
         }
+    }
+
+    /// <summary>A JPEG XR picture, decoded by Filee's own decoder and read through its ICC profile.</summary>
+    private static XpsImage? JpegXr(byte[] bytes, byte[]? icc, long maxPixels)
+    {
+        JpegXrImage picture;
+        try
+        {
+            picture = JpegXrDecoder.Decode(bytes, maxPixels);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or IndexOutOfRangeException or OverflowException)
+        {
+            // Damaged, larger than allowed, or of a kind the decoder doesn't read: left out and counted.
+            return null;
+        }
+        icc ??= picture.IccProfile;
+        var info = new SKImageInfo(picture.Width, picture.Height, SKColorType.Bgra8888, picture.HasAlpha ? SKAlphaType.Unpremul : SKAlphaType.Opaque);
+        if (icc is not null)
+        {
+            using var magick = new MagickImage();
+            magick.ReadPixels(picture.Bgra, new PixelReadSettings((uint)picture.Width, (uint)picture.Height, StorageType.Char, PixelMapping.BGRA));
+            ToSrgb(magick, icc);
+            using var pixels = magick.GetPixels();
+            if (pixels.ToByteArray(PixelMapping.BGRA) is { } converted && converted.Length == picture.Bgra.Length)
+                picture = picture with { Bgra = converted };
+        }
+        var image = SKImage.FromPixelCopy(info, picture.Bgra, picture.Width * 4);
+        return image is null ? null : Sized(image, (picture.DpiX, picture.DpiY));
+    }
+
+    /// <summary>
+    /// Converts <paramref name="image"/> into sRGB through <paramref name="icc"/> (replacing its own profile), or through
+    /// its own profile when that isn't sRGB; a profile of another colour space than the picture's is not used.
+    /// </summary>
+    private static void ToSrgb(MagickImage image, byte[]? icc)
+    {
+        image.RenderingIntent = RenderingIntent.Relative;
+        if (icc is not null)
+        {
+            var given = new ColorProfile(icc);
+            if (!SameKind(given.ColorSpace, image.ColorSpace))
+                return;
+            image.RemoveProfile("icc");
+            image.TransformColorSpace(given, ColorProfiles.SRGB);
+            return;
+        }
+        if (image.GetColorProfile() is { } own && SameKind(own.ColorSpace, image.ColorSpace)
+            && own.Description?.Contains("sRGB", StringComparison.OrdinalIgnoreCase) != true)
+            image.TransformColorSpace(ColorProfiles.SRGB);
+
+        static bool SameKind(ColorSpace profile, ColorSpace picture) => (profile, picture) switch
+        {
+            (ColorSpace.Gray or ColorSpace.LinearGray, ColorSpace.Gray or ColorSpace.LinearGray) => true,
+            (ColorSpace.sRGB or ColorSpace.RGB, ColorSpace.sRGB or ColorSpace.RGB) => true,
+            (ColorSpace.CMYK, ColorSpace.CMYK) => true,
+            _ => false,
+        };
     }
 
     private static XpsImage Sized(SKImage image, (double X, double Y) dpi) =>

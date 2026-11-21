@@ -86,7 +86,7 @@ internal static class XpsPageWriter
             Color = color,
             Embolden = glyphs.Bold,
             SkewX = glyphs.Italic ? GlyphRun.SyntheticSlant : 0,
-            Transform = matrix,
+            Transform = matrix.PreConcat(glyphs.Frame),
             Clip = area,
         };
         return true;
@@ -120,10 +120,10 @@ internal static class XpsPageWriter
         SKRect? own = node switch
         {
             XpsPath path => Union(path.Data.Fill.IsEmpty ? null : path.Data.Fill.Bounds, path.Data.Stroke.IsEmpty ? null : path.Data.Stroke.Bounds),
-            XpsGlyphs glyphs when glyphs.Positions.Length > 0 => SKRect.Create(
+            XpsGlyphs glyphs when glyphs.Positions.Length > 0 => glyphs.Frame.MapRect(SKRect.Create(
                 glyphs.Positions.Min(p => p.X), glyphs.Positions.Min(p => p.Y) - glyphs.Size,
                 glyphs.Positions.Max(p => p.X) - glyphs.Positions.Min(p => p.X) + glyphs.Size,
-                glyphs.Positions.Max(p => p.Y) - glyphs.Positions.Min(p => p.Y) + glyphs.Size * 1.25f),
+                glyphs.Positions.Max(p => p.Y) - glyphs.Positions.Min(p => p.Y) + glyphs.Size * 1.25f)),
             XpsCanvas canvas => canvas.Children.Select(Bounds).Aggregate((SKRect?)null, Union),
             _ => null,
         };

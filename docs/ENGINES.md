@@ -3305,32 +3305,41 @@ output's SVG writer.
   first Choice).
 - **Geometry:** the abbreviated syntax (F, M, L, H, V, C, Q, S, A, Z, relative forms) and PathGeometry with PathFigure
   (IsFilled, IsClosed), PolyLine, PolyBezier, PolyQuadraticBezier and Arc segments (IsStroked), with its Transform.
-  Strokes: thickness, joins, miter limit, start / dash caps, dash arrays and offsets.
-- **Brushes:** SolidColorBrush (`#RRGGBB`, `#AARRGGBB`, scRGB, ContextColor without its ICC profile),
+  Strokes: thickness, joins, miter limit, dash arrays and offsets, and flat, round, square and triangle caps, each end
+  its own (Skia's cap when both ends share a flat, round or square one, else caps joined to a flat-ended outline).
+- **Brushes:** SolidColorBrush (`#RRGGBB`, `#AARRGGBB`, scRGB, ContextColor through its grey, RGB or CMYK ICC profile,
+  sampled once into a lattice by ImageMagick's Little CMS, else by ECMA-388's rules for a colour without one),
   LinearGradientBrush and RadialGradientBrush (spread methods, stops outside 0–1 cut there), ImageBrush (PNG, JPEG,
-  GIF, BMP by Skia, TIFF by ImageMagick; sized by the picture's resolution, 96 dpi when it has none; `TileMode` none
-  draws the picture as it is, so a PDF keeps the JPEG) and VisualBrush (untiled: drawn as vector; tiled: a picture
-  shader, which Skia's PDF writer rasterises).
+  GIF, BMP by Skia, TIFF by ImageMagick, JPEG XR / HD Photo by Filee's own decoder, `JpegXr/`, written from ITU-T
+  T.832; sized by the picture's resolution, 96 dpi when it has none; its own ICC profile, or a ColorConvertedBitmap's,
+  brings it into sRGB; `TileMode` none draws the picture as it is, so a PDF keeps the JPEG) and VisualBrush (untiled:
+  drawn as vector; tiled: tile by tile as vectors, flipped as TileMode says, up to 4,096 tiles and 100,000 elements,
+  else one tile drawn into a picture of at most 1,024 pixels a side and repeated).
 - **Glyphs:** embedded fonts, obfuscated `.odttf` ones restored (the first 32 bytes XORed with the GUID of the part
   name) and read by Filee's SFNT parser before Skia sees them; `Indices` (glyph, advance, offsets, cluster maps),
-  `UnicodeString` (with the `{}` escape), BidiLevel (odd: right to left), StyleSimulations (bold and italic drawn
-  synthetically), FontRenderingEmSize, OriginX / OriginY. A run with a solid colour whose clips are rectangles is a
+  `UnicodeString` (with the `{}` escape), BidiLevel (odd: right to left), IsSideways (each glyph turned about its top
+  centre, vertical advances from vmtx or the OS/2 ascender and descender; still text in the PDF), StyleSimulations
+  (bold and italic drawn synthetically), FontRenderingEmSize, OriginX / OriginY. A run with a solid colour whose clips are rectangles is a
   glyph item of the page model (the PDF writer subsets its font and maps its text); others are drawn by
-  `XpsPainter` as text blobs of the whole font. A run whose font is missing or damaged draws its text with an installed
-  font.
-- **Left out and named in the file's result** (`notice.renderer_left_out` with `.pictures`): JPEG XR (HD Photo)
-  pictures and pictures that are damaged or too large. Not drawn: IsSideways glyphs are upright, the Triangle cap is
-  flat, scRGB gradients interpolate in sRGB, ICC profiles aren't applied; print tickets, signatures, document
-  structure and story fragments aren't read.
+  `XpsPainter` as text blobs of the whole font. A run whose font is missing or damaged (also: its glyphs can't be
+  subset for the PDF) draws its text with an installed font.
+- **Left out and named in the file's result** (`notice.renderer_left_out` with `.pictures` and `.fonts`): pictures
+  that are damaged or too large, and embedded fonts that are missing or damaged (their runs drawn with another font).
+  Not drawn: scRGB gradients interpolate in sRGB; print tickets, signatures, document structure and story fragments
+  aren't read.
 - **Hostile input:** parts through `DocumentPackage` (`DocumentLimits`: part and package sizes counted while
   unpacking, inflate ratio, XML depth and elements, joined pieces included); `XpsLimits`: pages (`MaxPages`), canvas
   and visual brush nesting (64, which also ends a visual brush that draws itself), elements (2 million), points of all
   paths and glyphs (40 million), one path's data (32 M characters), dash patterns (1,024 entries, longer ones are
   drawn solid), page sides cut at 200 inches; pictures within `MaxPartBytes` and `MaxPicturePixels` (read from the
-  header before decoding). Refusals are `error.document_too_complex`. `XpsFuzzTests` fuzzes the reader and the
-  drawing together.
+  header before decoding; a JPEG XR picture also within 2^27 samples and the bits its size needs); ICC profiles
+  within 4 MB, 64 per document (`XpsLimits.MaxProfileBytes`, `MaxProfiles`). Refusals are
+  `error.document_too_complex`. `XpsFuzzTests` fuzzes the reader and the drawing together, `JpegXrFuzzTests` the
+  JPEG XR decoder.
 - Tests: `XpsTests` (packages built in code by `XpsBuilder`, checked as pixels at 96 dpi, one pixel per XPS unit, and
-  as PDF text), `XpsSettingsTests` (settings v105: existing documents donuts learn `.xps` and `.oxps`). Compared by eye
+  as PDF text), `JpegXrDecoderTests` (pictures of Windows' own encoder in every overlap mode, 4:2:0 / 4:2:2 / 4:4:4,
+  spatial and frequency order, tiles, planar and interleaved alpha, compared with Windows' decoding: exact except the
+  chroma upsampling the spec leaves open), `XpsSettingsTests` (settings v105: existing documents donuts learn `.xps` and `.oxps`). Compared by eye
   with WPF's own rendering of documents its XPS writer saved (text in Latin, Korean, Japanese, Arabic and Hebrew,
   gradients, pictures at 96 and 192 dpi, dashes, transparency, clips, tiled image and visual brushes, opacity masks).
 

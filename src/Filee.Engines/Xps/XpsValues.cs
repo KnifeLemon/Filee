@@ -1,6 +1,9 @@
 // Attribute values of XPS markup: numbers (invariant culture, finite only), points ("x,y"), point lists, booleans,
 // matrices ("m11,m12,m21,m22,dx,dy") and colours: "#RRGGBB", "#AARRGGBB", scRGB ("sc#A,R,G,B" or "sc#R,G,B", linear
-// light) and ContextColor (an ICC profile and its channels: grey, RGB and CMYK are converted without the profile).
+// light) and ContextColor (an ICC profile and its channels). XpsDocument applies a ContextColor's profile
+// (XpsColorProfile); here it follows ECMA-388 §15.2's rules for a colour without a usable profile: one channel, or two
+// or three of a named or N-channel colour, is the first channel as sRGB grey, three channels are scRGB, four CMYK, and
+// more than four the first four as CMYK.
 
 using System.Globalization;
 using SkiaSharp;
@@ -92,22 +95,35 @@ internal static class XpsValues
                 _ => null,
             };
         }
-        if (text.StartsWith("ContextColor", StringComparison.OrdinalIgnoreCase))
-        {
-            // "ContextColor /profile.icc a,c1,c2…": the channels after the profile's name.
-            var space = text.IndexOf(' ', "ContextColor".Length + 1);
-            if (space < 0 || Numbers(text[(space + 1)..]) is not { Length: >= 2 } values)
-                return null;
-            var alpha = values[0];
-            return values.Length switch
-            {
-                2 => Gamma(alpha, values[1], values[1], values[1]),
-                4 => Gamma(alpha, values[1], values[2], values[3]),
-                5 => Gamma(alpha, (1 - values[1]) * (1 - values[4]), (1 - values[2]) * (1 - values[4]), (1 - values[3]) * (1 - values[4])),
-                _ => Gamma(alpha, values[1], values[Math.Min(2, values.Length - 1)], values[Math.Min(3, values.Length - 1)]),
-            };
-        }
+        if (ContextColor(text) is { } context)
+            return ContextFallback(context.Values);
         return null;
+    }
+
+    /// <summary>"ContextColor /profile.icc a,c1,c2…": the profile's reference and the numbers (alpha first); null otherwise.</summary>
+    public static (string Profile, float[] Values)? ContextColor(string? text)
+    {
+        text = text?.Trim();
+        if (text is null || !text.StartsWith("ContextColor ", StringComparison.OrdinalIgnoreCase))
+            return null;
+        var rest = text["ContextColor ".Length..].TrimStart();
+        var space = rest.IndexOfAny([' ', '\t']);
+        if (space <= 0 || Numbers(rest[(space + 1)..]) is not { Length: >= 2 } values)
+            return null;
+        return (rest[..space], values);
+    }
+
+    /// <summary>A ContextColor without a usable profile (alpha, then the channels), by ECMA-388's rules.</summary>
+    public static SKColor ContextFallback(ReadOnlySpan<float> values)
+    {
+        var alpha = values[0];
+        var channels = values[1..];
+        return channels.Length switch
+        {
+            3 => FromLinear(alpha, channels[0], channels[1], channels[2]),
+            >= 4 => Gamma(alpha, (1 - channels[0]) * (1 - channels[3]), (1 - channels[1]) * (1 - channels[3]), (1 - channels[2]) * (1 - channels[3])),
+            _ => Gamma(alpha, channels[0], channels[0], channels[0]),
+        };
     }
 
     /// <summary>Channels already in sRGB (0–1).</summary>

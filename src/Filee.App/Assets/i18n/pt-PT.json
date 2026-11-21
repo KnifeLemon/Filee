@@ -263,6 +263,8 @@
   "notice.renderer_left_out.videos_one": "1 vídeo omitido",
   "notice.renderer_left_out.pictures": "{0} imagens omitidas",
   "notice.renderer_left_out.pictures_one": "1 imagem omitida",
+  "notice.renderer_left_out.fonts": "{0} tipos de letra incorporados substituídos",
+  "notice.renderer_left_out.fonts_one": "1 tipo de letra incorporado substituído",
   "notice.renderer_left_out.objects_pictured": "{0} objetos incorporados desenhados a partir da imagem guardada",
   "notice.renderer_left_out.objects_pictured_one": "1 objeto incorporado desenhado a partir da imagem guardada",
   "notice.renderer_left_out.charts_pictured": "{0} gráficos desenhados a partir da imagem guardada",

@@ -263,6 +263,8 @@
   "notice.renderer_left_out.videos_one": "省略了 1 个视频",
   "notice.renderer_left_out.pictures": "省略了 {0} 张图片",
   "notice.renderer_left_out.pictures_one": "省略了 1 张图片",
+  "notice.renderer_left_out.fonts": "替换了 {0} 个嵌入字体",
+  "notice.renderer_left_out.fonts_one": "替换了 1 个嵌入字体",
   "notice.renderer_left_out.objects_pictured": "{0} 个嵌入对象按其保存的图片绘制",
   "notice.renderer_left_out.objects_pictured_one": "1 个嵌入对象按其保存的图片绘制",
   "notice.renderer_left_out.charts_pictured": "{0} 个图表按其保存的图片绘制",

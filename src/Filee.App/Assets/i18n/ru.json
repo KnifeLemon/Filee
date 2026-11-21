@@ -263,6 +263,8 @@
   "notice.renderer_left_out.videos_one": "пропущено 1 видео",
   "notice.renderer_left_out.pictures": "пропущено изображений: {0}",
   "notice.renderer_left_out.pictures_one": "пропущено 1 изображение",
+  "notice.renderer_left_out.fonts": "заменено встроенных шрифтов: {0}",
+  "notice.renderer_left_out.fonts_one": "заменён 1 встроенный шрифт",
   "notice.renderer_left_out.objects_pictured": "внедрённых объектов нарисовано по сохранённым изображениям: {0}",
   "notice.renderer_left_out.objects_pictured_one": "1 внедрённый объект нарисован по сохранённому изображению",
   "notice.renderer_left_out.charts_pictured": "диаграмм нарисовано по сохранённым изображениям: {0}",

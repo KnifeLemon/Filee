@@ -3,8 +3,16 @@
 // below 1 or an opacity mask (the mask's alpha is applied to the whole layer, DstIn). Paths are filled, then stroked.
 //
 // Brushes: solid colours and gradients are Skia paints; an image or visual brush that isn't tiled is drawn into the
-// clipped geometry directly (so a PDF keeps the JPEG as it is, and a visual stays vector), a tiled one is a shader
-// (image) or a picture shader (visual). Strokes with image or visual brushes fill the stroke's outline.
+// clipped geometry directly (so a PDF keeps the JPEG as it is, and a visual stays vector). A tiled image brush is an
+// image shader (a PDF tiling pattern of the picture). A tiled visual brush is drawn tile by tile, each a copy of the
+// visual clipped to its viewport and flipped as TileMode says, so it stays vector in a PDF (Skia's PDF backend has no
+// vector tiling pattern: a picture shader would become a picture of the whole area at its raster resolution). When
+// that would draw too much (more than MaxVectorTiles tiles or MaxVectorElements elements, or a tiled brush inside a
+// tile), one tile is drawn into a picture of at most MaxTilePixels a side and repeated as an image shader.
+//
+// Strokes take XPS's caps: Skia's own when both ends have the same flat, round or square one, else a flat-ended outline
+// with each end's cap (triangles among them) joined to it (OwnCaps). Strokes with image or visual brushes fill the
+// stroke's outline.
 //
 // Glyph runs drawn here (inside layers, with brushes other than a solid colour, or with clips that aren't rectangles)
 // are text blobs of the whole font; XpsPageWriter hands the plain ones to PageContent instead, whose PDF writer
@@ -85,6 +93,13 @@ internal static class XpsPainter
                 Tile(canvas, tile);
                 canvas.Restore();
                 return;
+            case XpsVisualBrush visual:
+                canvas.Save();
+                canvas.ClipPath(path, SKClipOperation.Intersect, antialias);
+                canvas.Concat(visual.Transform);
+                Tiles(canvas, visual);
+                canvas.Restore();
+                return;
         }
         using var paint = Paint(brush, antialias);
         if (paint is not null)
@@ -96,18 +111,21 @@ internal static class XpsPainter
     {
         if (path.IsEmpty || style.Thickness <= 0 || !float.IsFinite(style.Thickness))
             return;
+        // Skia has one cap for both ends and no triangle: other caps are drawn onto the outline (OwnCaps).
+        var cap = style.Dashes is null ? style.StartCap : style.DashCap;
+        var skiaCaps = cap != XpsLineCap.Triangle && (style.Dashes is not null || style.EndCap == style.StartCap);
         using var stroke = new SKPaint
         {
             Style = SKPaintStyle.Stroke,
             StrokeWidth = style.Thickness,
             StrokeJoin = style.Join,
             StrokeMiter = Math.Max(1, style.MiterLimit),
-            StrokeCap = style.Dashes is null ? style.StartCap : style.DashCap,
+            StrokeCap = skiaCaps ? SkiaCap(cap) : SKStrokeCap.Butt,
             IsAntialias = antialias,
         };
         using var dash = style.Dashes is { } dashes ? SKPathEffect.CreateDash(dashes, style.DashOffset) : null;
         stroke.PathEffect = dash;
-        if (brush is XpsSolidBrush or XpsGradientBrush)
+        if (skiaCaps && brush is XpsSolidBrush or XpsGradientBrush)
         {
             using var paint = Paint(brush, antialias);
             if (paint is null)
@@ -118,8 +136,93 @@ internal static class XpsPainter
             return;
         }
         using var outline = stroke.GetFillPath(path);
-        if (outline is not null)
+        if (outline is null)
+            return;
+        if (skiaCaps)
+        {
             Fill(canvas, outline, brush, antialias);
+            return;
+        }
+        using var capped = OwnCaps(path, outline, style, dash);
+        Fill(canvas, capped, brush, antialias);
+    }
+
+    private static SKStrokeCap SkiaCap(XpsLineCap cap) => cap switch
+    {
+        XpsLineCap.Round => SKStrokeCap.Round,
+        XpsLineCap.Square => SKStrokeCap.Square,
+        _ => SKStrokeCap.Butt,
+    };
+
+    /// <summary>
+    /// A flat-ended stroke <paramref name="outline"/> with the caps of <paramref name="style"/> added at the ends of
+    /// every open figure (of every dash when dashed): the start cap at its start, the end cap at its end, the dash cap
+    /// at both ends of a dash. The caps are joined to the outline, so a translucent stroke stays even.
+    /// </summary>
+    internal static SKPath OwnCaps(SKPath centerline, SKPath outline, XpsStrokeStyle style, SKPathEffect? dash)
+    {
+        using var dashed = new SKPath();
+        var line = centerline;
+        if (dash is not null)
+        {
+            // A hairline paint applies the dash pattern only, which gives the dashes' centre lines.
+            using var hairline = new SKPaint { Style = SKPaintStyle.Stroke, StrokeWidth = 0, PathEffect = dash };
+            if (!hairline.GetFillPath(centerline, dashed))
+                return new SKPath(outline);
+            line = dashed;
+        }
+        var half = style.Thickness / 2;
+        using var caps = new SKPath { FillType = SKPathFillType.Winding };
+        using var measure = new SKPathMeasure(line, forceClosed: false);
+        var figures = 0;
+        do
+        {
+            // An outline of a few million figures is no picture anyone made; their ends stay flat.
+            if (measure.IsClosed || measure.Length <= 0 || ++figures > MaxCappedFigures)
+                continue;
+            if (!measure.GetPositionAndTangent(0, out var start, out var startTangent)
+                || !measure.GetPositionAndTangent(measure.Length, out var end, out var endTangent))
+                continue;
+            AddCap(caps, start, new SKPoint(-startTangent.X, -startTangent.Y), half, dash is null ? style.StartCap : style.DashCap);
+            AddCap(caps, end, endTangent, half, dash is null ? style.EndCap : style.DashCap);
+        }
+        while (measure.NextContour());
+        if (caps.IsEmpty)
+            return new SKPath(outline);
+        if (outline.Op(caps, SKPathOp.Union) is { } joined)
+            return joined;
+        var both = new SKPath(outline) { FillType = SKPathFillType.Winding };
+        both.AddPath(caps);
+        return both;
+    }
+
+    /// <summary>Open figures whose ends get caps of their own.</summary>
+    private const int MaxCappedFigures = 100_000;
+
+    /// <summary>A cap at <paramref name="at"/>, pointing along the unit vector <paramref name="outward"/>.</summary>
+    private static void AddCap(SKPath caps, SKPoint at, SKPoint outward, float half, XpsLineCap cap)
+    {
+        var across = new SKPoint(-outward.Y * half, outward.X * half);
+        var ahead = new SKPoint(outward.X * half, outward.Y * half);
+        switch (cap)
+        {
+            case XpsLineCap.Round:
+                caps.AddCircle(at.X, at.Y, half);
+                break;
+            case XpsLineCap.Square:
+                caps.MoveTo(at + across);
+                caps.LineTo(at + across + ahead);
+                caps.LineTo(at - across + ahead);
+                caps.LineTo(at - across);
+                caps.Close();
+                break;
+            case XpsLineCap.Triangle:
+                caps.MoveTo(at + across);
+                caps.LineTo(at + ahead);
+                caps.LineTo(at - across);
+                caps.Close();
+                break;
+        }
     }
 
     /// <summary>
@@ -175,17 +278,6 @@ internal static class XpsPainter
                         tile.Dispose(); // the shader holds its own reference
                     return new SKPaint { Shader = shader, IsAntialias = antialias, Color = SKColors.White.WithAlpha(Alpha(image.Opacity)) };
                 }
-            case XpsVisualBrush visual when visual.IsDrawable:
-                {
-                    var (x, y) = visual.TileModes;
-                    using var recorder = new SKPictureRecorder();
-                    var canvas = recorder.BeginRecording(visual.Viewbox);
-                    canvas.ClipRect(visual.Viewbox);
-                    Paint(canvas, visual.Visual);
-                    using var picture = recorder.EndRecording();
-                    var shader = SKShader.CreatePicture(picture, x, y, SKFilterMode.Linear, visual.Transform.PreConcat(visual.ViewboxToViewport), visual.Viewbox);
-                    return new SKPaint { Shader = shader, IsAntialias = antialias, Color = SKColors.White.WithAlpha(Alpha(visual.Opacity)) };
-                }
             default:
                 return null;
         }
@@ -206,6 +298,92 @@ internal static class XpsPainter
         if (area == bounds)
             return (picture, default, false);
         return picture.Subset(area) is { } subset ? (subset, new SKPointI(area.Left, area.Top), true) : null;
+    }
+
+    /// <summary>Tiles of a tiled visual brush drawn, at most, as vectors.</summary>
+    internal const int MaxVectorTiles = 4096;
+
+    /// <summary>Elements of a tiled visual brush's tiles drawn, at most, as vectors (tiles × the visual's elements).</summary>
+    internal const long MaxVectorElements = 100_000;
+
+    /// <summary>Largest side, in pixels, of the picture of one tile of a visual brush repeated as an image.</summary>
+    internal const int MaxTilePixels = 1024;
+
+    /// <summary>Tiled visual brushes being drawn as vectors on this thread (a tiled brush inside a tile is a picture).</summary>
+    [ThreadStatic]
+    private static int _vectorTiling;
+
+    /// <summary>
+    /// A tiled visual brush over the canvas's clip: the canvas is in the brush's coordinates (after its transform).
+    /// </summary>
+    private static void Tiles(SKCanvas canvas, XpsVisualBrush visual)
+    {
+        var viewport = visual.Viewport;
+        var visible = canvas.LocalClipBounds;
+        if (visible.IsEmpty || !float.IsFinite(visible.Width + visible.Height))
+            return;
+        var firstColumn = Math.Floor((visible.Left - viewport.Left) / viewport.Width);
+        var lastColumn = Math.Ceiling((visible.Right - viewport.Left) / viewport.Width);
+        var firstRow = Math.Floor((visible.Top - viewport.Top) / viewport.Height);
+        var lastRow = Math.Ceiling((visible.Bottom - viewport.Top) / viewport.Height);
+        var tiles = (lastColumn - firstColumn) * (lastRow - firstRow);
+        if (_vectorTiling == 0 && tiles <= MaxVectorTiles && tiles * visual.Elements <= MaxVectorElements)
+        {
+            _vectorTiling++;
+            try
+            {
+                for (var row = firstRow; row < lastRow; row++)
+                {
+                    for (var column = firstColumn; column < lastColumn; column++)
+                    {
+                        canvas.Save();
+                        canvas.Translate((float)(column * viewport.Width), (float)(row * viewport.Height));
+                        canvas.ClipRect(viewport, SKClipOperation.Intersect, antialias: false);
+                        var flipX = visual.Tile is XpsTile.FlipX or XpsTile.FlipXY && Math.Abs(column % 2) == 1;
+                        var flipY = visual.Tile is XpsTile.FlipY or XpsTile.FlipXY && Math.Abs(row % 2) == 1;
+                        if (flipX || flipY)
+                            canvas.Scale(flipX ? -1 : 1, flipY ? -1 : 1, viewport.MidX, viewport.MidY);
+                        Tile(canvas, visual);
+                        canvas.Restore();
+                    }
+                }
+            }
+            finally
+            {
+                _vectorTiling--;
+            }
+            return;
+        }
+        // Too many to draw one by one: one tile as a picture, repeated.
+        var device = canvas.TotalMatrix.MapRect(viewport);
+        var width = Math.Clamp((int)MathF.Ceiling(device.Width * 2), 4, MaxTilePixels);
+        var height = Math.Clamp((int)MathF.Ceiling(device.Height * 2), 4, MaxTilePixels);
+        if (visual.Picture(width, height, DrawTile) is not { } picture)
+            return;
+        var (x, y) = visual.TileModes;
+        var matrix = SKMatrix.CreateTranslation(viewport.Left, viewport.Top)
+            .PreConcat(SKMatrix.CreateScale(viewport.Width / picture.Width, viewport.Height / picture.Height));
+        using var shader = picture.ToShader(x, y, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None), matrix);
+        using var paint = new SKPaint { Shader = shader, IsAntialias = true };
+        canvas.DrawRect(visible, paint);
+    }
+
+    /// <summary>One tile of <paramref name="visual"/> drawn into a canvas of <paramref name="width"/> × <paramref name="height"/> pixels.</summary>
+    private static void DrawTile(SKCanvas canvas, XpsVisualBrush visual, int width, int height)
+    {
+        var viewport = visual.Viewport;
+        canvas.Scale(width / viewport.Width, height / viewport.Height);
+        canvas.Translate(-viewport.Left, -viewport.Top);
+        canvas.ClipRect(viewport);
+        _vectorTiling++;
+        try
+        {
+            Tile(canvas, visual);
+        }
+        finally
+        {
+            _vectorTiling--;
+        }
     }
 
     /// <summary>One untiled tile: the canvas is in the brush's coordinates, clipped to the viewport.</summary>
@@ -246,7 +424,8 @@ internal static class XpsPainter
         if (glyphs.Fill is not { } brush || glyphs.Glyphs.Length == 0)
             return;
         using var font = glyphs.SkiaFont(glyphs.Font.Typeface);
-        if (brush is XpsSolidBrush or XpsGradientBrush)
+        // A gradient of a sideways run lies in the element's coordinates, not in the turned frame: it fills outlines.
+        if (brush is XpsSolidBrush || (brush is XpsGradientBrush && !glyphs.Sideways))
         {
             using var paint = Paint(brush, !glyphs.Aliased);
             if (paint is null)
@@ -256,15 +435,19 @@ internal static class XpsPainter
             run.SetGlyphs(glyphs.Glyphs);
             run.SetPositions(glyphs.Positions);
             using var blob = builder.Build();
-            if (blob is not null)
-                canvas.DrawText(blob, 0, 0, paint);
+            if (blob is null)
+                return;
+            canvas.Save();
+            canvas.Concat(glyphs.Frame);
+            canvas.DrawText(blob, 0, 0, paint);
+            canvas.Restore();
             return;
         }
         using var outlines = Outlines(glyphs, font);
         Fill(canvas, outlines, brush, !glyphs.Aliased);
     }
 
-    /// <summary>The outlines of a run's glyphs, placed.</summary>
+    /// <summary>The outlines of a run's glyphs, placed (in the element's coordinates).</summary>
     public static SKPath Outlines(XpsGlyphs glyphs, SKFont font)
     {
         var outlines = new SKPath();
@@ -274,6 +457,8 @@ internal static class XpsPainter
             if (glyph is not null && !glyph.IsEmpty)
                 outlines.AddPath(glyph, glyphs.Positions[i].X, glyphs.Positions[i].Y);
         }
+        if (glyphs.Sideways)
+            outlines.Transform(glyphs.Frame);
         return outlines;
     }
 }

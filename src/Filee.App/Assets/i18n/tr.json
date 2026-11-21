@@ -257,6 +257,8 @@
   "notice.renderer_left_out.videos_one": "1 video çıkarıldı",
   "notice.renderer_left_out.pictures": "{0} resim çıkarıldı",
   "notice.renderer_left_out.pictures_one": "1 resim çıkarıldı",
+  "notice.renderer_left_out.fonts": "{0} gömülü yazı tipi değiştirildi",
+  "notice.renderer_left_out.fonts_one": "1 gömülü yazı tipi değiştirildi",
   "notice.renderer_left_out.objects_pictured": "{0} gömülü nesne kayıtlı resminden çizildi",
   "notice.renderer_left_out.objects_pictured_one": "1 gömülü nesne kayıtlı resminden çizildi",
   "notice.renderer_left_out.charts_pictured": "{0} grafik kayıtlı resminden çizildi",

@@ -4,7 +4,13 @@
 // FontRenderingEmSize. A cluster map "(2:1)" makes the next glyphs one cluster of that many UTF-16 code units, which
 // the PDF's text keeps; characters after the last entry get a glyph each. An odd BidiLevel runs right to left:
 // advances go leftwards from OriginX. vOffset moves a glyph up.
+//
+// IsSideways (ECMA-388 §12.1.6): each glyph is turned 90° counter-clockwise with its top centre on the pen position, and
+// its default advance is its vertical one: vmtx's advance height when the font has vertical metrics, else the OS/2
+// typographic ascender plus descender (hhea's when OS/2 is short). The top is the glyph's yMax plus its vmtx top side
+// bearing, or that ascender. Positions of a sideways run are given in the turned frame (XpsGlyphs.SidewaysTurn).
 
+using System.Buffers.Binary;
 using System.Globalization;
 using SkiaSharp;
 
@@ -24,7 +30,7 @@ internal static class XpsGlyphLayout
         public int Cluster;
     }
 
-    public static Layout Lay(SKTypeface typeface, float size, SKPoint origin, string text, string? indices, bool rightToLeft)
+    public static Layout Lay(SKTypeface typeface, float size, SKPoint origin, string text, string? indices, bool rightToLeft, bool sideways = false)
     {
         var glyphCount = typeface.GlyphCount;
         var entries = new List<Entry>();
@@ -77,6 +83,11 @@ internal static class XpsGlyphLayout
         using var font = new SKFont(typeface, size) { Subpixel = true, Hinting = SKFontHinting.None, LinearMetrics = true };
         var widths = font.GetGlyphWidths(glyphsOut);
         var positions = new SKPoint[entries.Count];
+        if (sideways)
+        {
+            Sideways(typeface, font, glyphsOut, widths, entries, origin, positions);
+            return new Layout(glyphsOut, positions, [.. entries.Select(e => e.Cluster)]);
+        }
         var pen = origin.X;
         for (var i = 0; i < entries.Count; i++)
         {
@@ -93,6 +104,90 @@ internal static class XpsGlyphLayout
             }
         }
         return new Layout(glyphsOut, positions, [.. entries.Select(e => e.Cluster)]);
+    }
+
+    /// <summary>Sideways glyphs left to right, their baseline origins in the turned frame.</summary>
+    private static void Sideways(SKTypeface typeface, SKFont font, ushort[] glyphs, float[] widths, List<Entry> entries, SKPoint origin, SKPoint[] positions)
+    {
+        var metrics = VerticalMetrics.Of(typeface);
+        var scale = font.Size / metrics.UnitsPerEm;
+        var bounds = new SKRect[glyphs.Length];
+        font.GetGlyphWidths(glyphs, new float[glyphs.Length], bounds);
+        var pen = origin.X;
+        for (var i = 0; i < entries.Count; i++)
+        {
+            float top, advance;
+            if (metrics.Vertical(glyphs[i]) is var (height, topBearing))
+            {
+                // Skia's bounds are y downwards: their top is −yMax.
+                top = -bounds[i].Top + topBearing * scale;
+                advance = height * scale;
+            }
+            else
+            {
+                top = metrics.Ascender * scale;
+                advance = (metrics.Ascender + metrics.Descender) * scale;
+            }
+            advance = entries[i].Advance ?? advance;
+            var nominal = new SKPoint(pen + entries[i].OffsetX, origin.Y - entries[i].OffsetY);
+            // Turned counter-clockwise, the glyph's top centre (half its advance across, its top up) lands on the
+            // nominal origin; in the turned frame (x, y) = (−y, x) of that baseline origin.
+            var baseline = new SKPoint(nominal.X + top, nominal.Y + (i < widths.Length ? widths[i] : 0) / 2);
+            positions[i] = new SKPoint(-baseline.Y, baseline.X);
+            pen += advance;
+        }
+    }
+
+    /// <summary>What a font says about its glyphs set sideways (vhea / vmtx, OS/2, hhea), in font units.</summary>
+    private sealed record VerticalMetrics(int UnitsPerEm, float Ascender, float Descender, byte[]? Vmtx, int LongMetrics)
+    {
+        public static VerticalMetrics Of(SKTypeface typeface)
+        {
+            var head = Table(typeface, "head");
+            var unitsPerEm = head is { Length: >= 20 } ? BinaryPrimitives.ReadUInt16BigEndian(head.AsSpan(18)) : 0;
+            if (unitsPerEm is < 16 or > 16384)
+                unitsPerEm = 1000;
+            float ascender, descender;
+            if (Table(typeface, "OS/2") is { Length: >= 78 } os2)
+            {
+                ascender = BinaryPrimitives.ReadInt16BigEndian(os2.AsSpan(68));
+                descender = Math.Abs((int)BinaryPrimitives.ReadInt16BigEndian(os2.AsSpan(70)));
+            }
+            else if (Table(typeface, "hhea") is { Length: >= 8 } hhea)
+            {
+                ascender = BinaryPrimitives.ReadInt16BigEndian(hhea.AsSpan(4));
+                descender = Math.Abs((int)BinaryPrimitives.ReadInt16BigEndian(hhea.AsSpan(6)));
+            }
+            else
+            {
+                (ascender, descender) = (unitsPerEm * 0.88f, unitsPerEm * 0.12f);
+            }
+            var vhea = Table(typeface, "vhea");
+            var vmtx = Table(typeface, "vmtx");
+            var longMetrics = vhea is { Length: >= 36 } ? BinaryPrimitives.ReadUInt16BigEndian(vhea.AsSpan(34)) : 0;
+            if (vmtx is null || longMetrics == 0 || vmtx.Length < longMetrics * 4)
+                (vmtx, longMetrics) = (null, 0);
+            return new VerticalMetrics(unitsPerEm, ascender, descender, vmtx, longMetrics);
+        }
+
+        /// <summary>A glyph's advance height and top side bearing; null when the font has no vertical metrics.</summary>
+        public (float Height, float TopBearing)? Vertical(ushort glyph)
+        {
+            if (Vmtx is not { } vmtx)
+                return null;
+            var metric = Math.Min(glyph, LongMetrics - 1);
+            var height = BinaryPrimitives.ReadUInt16BigEndian(vmtx.AsSpan(metric * 4));
+            // Glyphs past the long metrics share the last advance and have a bearing of their own after them.
+            var at = glyph < LongMetrics ? glyph * 4 + 2 : LongMetrics * 4 + (glyph - LongMetrics) * 2;
+            var bearing = at + 2 <= vmtx.Length ? BinaryPrimitives.ReadInt16BigEndian(vmtx.AsSpan(at)) : 0;
+            return (height, bearing);
+        }
+
+        private static byte[]? Table(SKTypeface typeface, string tag)
+        {
+            var value = (uint)(tag[0] << 24 | tag[1] << 16 | tag[2] << 8 | tag[3]);
+            return typeface.TryGetTableData(value, out var data) ? data : null;
+        }
     }
 
     private static int Count(string text) =>
