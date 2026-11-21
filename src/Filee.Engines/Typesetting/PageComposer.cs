@@ -38,8 +38,11 @@
 //   out across on the page turned a quarter (its lines as long as the body is high, the next line further on), then
 //   turned into place with VerticalText: top to bottom with the first line at the right (bottom to top with it at the
 //   left for btLr), CJK characters standing upright. Columns become bands from the top down, footnotes go to the
-//   far side. Headers, footers, page numbers, master pages and page borders stay across; floating pictures and shapes
-//   keep standing upright at the place their turned box takes (floating tables turn with the text).
+//   far side. Headers, footers, page numbers, master pages and page borders stay across (a 한글 header or footer
+//   written vertically itself is set vertically in its area); pictures and shapes laid out like characters stand
+//   upright in the line, with their sides swapped on it (ParagraphLayout.Vertical.cs); floating ones keep standing
+//   upright at the place their turned box takes, which text goes around with its sides swapped too (floating tables
+//   turn with the text).
 // - Columns: a section's newspaper columns, with their gap and separator line; what doesn't fit in a column goes on in
 //   the next, and after the last on the next page. Columns change without a new page where the model says (Word's
 //   continuous section break, 한글's 다단 설정 나누기); the columns before are balanced then, so they end at about the
@@ -164,6 +167,10 @@ internal sealed class PageComposer
         /// <summary>The header and footer drawn on the page; null for none.</summary>
         public List<HBlock>? Header { get; set; }
         public List<HBlock>? Footer { get; set; }
+
+        /// <summary>How the header's and footer's own text runs (한글 textDirection); across for Word's.</summary>
+        public HTextFlow HeaderFlow { get; set; }
+        public HTextFlow FooterFlow { get; set; }
 
         /// <summary>The floating objects on the page, drawn when the page is done.</summary>
         public List<PlacedObject> Objects { get; } = [];
@@ -547,6 +554,8 @@ internal sealed class PageComposer
                     EndRegion(balance: false);
                 _section = section;
                 _lastStored = null;
+                // The body's paragraphs are laid out for the way it runs (pictures upright in vertical text).
+                composer._layouter.TextFlow = Vertical(section) ? section.TextFlow : HTextFlow.Horizontal;
                 _geometry = _paper = Geometry.Of(section.Page ?? DefaultPage);
                 _startsAt.Clear();
                 foreach (var item in section.Headers.Concat(section.Footers))
@@ -572,6 +581,8 @@ internal sealed class PageComposer
             EndRegion(balance: false);
             FinishPage();
             _guard.PageFinished(_empty);
+            // Headers, footers, master pages and floating objects are laid out across.
+            composer._layouter.TextFlow = HTextFlow.Horizontal;
             for (var i = 0; i < _pages.Count; i++)
             {
                 var page = _pages[i];
@@ -1318,9 +1329,39 @@ internal sealed class PageComposer
                 if (FloatingObjects.Size(item) is not var (w, h))
                     continue;
                 _floated.Add(item);
-                placed.Add(FloatingObjects.Placed(item, anchor, FloatingObjects.Place(anchor, w, h, frame), _objects++));
+                // On a page written vertically the object stands upright: on the turned body its sides are swapped.
+                placed.Add(Current.Turned is null
+                    ? FloatingObjects.Placed(item, anchor, FloatingObjects.Place(anchor, w, h, frame), _objects++)
+                    : TurnedPlaced(item, anchor, FloatingObjects.Place(anchor, h, w, frame), VerticalText.Upward(Current.Section.TextFlow)));
             }
             Current.Objects.AddRange(placed);
+            return placed;
+        }
+
+        /// <summary>
+        /// An upright object of a page written vertically placed at <paramref name="area"/> of the turned body (its sides
+        /// swapped): its distance from the text and its wrap polygon turned with it, so the text goes around the room it
+        /// takes on the paper. The body turns 90° clockwise onto the paper (270° when <paramref name="upward"/>).
+        /// </summary>
+        private PlacedObject TurnedPlaced(HInline item, HAnchor anchor, SKRect area, bool upward)
+        {
+            var placed = FloatingObjects.Placed(item, anchor with { WrapPolygon = null }, area, _objects++);
+            var d = placed.Distance;
+            // The paper's top is the body's left (its bottom when upward), its right the body's top.
+            placed = placed with
+            {
+                Distance = upward ? new SKRect(d.Bottom, d.Left, d.Top, d.Right) : new SKRect(d.Top, d.Right, d.Bottom, d.Left),
+            };
+            if (anchor is { Wrap: "SQUARE", WrapPolygon: { Count: >= 3 } polygon })
+            {
+                // A point at (u, v) of the upright object is at (v, 1 - u) of the turned area ((1 - v, u) when upward).
+                placed = placed with
+                {
+                    Outline = [.. polygon.Select(p => upward
+                        ? new SKPoint(area.Left + (1 - (float)p.Y) * area.Width, area.Top + (float)p.X * area.Height)
+                        : new SKPoint(area.Left + (float)p.Y * area.Width, area.Top + (1 - (float)p.X) * area.Height))],
+                };
+            }
             return placed;
         }
 
@@ -1592,13 +1633,13 @@ internal sealed class PageComposer
         }
 
         /// <summary>
-        /// The place on the paper of an object a vertical page's body placed at <paramref name="area"/>: its own size,
-        /// standing upright, centred where the turned area's middle is.
+        /// The place on the paper of an object a vertical page's body placed at <paramref name="area"/> (its sides
+        /// swapped, see TurnedPlaced): its own size, standing upright, centred where the turned area's middle is.
         /// </summary>
         private static SKRect Upright(SKRect area, SKMatrix turn)
         {
             var middle = turn.MapPoint(area.MidX, area.MidY);
-            return SKRect.Create(middle.X - area.Width / 2, middle.Y - area.Height / 2, area.Width, area.Height);
+            return SKRect.Create(middle.X - area.Height / 2, middle.Y - area.Width / 2, area.Height, area.Width);
         }
 
         // ───────────────────────── Notes ─────────────────────────
@@ -1909,6 +1950,8 @@ internal sealed class PageComposer
                 : first && section.HideFirstHeader ? null : Pick(section.Headers, page.Number, index)?.Blocks;
             page.Footer = first && section.FirstPageFooter is { } firstFooter ? firstFooter
                 : first && section.HideFirstFooter ? null : Pick(section.Footers, page.Number, index)?.Blocks;
+            page.HeaderFlow = section.Headers.FirstOrDefault(h => ReferenceEquals(h.Blocks, page.Header))?.TextFlow ?? HTextFlow.Horizontal;
+            page.FooterFlow = section.Footers.FirstOrDefault(h => ReferenceEquals(h.Blocks, page.Footer))?.TextFlow ?? HTextFlow.Horizontal;
 
             var g = _paper;
             var least = (g.BodyBottom - g.BodyTop) / 4;
@@ -1925,7 +1968,17 @@ internal sealed class PageComposer
         {
             if (!_heights.TryGetValue((blocks, width), out var height))
             {
-                Tables.Stack(blocks, width, out height);
+                // Laid out across, also while a body written vertically is.
+                var flow = composer._layouter.TextFlow;
+                composer._layouter.TextFlow = HTextFlow.Horizontal;
+                try
+                {
+                    Tables.Stack(blocks, width, out height);
+                }
+                finally
+                {
+                    composer._layouter.TextFlow = flow;
+                }
                 _heights[(blocks, width)] = height;
             }
             return height;
@@ -1957,9 +2010,15 @@ internal sealed class PageComposer
             // Fields in headers and footers show the number of the page they are on.
             _number = page.Number;
             if (page.Header is { } header && page.Hiding?.Header != true)
-                Area(page, header, page.Geometry.HeaderTop);
+            {
+                if (!VerticalArea(page, header, page.HeaderFlow, page.Geometry.HeaderTop, page.Geometry.BodyTop))
+                    Area(page, header, page.Geometry.HeaderTop);
+            }
             if (page.Footer is { } footer && page.Hiding?.Footer != true)
-                Area(page, footer, section.FooterGrowsUp ? null : page.Geometry.FooterTop);
+            {
+                if (!VerticalArea(page, footer, page.FooterFlow, page.Geometry.FooterTop, page.Geometry.FooterBottom))
+                    Area(page, footer, section.FooterGrowsUp ? null : page.Geometry.FooterTop);
+            }
             if (section.PageNumber is { } number && page.Hiding?.PageNumber != true)
                 PageNumber(page, number);
         }
@@ -2025,6 +2084,29 @@ internal sealed class PageComposer
                 piece.Draw(piece.Behind ? behind : page.Content, page.Geometry.Left, from + piece.Top);
             if (behind.Items.Count > 0)
                 page.Content.Add(behind, under: true);
+        }
+
+        /// <summary>
+        /// A 한글 header or footer written vertically (<paramref name="flow"/>), set vertically in its area from
+        /// <paramref name="top"/> to <paramref name="bottom"/>: its lines as long as the area is high, the first at the
+        /// right of the text width. False (nothing drawn) for one written across or an area without height.
+        /// </summary>
+        private bool VerticalArea(Page page, List<HBlock> blocks, HTextFlow flow, float top, float bottom)
+        {
+            var length = bottom - top;
+            if (flow == HTextFlow.Horizontal || length <= Epsilon)
+                return false;
+            composer._layouter.TextFlow = flow;
+            try
+            {
+                var turned = VerticalText.Turned(Tables.Stack(blocks, length), flow, page.Geometry.TextWidth, length, HVerticalAlign.Top);
+                turned.Draw(page.Content, page.Geometry.Left, top);
+            }
+            finally
+            {
+                composer._layouter.TextFlow = HTextFlow.Horizontal;
+            }
+            return true;
         }
 
         // ───────────────────────── Fields ─────────────────────────

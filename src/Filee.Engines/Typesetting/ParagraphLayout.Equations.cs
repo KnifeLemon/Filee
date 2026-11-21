@@ -10,7 +10,10 @@
 //   (a fraction's bar, the middle of an equation array) or of its own line of the array, as Word places it.
 // - Word's and TeX's inline equations break across lines of text as Word breaks them: the paragraph's text holds one
 //   object per piece of the equation (MathLayout.Pieces, split before its top-level binary and relation operators),
-//   and a line may break between pieces. Side by side on one line they are the equation laid out whole.
+//   and a line may break between pieces. Side by side on one line they are the equation laid out whole. They follow
+//   the document's m:mathPr (m:brkBin before, after or repeat, m:brkBinSub), as display equations do. A line ending at
+//   a piece leaves out the room before the next operator, as a line leaves out a space it breaks at, and shows the
+//   operator Word repeats there; a line starting at one shows the second sign of a repeated subtraction (LineEnds).
 
 using System.Runtime.CompilerServices;
 using Filee.Engines.Hwp.Hwpx;
@@ -51,7 +54,7 @@ internal sealed partial class ParagraphLayouter
 
     /// <summary>The pieces of Word's and TeX's inline equations (null for one that stays whole), and each piece's box.</summary>
     private readonly Dictionary<HEquation, HEquation[]?> _pieces = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<HEquation, EquationBox> _pieceBoxes = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<HEquation, MathPiece> _pieceBoxes = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
     /// An inline equation of Word or TeX in the pieces a line may break between, each an equation drawn as its part of
@@ -71,7 +74,7 @@ internal sealed partial class ParagraphLayouter
         var size = (equation.Size ?? equation.Format.Size ?? 1000) / 100f;
         var color = ParagraphText.Color(equation.Color ?? equation.Format.Color) ?? SKColors.Black;
         HEquation[]? pieces = null;
-        if (_math.Pieces(equation.Math, size, color, MathMode.Text) is { Count: > 1 } boxes)
+        if (_math.Pieces(equation.Math, size, color, MathMode.Text, equation.Wrap) is { Count: > 1 } boxes)
         {
             pieces = new HEquation[boxes.Count];
             for (var i = 0; i < boxes.Count; i++)
@@ -83,10 +86,38 @@ internal sealed partial class ParagraphLayouter
         return _pieces[equation] = pieces;
     }
 
+    /// <summary>
+    /// The box of the object at <paramref name="position"/> when it is an equation's piece at a line's start or end that
+    /// is drawn otherwise there (MathPiece.End, MathPiece.Start); null for any other object or place.
+    /// </summary>
+    private EquationBox? PieceAt(ParagraphText source, int position, bool lineStart, bool lineEnd)
+    {
+        if (!source.Objects.TryGetValue(position, out var item) || item is not HEquation equation || !_pieceBoxes.TryGetValue(equation, out var piece))
+            return null;
+        // (A piece alone on its line ends it: its end matters for the width.)
+        return lineEnd ? piece.End : lineStart ? piece.Start : null;
+    }
+
+    /// <summary>
+    /// Per UTF-16 index, how much wider a line is when it ends after the equation piece there than the piece's advance
+    /// says (less the room before the next operator, plus an operator repeated); null when the paragraph has none.
+    /// </summary>
+    private float[]? LineEnds(ParagraphText source)
+    {
+        float[]? ends = null;
+        foreach (var (position, item) in source.Objects)
+        {
+            if (item is HEquation equation && _pieceBoxes.TryGetValue(equation, out var piece) && piece.End.Width - piece.Box.Width is var change
+                && Math.Abs(change) > Epsilon / 10)
+                (ends ??= new float[source.Text.Length])[position] = change;
+        }
+        return ends;
+    }
+
     private LaidEquation Laid(HEquation equation)
     {
         if (_pieceBoxes.TryGetValue(equation, out var piece))
-            return new LaidEquation(piece, [], _equationRoom);
+            return new LaidEquation(piece.Box, [], _equationRoom);
         // Word's and TeX's equations (models of other formats) are set as display or inline formulas, 한글's at one size.
         var mode = !WordEquations ? MathMode.Fixed : equation.Display ? MathMode.Display : MathMode.Text;
         var room = _equationRoom;

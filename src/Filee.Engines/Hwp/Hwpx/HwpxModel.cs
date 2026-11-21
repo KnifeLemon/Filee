@@ -92,7 +92,8 @@ internal sealed class HSection
 
     /// <summary>
     /// How the body's text runs (Word sectPr w:textDirection, 한글 secPr textDirection, ODF page writing-mode): written
-    /// vertically, the body is laid out turned (PageComposer); headers and footers stay across. Read for layout only.
+    /// vertically, the body is laid out turned (PageComposer); headers and footers stay across unless they run
+    /// vertically themselves (HHeaderFooter.TextFlow). Read for layout only.
     /// </summary>
     public HTextFlow TextFlow { get; set; }
 
@@ -309,6 +310,9 @@ internal sealed class HHeaderFooter(HPageType pages)
 {
     public HPageType Pages { get; } = pages;
     public List<HBlock> Blocks { get; } = [];
+
+    /// <summary>How its text runs (한글 textDirection of its paragraph list). Read for layout only.</summary>
+    public HTextFlow TextFlow { get; set; }
 
     /// <summary>Starts on the page of this paragraph of the section (DOCX continuous section break); null = its first page.</summary>
     public HParagraph? StartsAt { get; set; }
@@ -725,8 +729,8 @@ internal sealed class HEquation(MathNode math, HCharFormat format, string? sourc
     public bool Display { get; init; }
 
     /// <summary>
-    /// How a display equation too wide for its column breaks into lines (Word's m:mathPr); null for Word's defaults.
-    /// Read for layout only.
+    /// How an equation breaks into lines (Word's m:mathPr): a display one too wide for its column, an inline one across
+    /// lines of text; null for Word's defaults. Read for layout only.
     /// </summary>
     public HMathWrap? Wrap { get; init; }
 

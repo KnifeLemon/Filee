@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Filee.Engines.Ebooks;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Hwp.Hwpx.Odt;
 using Filee.Engines.Hwp.Hwpx.Pptx;
 using Filee.Engines.Rendering;
@@ -128,6 +129,129 @@ public sealed class MathRoutesTests(EngineFixture fx) : IClassFixture<EngineFixt
         Assert.Null(math.Pieces(LatexMath.Parse("x")!, 10, SKColors.Black, MathMode.Text));
         // A sign at the start is no place to break.
         Assert.Equal(2, math.Pieces(LatexMath.Parse("-a+b")!, 10, SKColors.Black, MathMode.Text)!.Count);
+    }
+
+    /// <summary>Each line's glyphs drawn on their own, left to right, as (text, left, right end of the advance).</summary>
+    private static List<List<(string Text, float Left, float Right)>> LineGlyphs(ParagraphBox box)
+    {
+        var lines = new List<List<(string, float, float)>>();
+        foreach (var line in box.Lines)
+        {
+            var page = new PageContent(2000, 200);
+            line.Draw(page, 0, 100);
+            var glyphs = new List<(string, float, float)>();
+            foreach (var run in page.Items.OfType<GlyphItem>().Select(i => i.Run))
+            {
+                if (run.Text.All(c => char.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.Format))
+                    continue;
+                using var font = new SKFont(run.Font.Typeface, run.Size);
+                var widths = font.GetGlyphWidths(run.Glyphs);
+                for (var g = 0; g < run.Glyphs.Length; g++)
+                {
+                    var cluster = run.Clusters.Length == run.Glyphs.Length ? run.Clusters[g] : 0;
+                    var next = g + 1 < run.Glyphs.Length && run.Clusters.Length == run.Glyphs.Length ? run.Clusters[g + 1] : run.Text.Length;
+                    var text = next > cluster && cluster < run.Text.Length ? run.Text[cluster..Math.Min(next, run.Text.Length)] : run.Text;
+                    glyphs.Add((WordEquationLayoutTests.Plain(text), run.Positions[g].X, run.Positions[g].X + widths[g] * run.ScaleX));
+                }
+            }
+            lines.Add([.. glyphs.OrderBy(g => g.Item2)]);
+        }
+        return lines;
+    }
+
+    private static HParagraph Inline(string tex, HAlign align, HMathWrap? wrap = null)
+    {
+        var paragraph = new HParagraph { Format = new HParaFormat(Align: align, Before: 0, After: 0) };
+        paragraph.Inlines.Add(new HText("Then ", Format()));
+        paragraph.Inlines.Add(new HEquation(LatexMath.Parse(tex)!, Format()) { Tex = tex, Wrap = wrap });
+        paragraph.Inlines.Add(new HText(" ends.", Format()));
+        return paragraph;
+    }
+
+    private static bool IsOperator(string text) => text is "+" or "−" or "-";
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_line_ending_inside_an_inline_equation_leaves_out_the_room_before_the_operator(bool justified)
+    {
+        var align = justified ? HAlign.Justify : HAlign.Right;
+        var fonts = RepositoryFonts.Load();
+        Assert.SkipUnless(fonts.Has(RepositoryFonts.Latin), "Noto Sans is not in src/Filee.App/Assets/Fonts (build/fetch-fonts.ps1)");
+        var layouter = new ParagraphLayouter(new FontResolver(fonts), _shaper) { WordEquations = true };
+        const float Width = 120;
+
+        var lines = LineGlyphs(layouter.Layout(Inline(Long, align), Width));
+        Assert.True(lines.Count >= 3, $"{lines.Count} lines");
+        // Every line but the last ends at the column's edge with its ink, not a fifth of an em short (the operator's
+        // room, 4/18 em at 10 pt, would leave 2.2 pt), and none goes past it.
+        var ending = lines.Take(lines.Count - 1).Where(l => l.Count > 0 && !l[^1].Text.Contains('.', StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(ending);
+        Assert.All(ending, l => Assert.InRange(l[^1].Right, Width - 0.6f, Width + 0.6f));
+    }
+
+    [Fact]
+    public void Inline_equations_follow_the_documents_break_after_setting()
+    {
+        var fonts = RepositoryFonts.Load();
+        Assert.SkipUnless(fonts.Has(RepositoryFonts.Latin), "Noto Sans is not in src/Filee.App/Assets/Fonts (build/fetch-fonts.ps1)");
+        var layouter = new ParagraphLayouter(new FontResolver(fonts), _shaper) { WordEquations = true };
+
+        var lines = LineGlyphs(layouter.Layout(Inline(Long, HAlign.Left, new HMathWrap(HMathBreak.After)), 120));
+        Assert.True(lines.Count >= 3, $"{lines.Count} lines");
+        // The operator ends the line; the next one starts with a letter.
+        var inside = Enumerable.Range(0, lines.Count - 1).Where(i => IsOperator(lines[i][^1].Text)).ToList();
+        Assert.NotEmpty(inside);
+        Assert.All(lines.Skip(1), l => Assert.False(IsOperator(l[0].Text), string.Concat(l.Select(g => g.Text))));
+        Assert.All(lines.Take(lines.Count - 1), l => Assert.True(IsOperator(l[^1].Text) || l[^1].Text == " " || char.IsLetter(l[^1].Text[^1]),
+            string.Concat(l.Select(g => g.Text))));
+        // Nothing past the column.
+        Assert.All(lines, l => Assert.True(l[^1].Right <= 120.5f, $"{l[^1].Right}"));
+    }
+
+    [Fact]
+    public void Inline_equations_repeat_the_operator_across_a_break_with_the_subtraction_signs()
+    {
+        var fonts = RepositoryFonts.Load();
+        Assert.SkipUnless(fonts.Has(RepositoryFonts.Latin), "Noto Sans is not in src/Filee.App/Assets/Fonts (build/fetch-fonts.ps1)");
+        var layouter = new ParagraphLayouter(new FontResolver(fonts), _shaper) { WordEquations = true };
+        var wrap = new HMathWrap(HMathBreak.Repeat, "-+");
+        const float Width = 110;
+
+        var lines = LineGlyphs(layouter.Layout(Inline(Long, HAlign.Justify, wrap), Width));
+        Assert.True(lines.Count >= 3, $"{lines.Count} lines");
+        var breaks = 0;
+        for (var i = 0; i + 1 < lines.Count; i++)
+        {
+            if (!IsOperator(lines[i][^1].Text))
+                continue;
+            breaks++;
+            // On both lines: a subtraction ends the line as − and starts the next as + (m:brkBinSub "-+").
+            var (end, start) = (lines[i][^1].Text, lines[i + 1][0].Text);
+            Assert.True(IsOperator(start), $"line {i + 1} starts with {start}");
+            Assert.Equal("+", start);
+            Assert.True(end is "+" or "−", end);
+            Assert.InRange(lines[i][^1].Right, Width - 0.6f, Width + 0.6f);
+        }
+        Assert.True(breaks > 0);
+        var operators = Long.Count(c => c is '+' or '-');
+        Assert.Equal(operators + breaks, lines.Sum(l => l.Count(g => IsOperator(g.Text))));
+        // On one line, each operator is drawn once.
+        var wide = LineGlyphs(layouter.Layout(Inline(Long, HAlign.Left, wrap), 1000));
+        Assert.Equal(operators, Assert.Single(wide).Count(g => IsOperator(g.Text)));
+    }
+
+    [Fact]
+    public void Word_reads_its_math_break_settings_for_inline_equations_too()
+    {
+        var dir = fx.NewFolder();
+        const string Omml = "<m:oMath><m:r><m:t>a+b</m:t></m:r></m:oMath>";
+        var docx = new DocxBuilder { Settings = "<m:mathPr><m:brkBin m:val=\"after\"/></m:mathPr>" }
+            .Paragraph("<w:p><w:r><w:t xml:space=\"preserve\">x </w:t></w:r>" + Omml + "</w:p>");
+        var document = DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media"));
+        var equation = Assert.Single(Equations(document));
+        Assert.False(equation.Display);
+        Assert.Equal(HMathBreak.After, equation.Wrap?.Break);
     }
 
     // ───────────────────────── StarMath ─────────────────────────
@@ -267,8 +391,37 @@ public sealed class MathRoutesTests(EngineFixture fx) : IClassFixture<EngineFixt
         Text with $a + b$ inline.
         """;
 
+    /// <summary>The picture a fallback's blipFill shows, from the slide's relationships.</summary>
+    private static SKBitmap Fallback(ZipArchive zip, string slide, XElement blipFill)
+    {
+        XNamespace r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        var id = (string)blipFill.Element(A + "blip")!.Attribute(r + "embed")!;
+        var rels = Entry(zip, slide.Replace("slides/", "slides/_rels/", StringComparison.Ordinal) + ".rels");
+        var target = (string)rels.Root!.Elements().Single(e => (string?)e.Attribute("Id") == id).Attribute("Target")!;
+        using var stream = zip.GetEntry("ppt/" + target.Replace("../", "", StringComparison.Ordinal))!.Open();
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        return SKBitmap.Decode(memory.ToArray());
+    }
+
+    /// <summary>Pixels of <paramref name="bitmap"/> that are neither transparent nor <paramref name="ground"/>.</summary>
+    private static int Ink(SKBitmap bitmap, SKColor ground)
+    {
+        var count = 0;
+        for (var y = 0; y < bitmap.Height; y++)
+        {
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                var pixel = bitmap.GetPixel(x, y);
+                if (pixel.Alpha > 128 && (Math.Abs(pixel.Red - ground.Red) + Math.Abs(pixel.Green - ground.Green) + Math.Abs(pixel.Blue - ground.Blue)) > 96)
+                    count++;
+            }
+        }
+        return count;
+    }
+
     [Fact]
-    public void Pptx_titles_and_tables_have_office_math_with_their_linear_text_as_fallback()
+    public void Pptx_titles_and_tables_have_office_math_with_pictures_of_them_as_fallback()
     {
         var source = MarkdownReader.Read(Deck, fx.NewFolder());
         var pptx = Path.Combine(fx.NewFolder(), "deck.pptx");
@@ -277,22 +430,44 @@ public sealed class MathRoutesTests(EngineFixture fx) : IClassFixture<EngineFixt
 
         using (var zip = ZipFile.OpenRead(pptx))
         {
-            var slides = zip.Entries.Where(e => Regex.IsMatch(e.FullName, @"^ppt/slides/slide\d+\.xml$")).Select(e => Entry(zip, e.FullName)).ToList();
-            var alternates = slides.SelectMany(s => s.Descendants(Mc + "AlternateContent")).ToList();
-            // The title: a placeholder with a14:m in its choice, its linear text in the fallback.
-            var title = Assert.Single(alternates, a => a.Element(Mc + "Choice")!.Descendants(P + "ph").Any(ph => (string?)ph.Attribute("type") == "title"));
+            var slides = zip.Entries.Where(e => Regex.IsMatch(e.FullName, @"^ppt/slides/slide\d+\.xml$")).Select(e => (e.FullName, Xml: Entry(zip, e.FullName))).ToList();
+            var alternates = slides.SelectMany(s => s.Xml.Descendants(Mc + "AlternateContent").Select(a => (s.FullName, Alternate: a))).ToList();
+            // The title: a placeholder with a14:m in its choice; in the fallback the same placeholder (same id) filled with
+            // a picture of its text, as PowerPoint writes it, with no text of its own.
+            var (titleSlide, title) = Assert.Single(alternates, a => a.Alternate.Element(Mc + "Choice")!.Descendants(P + "ph").Any(ph => (string?)ph.Attribute("type") == "title"));
             Assert.Single(title.Element(Mc + "Choice")!.Descendants(A14 + "m"));
             var fallbackTitle = title.Element(Mc + "Fallback")!;
             Assert.Empty(fallbackTitle.Descendants(A14 + "m"));
-            Assert.Contains(EquationScript.Linear(Equations(source)[0].Math), string.Concat(fallbackTitle.Descendants(A + "t").Select(t => t.Value)), StringComparison.Ordinal);
-            // The table: its graphic frame with a14:m in the cells, the same table with linear text as the fallback.
-            var table = Assert.Single(alternates, a => a.Element(Mc + "Choice")!.Descendants(A + "tbl").Any());
+            Assert.Equal("title", (string?)fallbackTitle.Descendants(P + "ph").Single().Attribute("type"));
+            Assert.Equal((string?)title.Element(Mc + "Choice")!.Descendants(P + "cNvPr").First().Attribute("id"),
+                (string?)fallbackTitle.Descendants(P + "cNvPr").First().Attribute("id"));
+            Assert.Equal("", string.Concat(fallbackTitle.Descendants(A + "t").Select(t => t.Value)).Trim());
+            using (var picture = Fallback(zip, titleSlide, fallbackTitle.Descendants(A + "blipFill").Single()))
+                Assert.True(Ink(picture, SKColors.White) > 100, "the title's picture shows its text");
+
+            // The table: its graphic frame with a14:m in the cells; in the fallback the same table, its two cells with
+            // equations filled with a picture of the cell (its band's fill, its text) and empty, the others as they are.
+            var (tableSlide, table) = Assert.Single(alternates, a => a.Alternate.Element(Mc + "Choice")!.Descendants(A + "tbl").Any());
             var choiceCells = table.Element(Mc + "Choice")!.Descendants(A + "tc").ToList();
             Assert.Equal(2, choiceCells.Count(c => c.Descendants(A14 + "m").Any()));
             Assert.All(table.Element(Mc + "Choice")!.Descendants(A14 + "m"), m => Assert.Equal(A + "p", m.Parent!.Name));
             var fallbackTable = table.Element(Mc + "Fallback")!;
             Assert.Empty(fallbackTable.Descendants(A14 + "m"));
-            Assert.Equal(choiceCells.Count, fallbackTable.Descendants(A + "tc").Count());
+            var cells = fallbackTable.Descendants(A + "tc").ToList();
+            Assert.Equal(choiceCells.Count, cells.Count);
+            var pictured = cells.Where(c => c.Element(A + "tcPr")!.Element(A + "blipFill") is not null).ToList();
+            Assert.Equal(2, pictured.Count);
+            Assert.All(pictured, c => Assert.Empty(c.Descendants(A + "t")));
+            Assert.Contains(cells, c => string.Concat(c.Descendants(A + "t").Select(t => t.Value)) == "Area");
+            foreach (var cell in pictured)
+            {
+                using var picture = Fallback(zip, tableSlide, cell.Element(A + "tcPr")!.Element(A + "blipFill")!);
+                // On the band's fill (opaque, not white), with the equation drawn on it.
+                var ground = picture.GetPixel(1, 1);
+                Assert.Equal(255, ground.Alpha);
+                Assert.NotEqual(SKColors.White, ground);
+                Assert.True(Ink(picture, ground) > 20, "the cell's picture shows its equation");
+            }
             // The same shape id in both.
             Assert.Equal((string?)table.Element(Mc + "Choice")!.Descendants(P + "cNvPr").First().Attribute("id"),
                 (string?)fallbackTable.Descendants(P + "cNvPr").First().Attribute("id"));

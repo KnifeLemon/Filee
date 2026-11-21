@@ -511,7 +511,7 @@ internal sealed class SlideRenderer : IDisposable
     }
 
     /// <summary>How high a cell's text is with its insets, laid out at <paramref name="width"/>.</summary>
-    private float TextHeight(SlideTextFrame frame, float width)
+    internal float TextHeight(SlideTextFrame frame, float width)
     {
         if (frame.IsEmpty)
             return 0;

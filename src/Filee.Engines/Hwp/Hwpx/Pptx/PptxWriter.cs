@@ -299,11 +299,21 @@ internal sealed partial class PptxWriter
                 "<p:txBody><a:bodyPr/><a:lstStyle/>" + Paragraph(new Para { Runs = [new Run(_document.Date.Trim(), default)], Size = 1200, Before = 0 }) + "</p:txBody>"));
     }
 
-    /// <summary>A slide's title placeholder; with equations, in a14:m with a fallback that has their linear text.</summary>
+    /// <summary>A slide's title placeholder; with equations, in a14:m with a fallback that has a picture of the title.</summary>
     private string Title(List<Run> runs, long x, long y, long width, long height, int size, string anchor)
     {
         string Write(bool math) => TextShape("Title", "<p:ph type=\"title\"/>", x, y, width, height, TitleBody(runs, width, height, size, anchor, math: math));
-        return runs.Any(r => r.Equation is not null) ? WithMath(Write) : Write(false);
+        return runs.Any(r => r.Equation is not null) ? MathTitle(Write, runs, x, y, width, height, size, anchor) : Write(false);
+    }
+
+    /// <summary>The percentage a title is shrunk to so that its lines fit its box (40-100, in steps of 10).</summary>
+    private int TitleScale(List<Run> runs, long width, long height, int size)
+    {
+        var scale = 100;
+        var para = new Para { Runs = runs, Size = size, Before = 0 };
+        while (scale > 40 && LineStarts(para with { Size = size * scale / 100 }, width).Count * (long)(size * scale / 100 / 100.0 * LineHeight * Emu) > height - 2 * InsetY)
+            scale -= 10;
+        return scale;
     }
 
     /// <summary>
@@ -313,10 +323,7 @@ internal sealed partial class PptxWriter
     /// <param name="math">Equations as Office Math (a14:m, in a shape that has a fallback for them); else their linear text.</param>
     private string TitleBody(List<Run> runs, long width, long height, int size, string anchor, bool center = false, bool math = false)
     {
-        var scale = 100;
-        var para = new Para { Runs = runs, Size = size, Before = 0 };
-        while (scale > 40 && LineStarts(para with { Size = size * scale / 100 }, width).Count * (long)(size * scale / 100 / 100.0 * LineHeight * Emu) > height - 2 * InsetY)
-            scale -= 10;
+        var scale = TitleScale(runs, width, height, size);
         var fit = scale < 100 ? $"<a:normAutofit fontScale=\"{scale * 1000}\"/>" : "<a:normAutofit/>";
         var sb = new StringBuilder($"<p:txBody><a:bodyPr anchor=\"{anchor}\">{fit}</a:bodyPr><a:lstStyle/><a:p>");
         if (center)
@@ -377,7 +384,7 @@ internal sealed partial class PptxWriter
                 {
                     var heights = page.RowHeights.GetValueOrDefault(table) ?? RowHeights(table);
                     var math = table.Rows.Any(row => row.Any(cell => cell.Paragraphs?.Any(p => !p.Code && p.Runs.Any(r => r.Equation is not null)) == true));
-                    return math ? WithMath(m => TableXml(table, placed, heights, m)) : TableXml(table, placed, heights);
+                    return math ? WithMath(m => TableXml(table, placed, heights, math: m, pictures: !m)) : TableXml(table, placed, heights);
                 }
         }
         return "";
@@ -507,7 +514,11 @@ internal sealed partial class PptxWriter
     /// white bold text, banded rows, white lines. A cell's own fill wins.
     /// </summary>
     /// <param name="math">Equations as Office Math (a14:m, in a frame that has a fallback for them); else their linear text.</param>
-    private string TableXml(TableItem table, Placed placed, long[] heights, bool math = false)
+    /// <param name="pictures">
+    /// Cells with equations filled with a picture of the cell and holding an empty paragraph (the fallback of a table
+    /// with Office Math); else their equations' linear text.
+    /// </param>
+    private string TableXml(TableItem table, Placed placed, long[] heights, bool math = false, bool pictures = false)
     {
         var id = ++_shapeId;
         var sb = new StringBuilder($"<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"{id}\" name=\"Table {id - 1}\"/>")
@@ -523,9 +534,22 @@ internal sealed partial class PptxWriter
             var header = r < table.HeaderRows;
             var band = (table.FirstRow + r - table.HeaderRows) % 2 == 0;
             var rowFill = header ? "4472C4" : band ? "CFD5EA" : "E9EBF5";
-            sb.Append($"<a:tr h=\"{N(r < heights.Length ? heights[r] : 370840)}\">");
-            foreach (var cell in table.Rows[r])
+            var rowHeight = r < heights.Length ? heights[r] : 370840;
+            // The fallback's cells with equations, drawn as pictures: the row grows to the tallest of them, as
+            // PowerPoint grows it to their text, so no picture is cut short.
+            var texts = new Dictionary<int, List<HParagraph>>();
+            for (var c = 0; pictures && c < table.Rows[r].Length; c++)
             {
+                if (table.Rows[r][c] is not { Paragraphs: { } held } cell || !held.Any(p => !p.Code && p.Runs.Any(run => run.Equation is not null)))
+                    continue;
+                texts[c] = CellText(held, table.Size, header, header && cell.Fill is null ? "FFFFFF" : null);
+                if (cell.RowSpan <= 1)
+                    rowHeight = Math.Max(rowHeight, CellHeight(texts[c], table.Columns.Skip(c).Take(Math.Max(1, cell.ColSpan)).Sum()));
+            }
+            sb.Append($"<a:tr h=\"{N(rowHeight)}\">");
+            for (var c = 0; c < table.Rows[r].Length; c++)
+            {
+                var cell = table.Rows[r][c];
                 sb.Append("<a:tc");
                 if (cell.Paragraphs is not null && cell.ColSpan > 1)
                     sb.Append($" gridSpan=\"{N(cell.ColSpan)}\"");
@@ -538,6 +562,14 @@ internal sealed partial class PptxWriter
                 sb.Append("><a:txBody><a:bodyPr/><a:lstStyle/>");
                 var paragraphs = cell.Paragraphs ?? [];
                 var textColor = header && cell.Fill is null ? "FFFFFF" : null;
+                // The fallback's picture of a cell with equations, as wide and high as the columns and rows it spans.
+                var picture = texts.TryGetValue(c, out var text)
+                    ? CellPicture(text, table.Columns.Skip(c).Take(Math.Max(1, cell.ColSpan)).Sum(),
+                        rowHeight + Enumerable.Range(r + 1, Math.Max(1, cell.RowSpan) - 1).Sum(k => k < heights.Length ? heights[k] : 370840), cell.Align,
+                        cell.Fill ?? rowFill)
+                    : null;
+                if (picture is not null)
+                    paragraphs = [];
                 if (paragraphs.Count == 0)
                     sb.Append($"<a:p><a:endParaRPr sz=\"{N(table.Size)}\" dirty=\"0\"/></a:p>");
                 foreach (var paragraph in paragraphs)
@@ -561,7 +593,9 @@ internal sealed partial class PptxWriter
                 sb.Append('>');
                 foreach (var side in new[] { "lnL", "lnR", "lnT", "lnB" })
                     sb.Append($"<a:{side} w=\"12700\" cmpd=\"sng\">{line}</a:{side}>");
-                sb.Append($"<a:solidFill><a:srgbClr val=\"{cell.Fill ?? rowFill}\"/></a:solidFill></a:tcPr></a:tc>");
+                sb.Append(picture is not null
+                    ? $"<a:blipFill><a:blip r:embed=\"{picture}\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill></a:tcPr></a:tc>"
+                    : $"<a:solidFill><a:srgbClr val=\"{cell.Fill ?? rowFill}\"/></a:solidFill></a:tcPr></a:tc>");
             }
             sb.Append("</a:tr>");
         }

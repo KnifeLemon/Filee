@@ -188,33 +188,62 @@ internal static class SlidePaint
         var focus = Focus(gradient.Focus, box);
         canvas.Save();
         canvas.ClipPath(path, antialias: true);
-        // The pieces meet edge to edge: drawn without antialiasing inside the antialiased clip, they leave no seam.
         using (var solid = new SKPaint { Style = SKPaintStyle.Fill, Color = gradient.Stops[0].Color })
             canvas.DrawRect(focus, solid);
-        void Piece(SKPoint a, SKPoint b, SKPoint c, SKPoint d, SKPoint from, SKPoint to)
+        // Opaque colours: the pieces overlap a little, so a PDF viewer smoothing each piece's edges shows no hairline
+        // where they meet (their colours along the shared edges are the same). Translucent ones would show the overlap
+        // darker, so they meet edge to edge (drawn without antialiasing, they leave no seam in a picture).
+        var overlap = gradient.Stops.All(s => s.Color.Alpha == 255) ? Math.Min(Overlap, Math.Min(box.Width, box.Height) / 40) : 0;
+        foreach (var (piece, from, to) in RectanglePieces(focus, box, overlap))
         {
-            if (SKPoint.Distance(from, to) < 0.001f)
-                return;
-            using var piece = new SKPath();
-            piece.MoveTo(a);
-            piece.LineTo(b);
-            piece.LineTo(c);
-            piece.LineTo(d);
-            piece.Close();
-            using var shader = SKShader.CreateLinearGradient(from, to, colors, positions, SKShaderTileMode.Clamp);
-            using var paint = new SKPaint { Shader = shader, Style = SKPaintStyle.Fill };
-            canvas.DrawPath(piece, paint);
+            using (piece)
+            using (var shader = SKShader.CreateLinearGradient(from, to, colors, positions, SKShaderTileMode.Clamp))
+            using (var paint = new SKPaint { Shader = shader, Style = SKPaintStyle.Fill })
+                canvas.DrawPath(piece, paint);
         }
-        static SKPoint P(float x, float y) => new(x, y);
-        Piece(P(focus.Left, focus.Top), P(focus.Right, focus.Top), P(box.Right, box.Top), P(box.Left, box.Top),
-            P(focus.MidX, focus.Top), P(focus.MidX, box.Top));
-        Piece(P(focus.Right, focus.Top), P(focus.Right, focus.Bottom), P(box.Right, box.Bottom), P(box.Right, box.Top),
-            P(focus.Right, focus.MidY), P(box.Right, focus.MidY));
-        Piece(P(focus.Right, focus.Bottom), P(focus.Left, focus.Bottom), P(box.Left, box.Bottom), P(box.Right, box.Bottom),
-            P(focus.MidX, focus.Bottom), P(focus.MidX, box.Bottom));
-        Piece(P(focus.Left, focus.Bottom), P(focus.Left, focus.Top), P(box.Left, box.Top), P(box.Left, box.Bottom),
-            P(focus.Left, focus.MidY), P(box.Left, focus.MidY));
         canvas.Restore();
+    }
+
+    /// <summary>How far the pieces of a rectangle gradient reach into each other and the focus rectangle, in points.</summary>
+    private const float Overlap = 0.5f;
+
+    /// <summary>
+    /// The four pieces of a rectangle gradient between <paramref name="focus"/> and <paramref name="box"/> (top, right,
+    /// bottom, left), each with the line its gradient runs along (from the focus rectangle's edge to the box's), each
+    /// reaching <paramref name="overlap"/> into the pieces beside it and into the focus rectangle. Pieces without room
+    /// (the focus on the box's edge) are left out.
+    /// </summary>
+    internal static IEnumerable<(SKPath Piece, SKPoint From, SKPoint To)> RectanglePieces(SKRect focus, SKRect box, float overlap)
+    {
+        static SKPoint P(float x, float y) => new(x, y);
+        // Focus corners a, b along its edge, box corners c (beside b) and d (beside a), the gradient from one edge to the other.
+        (SKPoint A, SKPoint B, SKPoint C, SKPoint D, SKPoint From, SKPoint To)[] sides =
+        [
+            (P(focus.Left, focus.Top), P(focus.Right, focus.Top), P(box.Right, box.Top), P(box.Left, box.Top), P(focus.MidX, focus.Top), P(focus.MidX, box.Top)),
+            (P(focus.Right, focus.Top), P(focus.Right, focus.Bottom), P(box.Right, box.Bottom), P(box.Right, box.Top), P(focus.Right, focus.MidY), P(box.Right, focus.MidY)),
+            (P(focus.Right, focus.Bottom), P(focus.Left, focus.Bottom), P(box.Left, box.Bottom), P(box.Right, box.Bottom), P(focus.MidX, focus.Bottom), P(focus.MidX, box.Bottom)),
+            (P(focus.Left, focus.Bottom), P(focus.Left, focus.Top), P(box.Left, box.Top), P(box.Left, box.Bottom), P(focus.Left, focus.MidY), P(box.Left, focus.MidY)),
+        ];
+        foreach (var (a, b, c, d, from, to) in sides)
+        {
+            var length = SKPoint.Distance(from, to);
+            if (length < 0.001f)
+                continue;
+            // Inward (towards the focus) and along the edge from a's side to b's (the box's edge from d to c).
+            var inward = new SKPoint((from.X - to.X) / length, (from.Y - to.Y) / length);
+            var along = new SKPoint(-inward.Y, inward.X);
+            if ((c.X - d.X) * along.X + (c.Y - d.Y) * along.Y < 0)
+                along = new SKPoint(-along.X, -along.Y);
+            SKPoint Move(SKPoint point, float sideways, float inwards) =>
+                new(point.X + (along.X * sideways + inward.X * inwards) * overlap, point.Y + (along.Y * sideways + inward.Y * inwards) * overlap);
+            var piece = new SKPath();
+            piece.MoveTo(Move(a, -1, 1));
+            piece.LineTo(Move(b, 1, 1));
+            piece.LineTo(Move(c, 1, 0));
+            piece.LineTo(Move(d, -1, 0));
+            piece.Close();
+            yield return (piece, from, to);
+        }
     }
 
     /// <summary>The focus rectangle in the box: the box less the fill-to rectangle's margins (fractions of its size).</summary>
