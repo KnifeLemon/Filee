@@ -24,6 +24,8 @@ ko: GitHub에서 업데이트 파일을 받지 못하면 Filee 다운로드 서�
 en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't answer
 ko: 비스듬히 스캔하거나 찍은 페이지로 만든 검색 가능한 PDF도 TXT로 변환하면 텍스트가 나와요
 en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT with their text
+ko: Excel 바이너리 통합 문서(.xlsb)를 PDF, XLSX, CSV 등으로 변환해요
+en: Excel binary workbooks (.xlsb) convert to PDF, XLSX, CSV and more
 -->
 
 - **Updating from Settings → About works when GitHub's downloads don't answer** (#1593). The in-app update on Windows
@@ -38,6 +40,10 @@ en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT 
   PDF readers select its text: Tesseract writes each line along its slanted baseline, and Filee only read level text.
   The recognized text now comes out line by line, also in Markdown without pictures and in a DOCX or HWPX made with
   "Recognize text". PDFs with visible text read as before.
+- **Excel binary workbooks (.xlsb) convert** (#1535). Drop a `.xlsb` file to turn it into PDF, XLSX, ODS, CSV, TSV,
+  HWPX, DOCX or HTML without Excel or LibreOffice. It keeps text, numbers, dates, merged cells and hidden sheets
+  the same way XLS does, and skips password-protected files with a clear message. Fonts, fills and borders stay plain
+  (like XLS), charts and pictures are left out, and formulas come out as their last saved values.
 
 ## 2.5.0
 

@@ -62,7 +62,7 @@ public class LibreOfficeFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
     {
         string[] draw = ["pub", "cdr", "vsd", "odg", "fodg", "emf", "wmf", "svg", "pdf"];
         string[] impress = ["pptx", "ppt", "odp", "otp", "fodp", "key", "dps", "sda", "cgm"];
-        string[] calc = ["xlsx", "xls", "xlt", "ods", "ots", "fods", "csv", "et", "numbers", "sdc"];
+        string[] calc = ["xlsx", "xls", "xlt", "xlsb", "ods", "ots", "fods", "csv", "et", "numbers", "sdc"];
         foreach (var edge in LibreOffice.Edges)
         {
             var filter = LibreOfficeConverter.FilterFor(edge.From, edge.To, pdfA: false);

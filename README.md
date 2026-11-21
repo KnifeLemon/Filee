@@ -173,7 +173,7 @@ To undo it, remove the entries in Windows Security → App & browser control →
 | **Vector**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG²<br>Obsidian Canvas (JSON Canvas) read | PDF (vector), PNG and other images,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS¹, SVG → EMF, WMF, ODG²;<br>Obsidian Canvas → its text as Markdown |
 | **PDF** | DOCX, XLSX (tables), HWPX, TXT, PNG, JPG, TIFF, CBZ, PPTX (a picture of each page), SVG², PDF/A¹;<br>merge (in an order you choose first), split (by pages, every N pages or into equal parts), page ranges, compress (smaller PDFs) |
 | **Documents**: DOCX, DOCM, DOTX, EML, Outlook MSG;<br>OFD (Chinese e-invoices, official documents) read<br>DOC, ODT, FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602, …² | PDF, DOCX, HWPX, EPUB, TXT, HTML;<br>DOCX, HTML tables → XLSX, ODS, CSV;<br>MSG → EML<br>ODT, FODT, OTT² |
-| **Spreadsheets**: XLSX, XLSM, XLS, XLT, ODS, CSV, TSV<br>OTS, FODS, Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, JSON, HWPX, HTML<br>XLT, OTS² |
+| **Spreadsheets**: XLSX, XLSM, XLS, XLSB, XLT, ODS, CSV, TSV<br>OTS, FODS, Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, JSON, HWPX, HTML<br>XLT, OTS² |
 | **Presentations**: PPTX, PPTM, POTX, POTM, PPSX<br>PPT, ODP, OTP, FODP, Keynote² | PDF, PNG, JPG, DOCX, HWPX<br>OTP² |
 | **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |
 | **Text**: TXT, LOG, script source (PY, PAC, BAT, COMMAND; read, never run), Arduino and Processing sketches (INO, PDE), Markdown, HTML;<br>MHTML (saved web pages) read<br>reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML³ | UTF-8 TXT, PDF, DOCX, HWPX, EPUB<br>each other, PPTX slides³ |

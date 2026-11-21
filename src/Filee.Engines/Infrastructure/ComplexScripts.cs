@@ -354,6 +354,9 @@ internal static partial class ComplexScripts
     {
         try
         {
+            // Excel binary workbooks (.xlsb) are ZIP packages whose parts are BIFF12 binary, not XML.
+            if (format == "xlsb")
+                return FindInCells(XlsbReader.Read(path), classifier, skipBelow);
             if (IsZip(path))
                 return FindInPackage(path, format, classifier, skipBelow);
             // Excel 97–2003 is binary: its cells, as the built-in reader reads them (issue #345).

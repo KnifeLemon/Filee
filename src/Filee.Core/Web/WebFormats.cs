@@ -36,6 +36,7 @@ public static class WebFormats
         ["application/vnd.openxmlformats-officedocument.presentationml.presentation"] = "pptx",
         ["application/msword"] = "doc",
         ["application/vnd.ms-excel"] = "xls",
+        ["application/vnd.ms-excel.sheet.binary.macroEnabled.12"] = "xlsb",
         ["application/vnd.ms-powerpoint"] = "ppt",
         ["application/vnd.oasis.opendocument.text"] = "odt",
         ["application/vnd.oasis.opendocument.spreadsheet"] = "ods",

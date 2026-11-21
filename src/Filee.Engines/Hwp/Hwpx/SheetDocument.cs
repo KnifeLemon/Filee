@@ -13,7 +13,7 @@ internal static class SheetDocument
 {
     /// <summary>The formats DocumentReaders reads into a document through <see cref="Build"/>.</summary>
     public static readonly IReadOnlySet<string> SourceFormats =
-        new HashSet<string>(["xlsx", "xlsm", "xltx", "csv", "tsv", "xls", "xlt", "ods"], StringComparer.OrdinalIgnoreCase);
+        new HashSet<string>(["xlsx", "xlsm", "xltx", "csv", "tsv", "xls", "xlt", "xlsb", "ods"], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Largest table written; bigger sheets are cut with a note (a PDF of 100 000 rows helps nobody).</summary>
     private const int MaxRows = 5000;

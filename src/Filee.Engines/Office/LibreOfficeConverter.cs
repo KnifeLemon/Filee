@@ -51,7 +51,7 @@ public sealed class LibreOfficeConverter : IConverter
     // LibreOffice 26.2: the DocumentService of each type's preferred import filter). ClarisWorks / AppleWorks files can
     // also be spreadsheets or drawings; they are taken as word processor files, the common case.
     private static readonly string[] WriterImport = ["dot", "wps", "wpd", "lwp", "abw", "pages", "sdw", "cwk", "mcw", "602", "psw"];
-    private static readonly string[] CalcImport = ["et", "numbers", "sdc", "fods"];
+    private static readonly string[] CalcImport = ["xlsb", "et", "numbers", "sdc", "fods"];
 
     /// <summary>"sda" also covers .sdd: StarDraw files (.sda) open in Draw, StarImpress files (.sdd) in Impress.</summary>
     private static readonly string[] ImpressImport = ["key", "dps", "sda", "fodp"];

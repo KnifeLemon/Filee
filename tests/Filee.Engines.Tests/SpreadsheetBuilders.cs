@@ -1,5 +1,6 @@
-// Builds small .xls (Excel 97–2003, BIFF8 inside a compound file) and .ods files for tests, so the built-in XLS and
-// ODS readers can be tested without sample documents or LibreOffice (see OfficeBuilders.cs for .xlsx).
+// Builds small .xls (Excel 97–2003, BIFF8 inside a compound file), .xlsb (Excel binary workbook, BIFF12 inside a ZIP)
+// and .ods files for tests, so the built-in XLS, XLSB and ODS readers can be tested without sample documents or
+// LibreOffice (see OfficeBuilders.cs for .xlsx).
 
 using System.Buffers.Binary;
 using System.IO.Compression;
@@ -200,6 +201,243 @@ internal sealed class XlsSheet(XlsBuilder book, string name, bool hidden)
             XlsBuilder.Record(stream, 0x00E5, [.. data]);
         }
         XlsBuilder.Record(stream, 0x000A, []);
+    }
+}
+
+/// <summary>
+/// A minimal Excel binary workbook (.xlsb, BIFF12 inside an OPC ZIP package): shared strings, inline strings, a fixed
+/// set of cell formats and any number of sheets. Records follow [MS-XLSB].
+/// </summary>
+internal sealed class XlsbBuilder
+{
+    // Cell formats (XF indexes, same numbering as XlsBuilder):
+    public const int Plain = 0;
+    public const int Centered = 1;  // centred horizontally
+    public const int Won = 2;       // #,##0"원" (custom format 164)
+    public const int Date = 3;      // built-in 14 (yyyy-mm-dd)
+    public const int Percent = 4;   // 0.0% (custom format 165)
+    public const int Time = 5;      // built-in 20 (h:mm)
+    public const int RightTop = 6;  // right aligned at the top
+
+    private static readonly (int Format, int Horizontal, int Vertical)[] Xfs =
+        [(0, 0, 2), (0, 2, 2), (164, 0, 2), (14, 0, 2), (165, 0, 2), (20, 0, 2), (0, 3, 0)];
+
+    private static readonly (int Id, string Code)[] Formats = [(164, "#,##0\"원\""), (165, "0.0%")];
+
+    private readonly List<string> _strings = [];
+    private readonly List<XlsbSheet> _sheets = [];
+
+    /// <summary>Adds a sheet; fill it through the returned builder.</summary>
+    public XlsbSheet Sheet(string name, bool hidden = false)
+    {
+        var sheet = new XlsbSheet(this, name, hidden);
+        _sheets.Add(sheet);
+        return sheet;
+    }
+
+    internal int StringIndex(string text)
+    {
+        var index = _strings.IndexOf(text);
+        if (index >= 0)
+            return index;
+        _strings.Add(text);
+        return _strings.Count - 1;
+    }
+
+    public string Save(string path)
+    {
+        using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
+        WriteText(zip, "[Content_Types].xml",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+            "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
+            "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>" +
+            "<Default Extension=\"bin\" ContentType=\"application/vnd.ms-excel.sheet.binary.macroEnabled.main\"/>" +
+            "<Override PartName=\"/xl/workbook.bin\" ContentType=\"application/vnd.ms-excel.sheet.binary.macroEnabled.main\"/>" +
+            "<Override PartName=\"/xl/styles.bin\" ContentType=\"application/vnd.ms-excel.styles\"/>" +
+            "<Override PartName=\"/xl/sharedStrings.bin\" ContentType=\"application/vnd.ms-excel.sharedStrings\"/>" +
+            string.Concat(_sheets.Select((_, i) => $"<Override PartName=\"/xl/worksheets/sheet{i + 1}.bin\" ContentType=\"application/vnd.ms-excel.worksheet\"/>")) +
+            "</Types>");
+        WriteText(zip, "_rels/.rels",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+            "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+            "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.bin\"/>" +
+            "</Relationships>");
+        var rels = string.Concat(_sheets.Select((_, i) =>
+            $"<Relationship Id=\"rId{i + 1}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet{i + 1}.bin\"/>")) +
+            $"<Relationship Id=\"rId{_sheets.Count + 1}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.bin\"/>" +
+            $"<Relationship Id=\"rId{_sheets.Count + 2}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" Target=\"sharedStrings.bin\"/>";
+        WriteText(zip, "xl/_rels/workbook.bin.rels",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+            $"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">{rels}</Relationships>");
+
+        WriteBinary(zip, "xl/workbook.bin", WriteWorkbook);
+        WriteBinary(zip, "xl/styles.bin", WriteStyles);
+        WriteBinary(zip, "xl/sharedStrings.bin", WriteSharedStrings);
+        for (var i = 0; i < _sheets.Count; i++)
+        {
+            var sheet = _sheets[i];
+            WriteBinary(zip, $"xl/worksheets/sheet{i + 1}.bin", sheet.Write);
+        }
+        return path;
+    }
+
+    private void WriteWorkbook(Stream stream)
+    {
+        Record(stream, 0x0083, []); // BrtBeginBook
+        Record(stream, 0x0099, [.. U32(0), .. U32(0), .. WideString("")]); // BrtWbProp (date1904 = 0)
+        Record(stream, 0x008F, []); // BrtBeginBundleShs
+        for (var i = 0; i < _sheets.Count; i++)
+        {
+            var sheet = _sheets[i];
+            Record(stream, 0x009C, [.. U32(sheet.Hidden ? 1 : 0), .. U32(i + 1), .. WideString($"rId{i + 1}"), .. WideString(sheet.Name)]); // BrtBundleSh
+        }
+        Record(stream, 0x0090, []); // BrtEndBundleShs
+        Record(stream, 0x0084, []); // BrtEndBook
+    }
+
+    private static void WriteStyles(Stream stream)
+    {
+        Record(stream, 0x0116, []); // BrtBeginStyleSheet
+        Record(stream, 0x0267, U32(Formats.Length)); // BrtBeginFmts
+        foreach (var (id, code) in Formats)
+            Record(stream, 0x002C, [.. U16(id), .. WideString(code)]); // BrtFmt
+        Record(stream, 0x0268, []); // BrtEndFmts
+        Record(stream, 0x0269, U32(Xfs.Length)); // BrtBeginCellXFs
+        foreach (var (format, horizontal, vertical) in Xfs)
+        {
+            var xf = new byte[16];
+            BinaryPrimitives.WriteUInt16LittleEndian(xf.AsSpan(0), 0xFFFF);
+            BinaryPrimitives.WriteUInt16LittleEndian(xf.AsSpan(2), (ushort)format);
+            xf[12] = (byte)((horizontal & 0x07) | ((vertical & 0x07) << 3));
+            xf[14] = 0x3F;
+            Record(stream, 0x002F, xf); // BrtXF
+        }
+        Record(stream, 0x026A, []); // BrtEndCellXFs
+        Record(stream, 0x0117, []); // BrtEndStyleSheet
+    }
+
+    private void WriteSharedStrings(Stream stream)
+    {
+        Record(stream, 0x009F, [.. U32(_strings.Count), .. U32(_strings.Count)]); // BrtBeginSst
+        foreach (var text in _strings)
+            Record(stream, 0x0013, [0x00, .. WideString(text)]); // BrtSSTItem (plain string, no rich runs)
+        Record(stream, 0x00A0, []); // BrtEndSst
+    }
+
+    internal static void Record(Stream stream, int id, byte[] data)
+    {
+        WriteVarInt(stream, id);
+        WriteVarInt(stream, data.Length);
+        stream.Write(data);
+    }
+
+    private static void WriteVarInt(Stream stream, int value)
+    {
+        do
+        {
+            var b = value & 0x7F;
+            value >>= 7;
+            if (value != 0)
+                b |= 0x80;
+            stream.WriteByte((byte)b);
+        }
+        while (value != 0);
+    }
+
+    internal static byte[] WideString(string text) => [.. U32(text.Length), .. Encoding.Unicode.GetBytes(text)];
+    internal static byte[] U16(int value) => BitConverter.GetBytes((ushort)value);
+    internal static byte[] U32(int value) => BitConverter.GetBytes(value);
+
+    private static void WriteText(ZipArchive zip, string name, string content)
+    {
+        using var writer = new StreamWriter(zip.CreateEntry(name).Open(), new UTF8Encoding(false));
+        writer.Write(content);
+    }
+
+    private static void WriteBinary(ZipArchive zip, string name, Action<Stream> write)
+    {
+        using var stream = zip.CreateEntry(name).Open();
+        write(stream);
+    }
+}
+
+/// <summary>One sheet of an <see cref="XlsbBuilder"/> workbook; rows and columns are 0-based.</summary>
+internal sealed class XlsbSheet(XlsbBuilder book, string name, bool hidden)
+{
+    private readonly SortedDictionary<int, SortedDictionary<int, (int Id, byte[] Payload)>> _rows = [];
+    private readonly List<(int Top, int Left, int Bottom, int Right)> _merges = [];
+
+    public string Name => name;
+    public bool Hidden => hidden;
+
+    /// <summary>A cell storing a shared string (BrtCellIsst).</summary>
+    public XlsbSheet Text(int row, int column, string text, int xf = XlsbBuilder.Plain) =>
+        Cell(row, column, 0x0007, xf, XlsbBuilder.U32(book.StringIndex(text)));
+
+    /// <summary>A cell storing an inline string (BrtCellSt).</summary>
+    public XlsbSheet InlineText(int row, int column, string text, int xf = XlsbBuilder.Plain) =>
+        Cell(row, column, 0x0006, xf, XlsbBuilder.WideString(text));
+
+    /// <summary>A cell storing a floating-point number (BrtCellReal).</summary>
+    public XlsbSheet Number(int row, int column, double value, int xf = XlsbBuilder.Plain) =>
+        Cell(row, column, 0x0005, xf, BitConverter.GetBytes(value));
+
+    /// <summary>A cell storing a boolean value (BrtCellBool).</summary>
+    public XlsbSheet Bool(int row, int column, bool value) =>
+        Cell(row, column, 0x0004, XlsbBuilder.Plain, [(byte)(value ? 1 : 0)]);
+
+    /// <summary>A cell storing an error code (BrtCellError): 0x07 = #DIV/0!, 0x2A = #N/A.</summary>
+    public XlsbSheet Error(int row, int column, byte code) =>
+        Cell(row, column, 0x0003, XlsbBuilder.Plain, [code]);
+
+    /// <summary>A blank cell (BrtCellBlank).</summary>
+    public XlsbSheet Blank(int row, int column, int xf = XlsbBuilder.Plain) =>
+        Cell(row, column, 0x0001, xf, []);
+
+    public XlsbSheet Merge(int top, int left, int bottom, int right)
+    {
+        _merges.Add((top, left, bottom, right));
+        return this;
+    }
+
+    private XlsbSheet Cell(int row, int column, int id, int xf, byte[] value)
+    {
+        if (!_rows.TryGetValue(row, out var cells))
+            _rows[row] = cells = [];
+        cells[column] = (id, [.. XlsbBuilder.U32(column), .. XlsbBuilder.U32(xf & 0x00FFFFFF), .. value]);
+        return this;
+    }
+
+    internal void Write(Stream stream)
+    {
+        XlsbBuilder.Record(stream, 0x0081, []); // BrtBeginSheet
+        if (_rows.Count > 0)
+        {
+            var firstRow = _rows.Keys.First();
+            var lastRow = _rows.Keys.Last();
+            var firstCol = _rows.Values.SelectMany(c => c.Keys).Min();
+            var lastCol = _rows.Values.SelectMany(c => c.Keys).Max();
+            XlsbBuilder.Record(stream, 0x0094, [.. XlsbBuilder.U32(firstRow), .. XlsbBuilder.U32(lastRow), .. XlsbBuilder.U32(firstCol), .. XlsbBuilder.U32(lastCol)]); // BrtWsDim
+        }
+        XlsbBuilder.Record(stream, 0x0091, []); // BrtBeginSheetData
+        foreach (var (row, cells) in _rows)
+        {
+            var header = new byte[17];
+            BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(0), row);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(8), 300); // 15 pt default row height
+            XlsbBuilder.Record(stream, 0x0000, header); // BrtRowHdr
+            foreach (var (id, payload) in cells.Values)
+                XlsbBuilder.Record(stream, id, payload);
+        }
+        XlsbBuilder.Record(stream, 0x0092, []); // BrtEndSheetData
+        if (_merges.Count > 0)
+        {
+            XlsbBuilder.Record(stream, 0x00B1, XlsbBuilder.U32(_merges.Count)); // BrtBeginMergeCells
+            foreach (var (top, left, bottom, right) in _merges)
+                XlsbBuilder.Record(stream, 0x00B0, [.. XlsbBuilder.U32(top), .. XlsbBuilder.U32(bottom), .. XlsbBuilder.U32(left), .. XlsbBuilder.U32(right)]); // BrtMergeCell
+            XlsbBuilder.Record(stream, 0x00B2, []); // BrtEndMergeCells
+        }
+        XlsbBuilder.Record(stream, 0x0082, []); // BrtEndSheet
     }
 }
 

@@ -24,19 +24,7 @@ internal static class XlsReader
         try
         {
             using var stream = File.OpenRead(path);
-            using var reader = ExcelReaderFactory.CreateReader(stream);
-            var formatter = new NumberFormatter(); // ExcelDataReader already turns 1904-based dates into DateTime
-            var layouts = XlsLayout.Read(path);
-            var book = new Workbook();
-            var index = 0;
-            do
-            {
-                if (reader.VisibleState is null or "visible")
-                    book.Sheets.Add(ReadSheet(reader, formatter, layouts?.ElementAtOrDefault(index)));
-                index++;
-            }
-            while (reader.NextResult());
-            return book;
+            return ReadWithExcelDataReader(stream, XlsLayout.Read(path));
         }
         catch (InvalidPasswordException)
         {
@@ -52,6 +40,25 @@ internal static class XlsReader
         {
             throw new InvalidDataException("The Excel 97–2003 workbook could not be read: " + ex.Message, ex);
         }
+    }
+
+    /// <summary>Reads every visible sheet of <paramref name="stream"/> with ExcelDataReader.</summary>
+    /// <param name="layouts">Widths and heights per sheet from BIFF8 records; null to use what ExcelDataReader reports.</param>
+    internal static Workbook ReadWithExcelDataReader(Stream stream, IReadOnlyList<XlsLayout.Sheet>? layouts)
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        using var reader = ExcelReaderFactory.CreateReader(stream);
+        var formatter = new NumberFormatter(); // ExcelDataReader already turns 1904-based dates into DateTime
+        var book = new Workbook();
+        var index = 0;
+        do
+        {
+            if (reader.VisibleState is null or "visible")
+                book.Sheets.Add(ReadSheet(reader, formatter, layouts?.ElementAtOrDefault(index)));
+            index++;
+        }
+        while (reader.NextResult());
+        return book;
     }
 
     /// <param name="layout">Widths and heights from the BIFF records; null to use what ExcelDataReader reports.</param>
@@ -191,7 +198,7 @@ internal static class XlsReader
         _ => "#GETTING_DATA",
     };
 
-    private static bool StartsWith(string path, ReadOnlySpan<byte> signature)
+    internal static bool StartsWith(string path, ReadOnlySpan<byte> signature)
     {
         Span<byte> head = stackalloc byte[signature.Length];
         using var stream = File.OpenRead(path);

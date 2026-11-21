@@ -142,6 +142,7 @@ public static class FormatRegistry
         new("xltx", "XLTX", FormatCategory.Spreadsheet, ["xltx"]),
         new("xls", "XLS", FormatCategory.Spreadsheet, ["xls"]),
         new("xlt", "XLT", FormatCategory.Spreadsheet, ["xlt"]),
+        new("xlsb", "XLSB", FormatCategory.Spreadsheet, ["xlsb"], Writable: false),
         new("ods", "ODS", FormatCategory.Spreadsheet, ["ods"]),
         new("ots", "OTS", FormatCategory.Spreadsheet, ["ots"]),
         new("fods", "FODS", FormatCategory.Spreadsheet, ["fods"], Writable: false),

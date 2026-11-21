@@ -234,6 +234,8 @@ public sealed class P7mConverter : IConverter, IEnvelopeOpener
             {
                 if (zip.GetEntry("word/document.xml") is not null)
                     return "docx";
+                if (zip.GetEntry("xl/workbook.bin") is not null)
+                    return "xlsb";
                 if (zip.GetEntry("xl/workbook.xml") is not null)
                     return "xlsx";
                 if (zip.GetEntry("ppt/presentation.xml") is not null)
