@@ -22,6 +22,10 @@ Rename this heading to the version number when you release it.
 level: recommended
 ko: GitHub에서 업데이트 파일을 받지 못하면 Filee 다운로드 서버(dl.filee.sh)에서 받아요
 en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't answer
+ko: 비스듬히 스캔하거나 찍은 페이지로 만든 검색 가능한 PDF도 TXT로 변환하면 텍스트가 나와요
+en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT with their text
+ko: 바로 가기를 변환하면 결과가 대상 파일 옆이 아니라 바로 가기 옆에 저장돼요
+en: A shortcut's results are saved next to the shortcut, not next to the file it points to
 -->
 
 - **Updating from Settings → About works when GitHub's downloads don't answer** (#1593). The in-app update on Windows
@@ -31,6 +35,11 @@ en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't 
   so the server can only hand out the real installer. The log says where each file came from.
   It helps from the update after this version on: on such a network, this version itself still comes from
   [filee.sh](https://filee.sh/).
+- **Searchable PDFs of pages scanned at an angle convert to text** (#1538). A PDF made with Searchable PDF from a page
+  scanned or photographed a few degrees askew failed to convert to TXT with "The PDF contains no text", although other
+  PDF readers select its text: Tesseract writes each line along its slanted baseline, and Filee only read level text.
+  The recognized text now comes out line by line, also in Markdown without pictures and in a DOCX or HWPX made with
+  "Recognize text". PDFs with visible text read as before.
 - **A shortcut's results are saved next to the shortcut** (#1706). Converting a desktop shortcut (`.lnk`, or a Finder
   alias on macOS) converts the file it points to, as before, but "next to the original" now means next to the
   shortcut: a program's icon taken from its desktop shortcut lands on the desktop, not in the program's folder.
