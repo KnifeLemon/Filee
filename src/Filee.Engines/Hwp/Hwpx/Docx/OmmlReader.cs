@@ -541,6 +541,19 @@ internal static class OmmlReader
         Text(text.ToString(), output, style);
     }
 
+    /// <summary>
+    /// The tokens of a math text as Word's are read (for MathMLReader): italic letters unless <paramref name="upright"/>,
+    /// bold ones when <paramref name="bold"/>; <paramref name="normal"/> text keeps its spaces.
+    /// </summary>
+    internal static void Tokens(string text, List<MathNode> output, bool upright, bool bold, bool normal = false) =>
+        Text(text, output, normal ? Style.Normal : (upright, bold) switch
+        {
+            (false, false) => Style.Italic,
+            (false, true) => Style.BoldItalic,
+            (true, true) => Style.Bold,
+            _ => Style.Plain,
+        });
+
     /// <summary>Tokens of a text: letters one by one, numbers, operators, symbols as commands.</summary>
     private static void Text(string text, List<MathNode> output, Style style)
     {

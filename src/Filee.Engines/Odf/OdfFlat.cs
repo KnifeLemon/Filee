@@ -4,7 +4,7 @@
 // office:styles and office:master-styles (styles.xml) and office:body (content.xml). Pictures are base64 in
 // office:binary-data where the package has an xlink:href to a part (embedded fonts too, in svg:font-face-uri), and an
 // embedded object (a chart) is an office:document of its own inside draw:object where the package has a folder
-// ("Object 1/").
+// ("Object 1/"), and a formula (a Math object) its math:math element.
 //
 // Taking a flat file apart, the automatic styles go into both content.xml and styles.xml (the master pages use them
 // too) and each picture becomes a part under Pictures/, each font under Fonts/ (one part for one stored more than
@@ -52,6 +52,7 @@ internal static class OdfFlat
     private static readonly XNamespace Table = OdfNames.Table;
     private static readonly XNamespace Chart = OdfNames.Chart;
     private static readonly XNamespace Number = "urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0";
+    private static readonly XNamespace MathMl = OdfNames.MathMl;
 
     /// <summary>The elements whose picture (OLE object, font) is a part in a package and office:binary-data in a flat file.</summary>
     private static readonly HashSet<XName> Binaries =
@@ -180,6 +181,11 @@ internal static class OdfFlat
                     Object(child, inner, folder, depth);
                     continue;
                 }
+                if (child.Name == Draw + "object" && child.Element(MathMl + "math") is { } math)
+                {
+                    Formula(child, math, folder);
+                    continue;
+                }
                 if (child.Name != Office + "document")
                     Walk(child, folder, depth);
             }
@@ -236,6 +242,18 @@ internal static class OdfFlat
             var name = "Object " + _objects.ToString(CultureInfo.InvariantCulture);
             var type = ((string?)inner.Attribute(Office + "mimetype"))?.Trim() is { Length: > 0 } declared ? declared : "application/vnd.oasis.opendocument.chart";
             Split(inner, folder + name + "/", type, depth + 1);
+            Link(frame, "./" + name);
+        }
+
+        /// <summary>A formula (math:math in draw:object) as a folder of its own with the MathML as its content.xml.</summary>
+        private void Formula(XElement frame, XElement math, string folder)
+        {
+            math.Remove();
+            if (++_objects > limits.MaxObjects)
+                throw DocumentLimits.Exceeded($"The file holds more than {DocumentLimits.Count(limits.MaxObjects)} objects.");
+            var name = "Object " + _objects.ToString(CultureInfo.InvariantCulture);
+            Add(folder + name + "/content.xml", math);
+            Parts.Add(new OdfPart(folder + name + "/", OdfNames.FormulaMimeType));
             Link(frame, "./" + name);
         }
 
@@ -323,6 +341,12 @@ internal static class OdfFlat
             var content = Load(folder + "content.xml");
             if (content is null)
                 return null;
+            // A formula is its math:math element itself in a flat file (draw:object holds it), not an office:document.
+            if (content.Name == MathMl + "math")
+            {
+                content.Remove();
+                return content;
+            }
             var styles = Load(folder + "styles.xml");
             var meta = Load(folder + "meta.xml");
             var settings = Load(folder + "settings.xml");

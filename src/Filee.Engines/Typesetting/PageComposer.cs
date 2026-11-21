@@ -2079,6 +2079,7 @@ internal sealed class PageComposer
                     var resolved = new HEquation(equation.Math, Format(equation.Format))
                     {
                         Display = equation.Display,
+                        Wrap = equation.Wrap,
                         Width = equation.Width,
                         Height = equation.Height,
                         BaseLine = equation.BaseLine,

@@ -28,18 +28,29 @@ internal static class MathMLWriter
     private readonly record struct Style(bool Upright, bool Bold);
 
     /// <summary>One equation as a &lt;math&gt; element; <paramref name="tex"/> (its TeX source) becomes its annotation.</summary>
-    public static string Write(MathNode node, bool display, string? tex = null)
+    /// <param name="alt">The alternative text (alttext) when there is no TeX source: the linear text, for screen readers.</param>
+    /// <param name="size">The size in points the formula is set at (an mstyle mathsize), for documents that set it apart from the text.</param>
+    public static string Write(MathNode node, bool display, string? tex = null, string? alt = null, float? size = null)
     {
         var sb = new StringBuilder();
         sb.Append("<math xmlns=\"").Append(Namespace).Append('"');
         if (display)
             sb.Append(" display=\"block\"");
-        if (tex is not null)
-            sb.Append(" alttext=\"").Append(OmmlWriter.Escape(tex)).Append('"');
+        if ((tex ?? alt) is { Length: > 0 } text)
+            sb.Append(" alttext=\"").Append(OmmlWriter.Escape(text)).Append('"');
         sb.Append('>');
         if (tex is not null)
             sb.Append("<semantics>");
-        Group(node, sb, default);
+        if (size is > 0 and var points)
+        {
+            sb.Append("<mstyle mathsize=\"").Append(points.ToString("0.##", CultureInfo.InvariantCulture)).Append("pt\">");
+            Node(node, sb, default);
+            sb.Append("</mstyle>");
+        }
+        else
+        {
+            Group(node, sb, default);
+        }
         if (tex is not null)
             sb.Append("<annotation encoding=\"application/x-tex\">").Append(OmmlWriter.Escape(tex)).Append("</annotation></semantics>");
         sb.Append("</math>");

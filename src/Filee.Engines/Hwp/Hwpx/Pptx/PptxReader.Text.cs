@@ -4,6 +4,7 @@
 
 using System.Globalization;
 using System.Xml.Linq;
+using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Office.Ooxml;
 
 namespace Filee.Engines.Hwp.Hwpx.Pptx;
@@ -75,13 +76,13 @@ internal sealed partial class PptxReader
                     LineSpacing: LineSpacing(paragraphChain)),
             };
 
-            var runs = p.Elements().Where(e => e.Name.LocalName is "r" or "br" or "fld").ToList();
+            var runs = p.Elements().Where(e => e.Name.LocalName is "r" or "br" or "fld" || IsMath(e)).ToList();
             var firstRun = runs.FirstOrDefault(r => r.Name.LocalName != "br");
             var markFormat = RunFormat(context, p.Element(A + "endParaRPr") ?? firstRun?.Element(A + "rPr"), pPr, chain, defaultColor, fontScale);
             paragraph.MarkFormat = markFormat with { Color = null };
 
             // Bullet or number (not on empty paragraphs, as PowerPoint shows them).
-            var hasText = runs.Any(r => r.Element(A + "t")?.Value.Length > 0);
+            var hasText = runs.Any(r => r.Element(A + "t")?.Value.Length > 0 || IsMath(r));
             var bullet = hasText ? Bullet(paragraphChain) : null;
             for (var deeper = level + 1; deeper < counters.Length; deeper++)
             {
@@ -103,6 +104,21 @@ internal sealed partial class PptxReader
 
             foreach (var run in runs)
             {
+                if (IsMath(run))
+                {
+                    // Office Math: each m:oMath an equation (those of an m:oMathPara display ones), in its runs' size.
+                    var mathFormat = RunFormat(context, run.Descendants(A + "rPr").FirstOrDefault(), pPr, chain, defaultColor, fontScale);
+                    foreach (var math in run.Elements())
+                    {
+                        var display = math.Name.LocalName == "oMathPara";
+                        foreach (var line in display ? math.Elements(math.Name.Namespace + "oMath") : math.Name.LocalName == "oMath" ? [math] : [])
+                        {
+                            if (OmmlReader.Read(line) is var equation and not MathRow { Items.Count: 0 })
+                                paragraph.Inlines.Add(new HEquation(equation, mathFormat with { Italic = true }) { Display = display });
+                        }
+                    }
+                    continue;
+                }
                 var format = RunFormat(context, run.Element(A + "rPr"), pPr, chain, defaultColor, fontScale);
                 if (run.Name.LocalName == "br")
                 {

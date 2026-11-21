@@ -20,8 +20,11 @@
 // (MathMode.Display / Text): an inline one (and a display fraction's parts) sets fractions' parts at script size and
 // large operators little larger than the text with their limits at the side; scripts of scripts shrink less; matrix
 // rows are evenly spaced and closer, and brackets fall a little short of their content, as Word draws them (#356).
-// A display formula wider than its column is broken into lines before its binary and relation operators, the lines
-// after the first indented (Word's rule: m:brkBin "before", m:wrapIndent 1 inch), the whole centred as a group.
+// A display formula wider than its column is broken into lines before its binary and relation operators (inside
+// brackets too wide for a line as well, each bracket as tall as all it holds), the lines
+// after the first indented (Word's defaults: m:brkBin "before", m:wrapIndent 1 inch), the whole centred as a group; a
+// Word document's own m:mathPr settings (operators after the break or on both lines, the signs of a repeated minus, the
+// indent, continuation lines to the right) are followed.
 //
 // Brackets and radical signs come from a math font when one is installed (Cambria Math on Windows, STIX Two Math on
 // macOS, Latin Modern Math, DejaVu Math TeX Gyre ... on Linux: a font with an OpenType MATH table, see MathTable): the
@@ -171,15 +174,18 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
     /// <paramref name="width"/> broken into lines before its binary and relation operators as Word breaks one: the
     /// lines after the first indented by an inch (a third of the width at most) and left-aligned with each other in the
     /// box, which the paragraph centres. An inline formula, or one without such an operator between its parts, stays on
-    /// one line.
+    /// one line. <paramref name="wrap"/> holds the document's own rules (Word's m:mathPr); null for Word's defaults.
     /// </summary>
-    public EquationBox Layout(MathNode node, float size, SKColor color, MathMode mode, float width)
+    public EquationBox Layout(MathNode node, float size, SKColor color, MathMode mode, float width, HMathWrap? wrap = null)
     {
         var box = Layout(node, size, color, mode);
         if (mode != MathMode.Display || !(width > 0) || box.Width <= width)
             return box;
-        return Wrapped(node, new Style(size, color, false, false, mode), width) ?? box;
+        return Wrapped(node, new Style(size, color, false, false, mode), width, wrap ?? DefaultWrap) ?? box;
     }
+
+    /// <summary>Word's defaults: break before binary operators, the lines after the first indented by an inch.</summary>
+    private static readonly HMathWrap DefaultWrap = new();
 
     private EquationBox Lay(MathNode node, Style style)
     {
@@ -518,83 +524,150 @@ internal sealed class MathLayout(FontResolver fonts, Shaper shaper)
 
     /// <summary>
     /// A display formula broken into lines no wider than <paramref name="width"/> where it can be (see
-    /// <see cref="BreaksBefore"/>); null when it can't be broken.
+    /// <see cref="BreaksBefore"/>), as <paramref name="wrap"/> says: a binary operator before the break, after it or on
+    /// both lines (a subtraction with the signs Word's m:brkBinSub gives), relations always starting the next line; the
+    /// lines after the first indented, or set to the right. Brackets wider than a line are broken inside. Null when it
+    /// can't be broken.
     /// </summary>
-    private EquationBox? Wrapped(MathNode node, Style style, float width)
+    private EquationBox? Wrapped(MathNode node, Style style, float width, HMathWrap wrap)
     {
         var inner = node;
         while (inner is MathRow { Items: [MathRow only] })
             inner = only;
         if (inner is not MathRow { Items.Count: > 1 } row || row.Items.Any(i => i is MathAlign))
             return null;
-        var items = row.Items;
         var size = style.Size;
-        // Word indents the lines after the first by an inch (m:wrapIndent).
-        var indent = Math.Min(72f, width / 3);
+        // Word indents the lines after the first by an inch (m:wrapIndent), here at most a third of the width.
+        var indent = wrap.Right ? 0 : Math.Clamp(wrap.Indent / 100f, 0, width / 3);
+
+        // Brackets too wide for any line open up, so that a line may break inside them as Word breaks inside m:d:
+        // the opening and the closing bracket each as tall as the whole content, the content's items between them.
+        var items = new List<MathNode>();
+        var laid = new List<EquationBox>();
+        void Expand(IReadOnlyList<MathNode> list, int depth)
+        {
+            foreach (var item in list)
+            {
+                var box = Lay(item, style);
+                if (depth < 8 && box.Width > width - indent && item is MathBrackets { Body: var body } brackets
+                    && Unwrapped(body) is MathRow { Items.Count: > 1 } content && !content.Items.Any(i => i is MathAlign))
+                {
+                    var contentBox = Lay(content, style);
+                    var empty = new EquationBox(0, contentBox.Ascent, contentBox.Descent, (_, _, _, _) => { });
+                    items.Add(new MathSymbol(brackets.Left.Length > 0 ? brackets.Left : "("));
+                    laid.Add(Brackets(brackets.Left, empty, "", style));
+                    Expand(content.Items, depth + 1);
+                    items.Add(new MathSymbol(brackets.Right.Length > 0 ? brackets.Right : ")"));
+                    laid.Add(Brackets("", empty, brackets.Right, style));
+                    continue;
+                }
+                items.Add(item);
+                laid.Add(box);
+            }
+        }
+        Expand(row.Items, 0);
+
         var boxes = new EquationBox[items.Count];
         var spacing = new (float Before, float After)[items.Count];
-        var starts = new List<int> { 0 };
+        // Where lines may start: 0, each break point, and the end.
+        var cuts = new List<int> { 0 };
         for (var i = 0; i < items.Count; i++)
         {
             var previous = i > 0 ? items[i - 1] : null;
-            boxes[i] = Lay(items[i], style);
+            boxes[i] = laid[i];
             spacing[i] = Spacing(items[i], previous, style);
             if (i > 0 && BreaksBefore(items[i], previous))
-                starts.Add(i);
+                cuts.Add(i);
         }
-        if (starts.Count < 2)
+        if (cuts.Count < 2)
             return null;
-        // The width of items [from, to) on a line, the room before the first left out when it starts the line.
-        float Span(int from, int to, bool first)
+        cuts.Add(items.Count);
+
+        // A binary operator at a break, when it moves (after) or shows twice (repeat); relations always start the line.
+        bool Moves(int i) => wrap.Break != HMathBreak.Before && i < items.Count && Glyph(items[i]) is { } glyph && Binary.Contains(glyph);
+        EquationBox Sign(int i, bool start)
+        {
+            if (wrap.Break != HMathBreak.Repeat || Glyph(items[i]) is not ("-" or "−") || wrap.Subtraction is not { Length: 2 } signs)
+                return boxes[i];
+            var sign = start ? signs[1] : signs[0];
+            return Lay(new MathSymbol(sign == '+' ? "+" : "−"), style);
+        }
+
+        // The parts of a line of the pieces first..last (between cuts), with the room before and after each.
+        List<(EquationBox Box, float Before, float After)> Parts(int first, int last)
+        {
+            var parts = new List<(EquationBox, float, float)>();
+            var (from, to) = (cuts[first], cuts[last + 1]);
+            for (var i = from; i < to; i++)
+            {
+                if (i == from && first > 0 && Moves(i))
+                {
+                    if (wrap.Break == HMathBreak.Repeat)
+                        parts.Add((Sign(i, start: true), 0, spacing[i].After));
+                    continue; // after: the operator ended the line before
+                }
+                parts.Add((boxes[i], spacing[i].Before, spacing[i].After));
+            }
+            if (last + 2 < cuts.Count && Moves(to))
+                parts.Add((Sign(to, start: false), spacing[to].Before, 0));
+            return parts;
+        }
+        static float Width(List<(EquationBox Box, float Before, float After)> parts)
         {
             float w = 0;
-            for (var i = from; i < to; i++)
-                w += (i == from && first ? 0 : spacing[i].Before) + boxes[i].Width + spacing[i].After;
+            for (var i = 0; i < parts.Count; i++)
+                w += (i == 0 ? 0 : parts[i].Before) + parts[i].Box.Width + parts[i].After;
             return w;
         }
-        // As many pieces (from one break to the next) as fit on each line.
-        var lines = new List<(int Start, int End)>();
-        var (lineStart, used) = (0, 0f);
-        for (var p = 0; p < starts.Count; p++)
+
+        // As many pieces as fit on each line.
+        var pieces = cuts.Count - 1;
+        var lines = new List<List<(EquationBox Box, float Before, float After)>>();
+        var start = 0;
+        while (start < pieces)
         {
-            var (from, to) = (starts[p], p + 1 < starts.Count ? starts[p + 1] : items.Count);
-            var piece = Span(from, to, from == lineStart);
             var room = lines.Count == 0 ? width : width - indent;
-            if (from > lineStart && used + piece > room)
-            {
-                lines.Add((lineStart, from));
-                (lineStart, used) = (from, Span(from, to, true));
-            }
-            else
-            {
-                used += piece;
-            }
+            var end = start;
+            while (end + 1 < pieces && Width(Parts(start, end + 1)) <= room)
+                end++;
+            lines.Add(Parts(start, end));
+            start = end + 1;
         }
-        lines.Add((lineStart, items.Count));
         if (lines.Count < 2)
             return null;
-        var placed = new List<(float X, float Y, EquationBox Box)>();
-        float y = 0, total = 0;
-        EquationBox? last = null;
-        foreach (var (start, end) in lines)
+
+        var drawn = new List<EquationBox>();
+        foreach (var parts in lines)
         {
-            var parts = new List<(float X, EquationBox Box)>();
+            var placedParts = new List<(float X, EquationBox Box)>();
             float x = 0;
-            for (var i = start; i < end; i++)
+            for (var i = 0; i < parts.Count; i++)
             {
-                x += i == start ? 0 : spacing[i].Before;
-                parts.Add((x, boxes[i]));
-                x += boxes[i].Width + spacing[i].After;
+                x += i == 0 ? 0 : parts[i].Before;
+                placedParts.Add((x, parts[i].Box));
+                x += parts[i].Box.Width + parts[i].After;
             }
-            var line = Combine(parts, x);
-            if (last is not null)
-                y += last.Descent + size * 0.3f + line.Ascent;
-            var left = last is null ? 0 : indent;
-            placed.Add((left, y, line));
-            total = Math.Max(total, left + line.Width);
-            last = line;
+            drawn.Add(Combine(placedParts, x));
         }
-        return Place(total, placed[0].Box.Ascent, y + last!.Descent, [.. placed]);
+        var total = Math.Max(drawn[0].Width, drawn.Skip(1).Max(l => l.Width + indent));
+        var placed = new List<(float X, float Y, EquationBox Box)>();
+        float y = 0;
+        for (var i = 0; i < drawn.Count; i++)
+        {
+            if (i > 0)
+                y += drawn[i - 1].Descent + size * 0.3f + drawn[i].Ascent;
+            var left = i == 0 ? 0 : wrap.Right ? total - drawn[i].Width : indent;
+            placed.Add((left, y, drawn[i]));
+        }
+        return Place(total, drawn[0].Ascent, y + drawn[^1].Descent, [.. placed]);
+    }
+
+    /// <summary>A node inside rows of one item each.</summary>
+    private static MathNode Unwrapped(MathNode node)
+    {
+        while (node is MathRow { Items: [var only] })
+            node = only;
+        return node;
     }
 
     /// <summary>Boxes side by side on one baseline.</summary>

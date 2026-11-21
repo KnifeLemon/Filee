@@ -6,7 +6,7 @@
 //  * OdtWriter.cs         package (mimetype first and stored, the manifest, meta.xml), styles.xml with the named
 //                         styles, list styles, page layouts and one master page per section (its headers and footers);
 //  * OdtWriter.Body.cs    paragraphs and their automatic styles, lists, text, notes, fields and tables;
-//  * OdtWriter.Objects.cs frames with pictures or text, and shapes.
+//  * OdtWriter.Objects.cs frames with pictures or text, equations as formula objects (MathML with a picture), and shapes.
 //
 // Formatting is written as automatic styles (one per distinct set of properties), lengths in points with two decimals
 // (exactly one HWPUNIT in 1/100), so a file read back gives the same model.
@@ -68,8 +68,15 @@ internal sealed partial class OdtWriter
     {
         Nesting.Limit(document); // the writer recurses per table, text box and note level
         var writer = new OdtWriter(cancellationToken);
-        var body = writer.Body(document);
-        writer.WritePackage(document, body, outputPath);
+        try
+        {
+            var body = writer.Body(document);
+            writer.WritePackage(document, body, outputPath);
+        }
+        finally
+        {
+            writer._equationPictures?.Dispose();
+        }
     }
 
     // ───────────────────────── Automatic styles ─────────────────────────
@@ -140,6 +147,14 @@ internal sealed partial class OdtWriter
             manifest.Append($"<manifest:file-entry manifest:full-path=\"{part}\" manifest:media-type=\"text/xml\"/>");
         foreach (var (path, extension) in _media.Values)
             manifest.Append($"<manifest:file-entry manifest:full-path=\"{path}\" manifest:media-type=\"{PictureTypes[extension]}\"/>");
+        foreach (var formula in _formulas)
+        {
+            // An embedded formula document (a folder of its own, as LibreOffice stores Math objects) and its picture.
+            manifest.Append($"<manifest:file-entry manifest:full-path=\"{formula.Name}/\" manifest:version=\"{Odf.Version}\" manifest:media-type=\"{Odf.FormulaMimeType}\"/>")
+                    .Append($"<manifest:file-entry manifest:full-path=\"{formula.Name}/content.xml\" manifest:media-type=\"text/xml\"/>");
+            if (formula.Picture is not null)
+                manifest.Append($"<manifest:file-entry manifest:full-path=\"ObjectReplacements/{formula.Name}\" manifest:media-type=\"image/png\"/>");
+        }
         manifest.Append("</manifest:manifest>");
 
         WriterTempFile.Write(outputPath, file =>
@@ -166,6 +181,16 @@ internal sealed partial class OdtWriter
                     using var image = new MagickImage(source);
                     DdsChannelOrder.Correct(source, image);
                     image.Write(target, MagickFormat.Png);
+                }
+            }
+            foreach (var formula in _formulas)
+            {
+                _token.ThrowIfCancellationRequested();
+                WriteText(zip, formula.Name + "/content.xml", formula.MathMl);
+                if (formula.Picture is { } picture)
+                {
+                    using var target = zip.CreateEntry("ObjectReplacements/" + formula.Name, CompressionLevel.Optimal).Open();
+                    target.Write(picture);
                 }
             }
             WriteText(zip, "META-INF/manifest.xml", manifest.ToString());

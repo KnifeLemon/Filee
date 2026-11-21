@@ -142,21 +142,27 @@ public class DocxEquationTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void A_long_equation_breaks_before_its_signs()
     {
-        // Issue #355: one line that ran off the page.
+        // Issue #355: one line that ran off the page. The model keeps it whole (the layout breaks it); the HWPX writer
+        // breaks it into centred paragraphs of their own for 한글, the spacing of the paragraph around them.
         var terms = string.Concat(Enumerable.Range(1, 30).Select(i => MR("+") + Sup(MR("e"), MR("-" + i)) + MR("0,0010" + i)));
-        var paragraphs = ReadParagraphs(new DocxBuilder().Paragraph(
-            P(Display(MR("y=") + terms), "<w:spacing w:before=\"100\" w:after=\"200\"/><w:jc w:val=\"center\"/>")));
+        var docx = new DocxBuilder().Paragraph(P(Display(MR("y=") + terms), "<w:spacing w:before=\"100\" w:after=\"200\"/><w:jc w:val=\"center\"/>"));
+        var dir = fx.NewFolder();
+        var document = DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media"));
+        Assert.IsType<HEquation>(Assert.Single(Assert.IsType<HParagraph>(Assert.Single(document.Sections.Single().Blocks)).Inlines));
 
+        var hwpx = Path.Combine(dir, "out.hwpx");
+        HwpxWriter.Write(document, hwpx, cancellationToken: TestContext.Current.CancellationToken);
+        var paragraphs = HwpxReader.ReadForLayout(hwpx, Path.Combine(dir, "read")).Sections.Single().Blocks.OfType<HParagraph>().Where(p => p.Inlines.OfType<HEquation>().Any()).ToList();
         Assert.True(paragraphs.Count > 1);
-        var equations = paragraphs.Select(p => Assert.IsType<HEquation>(Assert.Single(p.Inlines))).ToList();
+        var equations = paragraphs.Select(p => Assert.Single(p.Inlines.OfType<HEquation>())).ToList();
         var width = HwpxUnits.FromTwips(11906 - 2880);
         Assert.All(equations, e => Assert.True(EquationScript.Measure(e.Math, e.Format.Size ?? 1000).Width <= width));
         Assert.StartsWith("y =", EquationScript.Script(equations[0].Math));
         Assert.All(equations.Skip(1), e => Assert.StartsWith("+", EquationScript.Script(e.Math)));
         Assert.All(paragraphs, p => Assert.Equal(HAlign.Center, p.Format.Align));
         Assert.Equal(HwpxUnits.FromTwips(100), paragraphs[0].Format.Before);
-        Assert.Equal(0, paragraphs[0].Format.After);
-        Assert.Equal(0, paragraphs[^1].Format.Before);
+        Assert.Equal(0, paragraphs[0].Format.After ?? 0);
+        Assert.Equal(0, paragraphs[^1].Format.Before ?? 0);
         Assert.Equal(HwpxUnits.FromTwips(200), paragraphs[^1].Format.After);
     }
 

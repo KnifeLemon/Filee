@@ -104,7 +104,8 @@ public sealed class RendererLeftOutTests(EngineFixture fx) : IClassFixture<Engin
         var notice = Assert.Single(await ConvertAsync(source, "odt"));
 
         Assert.Equal(WithLibreOffice, notice.Key);
-        Assert.Equal([Part("objects", 1), Part("form_controls", 1), Part("objects_pictured", 1), Part("formulas", 1), Part("vertical_text")], notice.Parts);
+        // The formula is an equation again (drawn from its MathML), not left out.
+        Assert.Equal([Part("objects", 1), Part("form_controls", 1), Part("objects_pictured", 1), Part("vertical_text")], notice.Parts);
     }
 
     [Fact]

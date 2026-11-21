@@ -32,6 +32,9 @@ internal sealed partial class OdtWriter
 
     private int _tables;
     private int _frames;
+
+    /// <summary>The paragraph whose inlines are being written (whether an equation in it is a display equation).</summary>
+    private HParagraph? _paragraph;
     private int _sections;
     private int _footnotes;
     private int _endnotes;
@@ -253,7 +256,10 @@ internal sealed partial class OdtWriter
 
         var sb = new StringBuilder();
         sb.Append(heading > 0 ? $"<text:h text:style-name=\"{style}\" text:outline-level=\"{Number(heading)}\">" : $"<text:p text:style-name=\"{style}\">");
+        var outer = _paragraph;
+        _paragraph = paragraph;
         Inlines(paragraph.Inlines, sb, new TextState(paragraph.MarkFormat), context);
+        _paragraph = outer;
         return sb.Append(heading > 0 ? "</text:h>" : "</text:p>").ToString();
     }
 
@@ -402,6 +408,10 @@ internal sealed partial class OdtWriter
         {
             switch (inline)
             {
+                case HEquation equation:
+                    sb.Append(Formula(equation, _paragraph is { } paragraph && paragraph.Inlines.Contains(equation) && HEquation.IsDisplay(equation, paragraph)));
+                    state.Space = false;
+                    break;
                 case HText text:
                     Span(sb, text.Format, state, () => Text(sb, text.Text, state));
                     break;
