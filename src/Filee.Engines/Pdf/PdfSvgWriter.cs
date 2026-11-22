@@ -49,6 +49,7 @@ using UglyToad.PdfPig.Graphics.Core;
 using UglyToad.PdfPig.Graphics.Operations;
 using UglyToad.PdfPig.Outline.Destinations;
 using UglyToad.PdfPig.Parser;
+using UglyToad.PdfPig.PdfFonts;
 using UglyToad.PdfPig.Tokenization.Scanner;
 using UglyToad.PdfPig.Tokens;
 
@@ -62,6 +63,9 @@ internal sealed class PdfSvgPage(PdfSlideDrawing drawing, float width, float hei
     public float Width { get; } = width;
 
     public float Height { get; } = height;
+
+    /// <summary>XObject streams read from the file for the page (each once while <see cref="PdfXObjectCache"/> keeps them).</summary>
+    public int XObjectReads { get; init; }
 
     public void Dispose() => Drawing.Dispose();
 }
@@ -79,10 +83,74 @@ internal sealed class PdfSvgPageFactory(IPdfTokenScanner pdfScanner, IResourceSt
         var visible = cropBox.GetVisibleBounds(rotation);
         var (width, height) = ((float)visible.Width, (float)visible.Height);
         var toSlide = new SKMatrix(1, 0, 0, 0, -1, height, 0, 0, 1);
-        var processor = new PdfSlideDrawingProcessor(pageNumber, ResourceStore, PdfScanner, PageContentParser, FilterProvider, cropBox, userSpaceUnit,
-            rotation, initialMatrix, ParsingOptions, toSlide, 0, new PdfDrawingBudget(), new SKRect(0, 0, width, height));
-        return new PdfSvgPage(processor.Process(pageNumber, operations), width, height);
+        var xObjects = new PdfXObjectCache(ResourceStore);
+        var processor = new PdfSlideDrawingProcessor(pageNumber, xObjects, PdfScanner, PageContentParser, FilterProvider, cropBox,
+            userSpaceUnit, rotation, initialMatrix, ParsingOptions, toSlide, 0, new PdfDrawingBudget(), new SKRect(0, 0, width, height))
+        {
+            RecordsText = true,
+        };
+        return new PdfSvgPage(processor.Process(pageNumber, operations), width, height) { XObjectReads = xObjects.Reads };
     }
+}
+
+/// <summary>
+/// A page's resources with its XObjects kept once read: PdfPig reads an XObject's stream from the file again for each
+/// "Do", so a picture or form drawn thousands of times was read (and its data copied) thousands of times. Kept by
+/// object, up to <see cref="MaxBytes"/> of stream data a page; past it they are read again as before.
+/// </summary>
+internal sealed class PdfXObjectCache(IResourceStore store) : IResourceStore
+{
+    internal const long MaxBytes = 256L * 1024 * 1024;
+
+    private readonly Dictionary<IndirectReference, StreamToken> _streams = [];
+    private long _bytes;
+
+    /// <summary>XObject streams read from the file so far.</summary>
+    public int Reads { get; private set; }
+
+    public bool TryGetXObject(NameToken name, out StreamToken stream)
+    {
+        if (!store.TryGetXObjectReference(name, out var reference))
+            return store.TryGetXObject(name, out stream);
+        if (_streams.TryGetValue(reference, out var known))
+        {
+            stream = known;
+            return true;
+        }
+        if (!store.TryGetXObject(name, out stream))
+            return false;
+        Reads++;
+        if (_bytes + stream.Data.Length <= MaxBytes)
+        {
+            _bytes += stream.Data.Length;
+            _streams[reference] = stream;
+        }
+        return true;
+    }
+
+    public bool TryGetXObjectReference(NameToken name, out IndirectReference reference) => store.TryGetXObjectReference(name, out reference);
+
+    public void LoadResourceDictionary(DictionaryToken resourceDictionary) => store.LoadResourceDictionary(resourceDictionary);
+
+    public void UnloadResourceDictionary() => store.UnloadResourceDictionary();
+
+    public IFont GetFont(NameToken name) => store.GetFont(name);
+
+    public DictionaryToken GetExtendedGraphicsStateDictionary(NameToken name) => store.GetExtendedGraphicsStateDictionary(name);
+
+    public IFont GetFontDirectly(IndirectReferenceToken fontReferenceToken) => store.GetFontDirectly(fontReferenceToken);
+
+    public bool TryGetNamedColorSpace(NameToken name, out ResourceColorSpace namedColorSpace) => store.TryGetNamedColorSpace(name, out namedColorSpace);
+
+    public ColorSpaceDetails GetColorSpaceDetails(NameToken name, DictionaryToken dictionary) => store.GetColorSpaceDetails(name, dictionary);
+
+    public ColorSpaceDetails GetDeviceColorSpaceDetails(ColorSpace deviceColorSpace) => store.GetDeviceColorSpaceDetails(deviceColorSpace);
+
+    public DictionaryToken GetMarkedContentPropertiesDictionary(NameToken name) => store.GetMarkedContentPropertiesDictionary(name);
+
+    public IReadOnlyDictionary<NameToken, PatternColor> GetPatterns() => store.GetPatterns();
+
+    public Shading GetShading(NameToken name) => store.GetShading(name);
 }
 
 /// <summary>Writes PDF pages as SVG files (see the top).</summary>
@@ -124,11 +192,9 @@ internal static class PdfSvgWriter
                 cancellationToken.ThrowIfCancellationRequested();
                 if (outputOf(pages[i], pages.Count) is not { } output)
                     continue;
-                Page text;
                 PdfSvgPage page;
                 try
                 {
-                    text = pdf.GetPage(pages[i] + 1);
                     page = pdf.GetPage<PdfSvgPage>(pages[i] + 1);
                 }
                 catch (PdfDocumentEncryptedException)
@@ -141,7 +207,7 @@ internal static class PdfSvgWriter
                     {
                         using var stream = new FileStream(output, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16);
                         using var writer = new StreamWriter(stream, new UTF8Encoding(false), 1 << 16);
-                        new PdfSvgPageWriter(writer, page, limits.MaxPdfStreamBytes, cancellationToken).Write(text.Letters);
+                        new PdfSvgPageWriter(writer, page, limits.MaxPdfStreamBytes, cancellationToken).Write();
                     }
                     catch
                     {
@@ -232,8 +298,8 @@ internal sealed class PdfSvgPageWriter
         _region = SKRect.Inflate(_area, reach, reach);
     }
 
-    /// <summary>Writes the page, <paramref name="letters"/> (PdfPig's) as its text.</summary>
-    public void Write(IReadOnlyList<Letter> letters)
+    /// <summary>Writes the page, its glyphs' text (PdfSlideDrawing.Texts) as its text layer.</summary>
+    public void Write()
     {
         try
         {
@@ -242,7 +308,7 @@ internal sealed class PdfSvgPageWriter
                 $"height=\"{N(_page.Height)}pt\" viewBox=\"0 0 {N(_page.Width)} {N(_page.Height)}\">\n");
             var drawing = _page.Drawing;
             Paints(Merged(drawing.Paints, drawing.Letters), null, top: true);
-            Text(letters);
+            Text(drawing.Texts);
             Raw("</svg>\n");
         }
         finally
@@ -988,7 +1054,7 @@ internal sealed class PdfSvgPageWriter
     }
 
     /// <summary>The page's text as transparent SVG text on top, a line at a time, each character where the PDF has it.</summary>
-    private void Text(IReadOnlyList<Letter> letters)
+    private void Text(IReadOnlyList<PdfGlyphText> letters)
     {
         var lines = new List<Line>();
         Line? line = null;
@@ -998,13 +1064,11 @@ internal sealed class PdfSvgPageWriter
             _cancellationToken.ThrowIfCancellationRequested();
             if (++count > MaxTextLetters)
                 break;
-            var value = Clean(letter.Value);
-            var size = letter.PointSize;
+            var value = Clean(letter.Unicode);
+            var size = letter.Size;
             if (value.Length == 0 || !double.IsFinite(size) || size < 0.1 || size > 10_000)
                 continue;
-            // PdfPig's letters are y up from the bottom of the page as shown.
-            var start = new SKPoint((float)letter.StartBaseLine.X, (float)(_page.Height - letter.StartBaseLine.Y));
-            var end = new SKPoint((float)letter.EndBaseLine.X, (float)(_page.Height - letter.EndBaseLine.Y));
+            var (start, end) = (letter.Start, letter.End);
             if (!float.IsFinite(start.X) || !float.IsFinite(start.Y) || !float.IsFinite(end.X) || !float.IsFinite(end.Y))
                 continue;
             var length = Math.Sqrt((end.X - start.X) * (end.X - start.X) + (end.Y - start.Y) * (end.Y - start.Y));

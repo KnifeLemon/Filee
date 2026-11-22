@@ -4,7 +4,6 @@
 // Filee's SVG renderer (Svg.Skia, SvgRenderer) to compare pixels with PDFium's rendering of the PDF (PdfiumConverter).
 // Text is compared by its ink, not pixel by pixel: PDFium and Filee substitute other fonts for Helvetica.
 
-using System.Diagnostics;
 using System.Text;
 using System.Xml.Linq;
 using Filee.Core.Conversion;
@@ -527,7 +526,7 @@ public class PdfSvgTests(EngineFixture fx) : IClassFixture<EngineFixture>
     // ───────────────────────── Hostile pages ─────────────────────────
 
     [Fact]
-    public void A_picture_drawn_thousands_of_times_is_embedded_once_and_finishes_quickly()
+    public void A_picture_drawn_thousands_of_times_is_read_and_embedded_once()
     {
         var content = new StringBuilder();
         for (var i = 0; i < 20_000; i++)
@@ -537,9 +536,15 @@ public class PdfSvgTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var pdf = RawPdf(Path.Combine(fx.NewFolder(), "many.pdf"), content.ToString(), (document, page) =>
             Resource(document, page, "/XObject", "/Ph", Picture(document, 512, 512, "/DeviceRGB", Rgb(512, 512, (x, y) => ((byte)x, (byte)y, 128)))));
 
-        var stopwatch = Stopwatch.StartNew();
+        // The picture's stream is read from the file once, not for each "Do" (PdfPig reads it again each time).
+        using (var document = UglyToad.PdfPig.PdfDocument.Open(pdf))
+        {
+            document.AddPageFactory<PdfSvgPage, PdfSvgPageFactory>();
+            using var page = document.GetPage<PdfSvgPage>(1);
+            Assert.Equal(1, page.XObjectReads);
+            Assert.Equal(40_000, page.Drawing.Paints.Count);
+        }
         var file = ToSvg(pdf);
-        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(120), stopwatch.Elapsed.ToString());
         var svg = Read(file);
         Assert.Single(All(svg, "image"));
         Assert.Equal(20_000, svg.Descendants(Svg + "use").Count());
