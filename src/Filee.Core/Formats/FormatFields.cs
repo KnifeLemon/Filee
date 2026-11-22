@@ -99,10 +99,10 @@ public static class FormatFields
     [
         // Layout, print, photo post-production, signs and embroidery.
         (["psd", "psb", "exr", "hdr", "xcf", "kra", "pdn", "raw", "eps", "ps", "ai", "cdr", "plt", "dst"], ["design"]),
-        // Game textures and cutscenes, Minecraft packs and modpacks.
         // Colour palettes: GIMP's and Photoshop's for design work; .pal also from retro games and their mods.
         (["gpl", "act"], ["design"]),
         (["pal"], ["design", "game"]),
+        // Game textures and cutscenes, Minecraft packs and modpacks.
         (["dds", "vtf", "usm", "bik", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack", "gma", "vpk", "bsp", "mdl", "smd"], ["game"]),
         // Medical imaging and astronomy.
         (["dcm", "fits"], ["science"]),

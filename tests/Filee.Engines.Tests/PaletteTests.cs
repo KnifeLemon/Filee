@@ -94,6 +94,22 @@ public class PaletteTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task A_jasc_palette_saved_with_a_byte_order_mark_is_read()
+    {
+        var jasc = Write("bom.pal", "﻿JASC-PAL\r\n0100\r\n2\r\n255 0 0\r\n0 128 255\r\n");
+
+        Assert.Equal(["#FF0000", "#0080FF"], HexLines(await ConvertOkAsync(jasc, "txt")));
+    }
+
+    [Fact]
+    public void The_hex_lists_are_never_a_step_towards_other_formats()
+    {
+        var edges = new Filee.Engines.Palettes.PaletteConverter().Edges;
+        Assert.All(edges.Where(e => e.To is "txt" or "json"), e => Assert.True(e.DirectOnly));
+        Assert.All(edges.Where(e => e.To is "svg" or "gpl" or "act"), e => Assert.False(e.DirectOnly));
+    }
+
+    [Fact]
     public async Task A_riff_palette_becomes_json()
     {
         using var ms = new MemoryStream();

@@ -27,8 +27,9 @@ public sealed class PaletteConverter : IConverter
            from target in PaletteTargets
            where source != target
            select new ConversionEdge(source, target),
-        .. Sources.Select(source => new ConversionEdge(source, "txt")),
-        .. Sources.Select(source => new ConversionEdge(source, "json")),
+        // The HEX lists are a dump, not a document or a data set: never a step towards DOCX, EPUB, YAML, XLSX, ….
+        .. Sources.Select(source => new ConversionEdge(source, "txt", DirectOnly: true)),
+        .. Sources.Select(source => new ConversionEdge(source, "json", DirectOnly: true)),
         // The swatch picture: PNG, JPG, PDF, … from there.
         .. Sources.Select(source => new ConversionEdge(source, "svg")),
     ];
