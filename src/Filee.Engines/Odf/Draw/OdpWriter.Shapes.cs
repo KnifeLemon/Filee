@@ -122,12 +122,20 @@ internal sealed partial class OdpWriter
 
     // ───────────────────────── Shapes ─────────────────────────
 
-    private void Shape(StringBuilder sb, SlideShape shape, SKMatrix matrix)
+    /// <param name="fade">A transparency gradient over the fill (a baked reflection: no effects, text or picture frame).</param>
+    private void Shape(StringBuilder sb, SlideShape shape, SKMatrix matrix, string? fade = null)
     {
         var (w, h) = (shape.Bounds.Width, shape.Bounds.Height);
         var text = shape.Text is { IsEmpty: false } frame ? frame : null;
         if (shape.Fill is null && shape.Line is null && text is null)
             return;
+        var effects = fade is null ? EffectAttributes(shape.Effects) : "";
+        var three = fade is null && shape.ThreeD is { IsFlat: false } turned ? turned : null;
+        // The turn about the view is the shape's own turn in ODF (the extrusion turns about x and y only).
+        if (three is { RotationZ: not 0 } && float.IsFinite(three.RotationZ))
+            matrix = matrix.PreConcat(SKMatrix.CreateRotationDegrees(three.RotationZ, w / 2, h / 2));
+        if (fade is null)
+            Reflection(sb, shape, matrix);
 
         // A straight line: its two ends on the page.
         if (text is null && shape.Line is not null && (shape.Fill is null || shape.Paths.All(p => p.Fill == PathFill.None)) && Segment(shape.Paths) is var (a, b))
@@ -135,7 +143,7 @@ internal sealed partial class OdpWriter
             var (p1, p2) = (matrix.MapPoint(a), matrix.MapPoint(b));
             if (float.IsFinite(p1.X) && float.IsFinite(p1.Y) && float.IsFinite(p2.X) && float.IsFinite(p2.Y))
             {
-                var lineStyle = Graphic(" draw:fill=\"none\"" + Stroke(shape.Line));
+                var lineStyle = Graphic(" draw:fill=\"none\"" + Stroke(shape.Line) + effects);
                 sb.Append($"<draw:line draw:style-name=\"{lineStyle}\"{_layer} svg:x1=\"{Pt(p1.X)}\" svg:y1=\"{Pt(p1.Y)}\" svg:x2=\"{Pt(p2.X)}\" svg:y2=\"{Pt(p2.Y)}\"/>");
                 return;
             }
@@ -144,15 +152,19 @@ internal sealed partial class OdpWriter
         if (Decompose(matrix, w, h) is not { } place)
             return;
 
+        // A chart: a chart object with its picture beside it, where ODF charts can hold it.
+        if (fade is null && three is null && shape.Chart is { } chart && text is null && !place.Mirrored && ChartObject(sb, shape, chart, place, effects))
+            return;
+
         // A picture in its box: a frame with the picture (cropped, recoloured or mirrored ones drawn out once).
-        if (shape.IsPicture && text is null && shape.Fill is PictureFill { Tile: null } picture && Box(shape.Paths, w, h))
+        if (fade is null && three is null && shape.IsPicture && text is null && shape.Fill is PictureFill { Tile: null } picture && Box(shape.Paths, w, h))
         {
             var mirrored = place.Mirrored;
             if (Picture(picture, mirrored) is { } media)
             {
                 if (media.Flipped)
                     place = place with { Mirrored = false };
-                var frameStyle = Graphic(" draw:fill=\"none\"" + Stroke(shape.Line) + (place.Mirrored ? " style:mirror=\"vertical\"" : "") +
+                var frameStyle = Graphic(" draw:fill=\"none\"" + Stroke(shape.Line) + effects + (place.Mirrored ? " style:mirror=\"vertical\"" : "") +
                                          " draw:auto-grow-height=\"false\" draw:auto-grow-width=\"false\"");
                 sb.Append($"<draw:frame draw:style-name=\"{frameStyle}\"{_layer} {Placement(place)}>")
                   .Append($"<draw:image xlink:href=\"{OdfXml.Escape(media.Path)}\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>")
@@ -166,7 +178,7 @@ internal sealed partial class OdpWriter
             return;
         var viewWidth = Math.Max(1, (long)Math.Round(w * PathScale));
         var viewHeight = Math.Max(1, (long)Math.Round(h * PathScale));
-        var style = Graphic(Fill(shape.Fill, w, h) + Stroke(shape.Line) + TextFrame(text), Columns(text));
+        var style = Graphic(Faded(Fill(shape.Fill, w, h), fade) + Stroke(shape.Line) + TextFrame(text) + effects + ExtrusionColor(three), Columns(text));
         sb.Append($"<draw:custom-shape draw:style-name=\"{style}\"{_layer} {Placement(place)}>");
         if (text is not null)
             Paragraphs(sb, text.Paragraphs);
@@ -174,6 +186,7 @@ internal sealed partial class OdpWriter
           .Append($" draw:type=\"{GeometryType(shape.Paths, w, h)}\"");
         if (place.Mirrored)
             sb.Append(" draw:mirror-vertical=\"true\"");
+        sb.Append(ExtrusionAttributes(three));
         if (text?.Area is { } area && float.IsFinite(area.Left) && float.IsFinite(area.Top) && float.IsFinite(area.Right) && float.IsFinite(area.Bottom))
             sb.Append($" draw:text-areas=\"{Coordinate(area.Left)} {Coordinate(area.Top)} {Coordinate(area.Right)} {Coordinate(area.Bottom)}\"");
         if (text is not null)

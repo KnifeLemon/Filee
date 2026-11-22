@@ -72,6 +72,60 @@ internal sealed class SlideShape : SlideElement
     /// shape's fill makes when asked.
     /// </summary>
     public Charts.Chart? Chart { get; set; }
+
+    /// <summary>Shadow, glow, soft edges and reflection of the shape's outlines; null for none.</summary>
+    public SlideEffects? Effects { get; set; }
+
+    /// <summary>The shape turned in space and extruded; null for a flat one.</summary>
+    public SlideThreeD? ThreeD { get; set; }
+}
+
+/// <summary>
+/// The effects of a shape (DrawingML a:effectLst; ODF draw:shadow and LibreOffice's loext:glow-* and loext:softedge-*),
+/// drawn about its outlines (fill and line), not its text.
+/// </summary>
+internal sealed record SlideEffects
+{
+    public SlideShadow? Shadow { get; init; }
+    public SlideGlow? Glow { get; init; }
+
+    /// <summary>How far in from the outline the shape fades out, in points; 0 = a hard edge.</summary>
+    public float SoftEdge { get; init; }
+
+    public SlideReflection? Reflection { get; init; }
+
+    public bool IsNone => Shadow is null && Glow is null && !(SoftEdge > 0) && Reflection is null;
+}
+
+/// <summary>A shadow behind the shape, moved by an offset on the page (it doesn't turn with the shape).</summary>
+/// <param name="Blur">The blur radius in points.</param>
+/// <param name="OffsetX">Points to the right.</param>
+/// <param name="OffsetY">Points down.</param>
+internal sealed record SlideShadow(SKColor Color, float Blur, float OffsetX, float OffsetY);
+
+/// <summary>A soft coloured halo <paramref name="Radius"/> points wide around the shape.</summary>
+internal sealed record SlideGlow(SKColor Color, float Radius);
+
+/// <summary>A mirror image of the shape under it, fading from <paramref name="StartAlpha"/> to <paramref name="EndAlpha"/>.</summary>
+/// <param name="EndPosition">Where the fade ends, as a fraction of the shape's height (0–1).</param>
+/// <param name="Distance">The gap between the shape and its reflection, in points.</param>
+/// <param name="Blur">The reflection's blur radius in points.</param>
+internal sealed record SlideReflection(float StartAlpha, float EndAlpha, float EndPosition, float Distance, float Blur);
+
+/// <summary>
+/// A shape seen in space: its front face turned about the box's centre (degrees: about the x axis, tilting the top
+/// away; about the y axis, turning the right side away; about the z axis, clockwise), extruded backwards
+/// <see cref="Depth"/> points in <see cref="Color"/> (null: the fill, shaded).
+/// </summary>
+/// <param name="Perspective">Seen in perspective, else in parallel projection.</param>
+/// <param name="SkewAmount">
+/// An oblique view of a parallel projection (ODF draw:extrusion-skew): the depth shown as this fraction of it, along
+/// <see cref="SkewAngle"/> (degrees counter-clockwise from the right). 0 for none.
+/// </param>
+internal sealed record SlideThreeD(float RotationX, float RotationY, float RotationZ, float Depth, SKColor? Color = null, bool Perspective = false,
+    float SkewAmount = 0, float SkewAngle = 0)
+{
+    public bool IsFlat => !(Depth > 0) && RotationX == 0 && RotationY == 0 && RotationZ == 0;
 }
 
 /// <summary>How a path's inside is filled.</summary>

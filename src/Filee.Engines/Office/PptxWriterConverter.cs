@@ -56,7 +56,8 @@ public sealed class PptxWriterConverter : IConverter, ICapabilityCheck
     public string? FirstUnsupported(string sourcePath, string sourceFormat) => DocumentReaders.Unsupported(sourcePath, sourceFormat);
 
     private static IEnumerable<string> Sources(bool pandoc) => DocumentReaders.Formats(pandoc).Where(f => !NotSources.Contains(f))
-        // OpenDocument presentations are decks already: ODP → PPTX stays with LibreOffice.
+        // OpenDocument presentations are decks already: ODP → PPTX stays with LibreOffice until a PresentationML writer
+        // of the slide model takes them (this writer lays documents out on slides).
         .Where(f => !OdfDrawReader.Presentations.Contains(f));
 
     public EngineStatus GetStatus()

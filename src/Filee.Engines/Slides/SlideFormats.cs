@@ -28,8 +28,9 @@ internal static class SlideFormats
             : PptxSlideReader.Read(path, cancellationToken: cancellationToken, leftOut: true);
 
     /// <summary>The first thing in the deck its reader doesn't draw (the capability check of the format); null when it draws everything.</summary>
-    public static string? FirstUnsupported(string path, string format, CancellationToken cancellationToken = default) =>
+    /// <param name="forOdp">For the ODP writer, which also keeps what the renderer only draws roughly (3D).</param>
+    public static string? FirstUnsupported(string path, string format, CancellationToken cancellationToken = default, bool forOdp = false) =>
         OdfDrawReader.Presentations.Contains(format, StringComparer.OrdinalIgnoreCase)
             ? OdfDrawReader.FirstUnsupported(path, cancellationToken)
-            : SlideCapabilities.FirstUnsupported(path, cancellationToken);
+            : SlideCapabilities.FirstUnsupported(path, cancellationToken, forOdp);
 }
