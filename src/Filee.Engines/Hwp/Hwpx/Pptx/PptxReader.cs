@@ -336,7 +336,7 @@ internal sealed partial class PptxReader
 
         var textColor = context.Colors.Drawing(style?.Element(A + "fontRef"));
         var blocks = TextBody(context, partPath, shape.Element(P + "txBody"), ph, layoutPh, masterPh, textColor);
-        if (geometry is "line" or "straightConnector1")
+        if (geometry is "line" or "straightConnector1" || OpenPaths.IsConnectorPreset(geometry))
         {
             AddLine(shape, bounds, line, output);
             return;
@@ -403,6 +403,10 @@ internal sealed partial class PptxReader
         AddLine(connector, bounds, line, output);
     }
 
+    /// <summary>
+    /// A straight line or connector, or a bent or curved connector as its path (the preset kept with it), with the
+    /// arrowheads of its a:ln (a:headEnd / a:tailEnd).
+    /// </summary>
     private static void AddLine(XElement element, (long X, long Y, long W, long H) bounds, HBorder line, List<HInline> output)
     {
         if (line.Style == HBorderStyle.None)
@@ -410,19 +414,23 @@ internal sealed partial class PptxReader
         var xfrm = element.Element(P + "spPr")?.Element(A + "xfrm");
         var (flipH, flipV) = ((string?)xfrm?.Attribute("flipH") is "1" or "true", (string?)xfrm?.Attribute("flipV") is "1" or "true");
         var preset = element.Element(P + "spPr")?.Element(A + "prstGeom");
+        var ln = element.Element(P + "spPr")?.Element(A + "ln");
+        var (head, tail) = (Docx.DocxReader.LineEnd(ln?.Element(A + "headEnd")), Docx.DocxReader.LineEnd(ln?.Element(A + "tailEnd")));
         var (w, h) = (Math.Max(1, Hwp(bounds.W)), Math.Max(1, Hwp(bounds.H)));
         // A bent or curved connector: its path, mirrored by the flips.
-        if (OpenPaths.Preset((string?)preset?.Attribute("prst"), w, h, preset?.Element(A + "avLst")?.Elements(A + "gd").Take(8)
+        if (OpenPaths.PresetGeometry((string?)preset?.Attribute("prst"), w, h, preset?.Element(A + "avLst")?.Elements(A + "gd").Take(8)
                 .Where(g => g.Attribute("name") is not null && g.Attribute("fmla") is not null)
-                .GroupBy(g => (string)g.Attribute("name")!).ToDictionary(g => g.Key, g => (string)g.First().Attribute("fmla")!)) is { } path)
+                .GroupBy(g => (string)g.Attribute("name")!).ToDictionary(g => g.Key, g => (string)g.First().Attribute("fmla")!), flipH, flipV) is { } geometry)
         {
             output.Add(new HShape(HShapeKind.Path)
             {
                 Width = w,
                 Height = h,
                 Anchor = Anchor(Hwp(bounds.X), Hwp(bounds.Y)),
-                Geometry = new HGeometry(w, h, Path: OpenPaths.Mirrored(path, w, h, flipH, flipV)),
+                Geometry = geometry,
                 Line = line,
+                Head = head,
+                Tail = tail,
             });
             return;
         }
@@ -432,8 +440,10 @@ internal sealed partial class PptxReader
             Height = Math.Max(1, Hwp(bounds.H)),
             Anchor = Anchor(Hwp(bounds.X), Hwp(bounds.Y)),
             Line = line,
-            FlipHorizontal = (string?)xfrm?.Attribute("flipH") is "1" or "true",
-            FlipVertical = (string?)xfrm?.Attribute("flipV") is "1" or "true",
+            FlipHorizontal = flipH,
+            FlipVertical = flipV,
+            Head = head,
+            Tail = tail,
         });
     }
 

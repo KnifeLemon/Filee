@@ -15,7 +15,8 @@
 //   outline2" …).
 // - Shapes: draw:frame (text box, picture, table, an embedded object's replacement picture), draw:custom-shape
 //   (OdfEnhancedGeometry), draw:rect (corner radius), draw:ellipse / draw:circle (full, section, cut, arc),
-//   draw:line, draw:polyline, draw:polygon, draw:path (SVG path data), draw:connector and draw:measure (straight),
+//   draw:line, draw:polyline, draw:polygon, draw:path (SVG path data), draw:connector (along its svg:d, or the route
+//   of its draw:type: OdfConnectors) and draw:measure (straight),
 //   draw:g groups, draw:a links (their content); placement by svg:x / svg:y / svg:width / svg:height and
 //   draw:transform (rotate, translate, scale, skew, matrix), turned and mirrored as the model has it.
 // - Fills, lines and text frames through the graphic and presentation style chains (OdfGraphicStyles, OdfDrawText).
@@ -579,25 +580,41 @@ internal sealed partial class OdfDrawReader
         return shape.Fill is null && shape.Line is null && shape.Text is null ? null : shape;
     }
 
-    /// <summary>A line, a connector or a dimension line: straight from (x1, y1) to (x2, y2).</summary>
+    /// <summary>
+    /// A line or a dimension line, straight from (x1, y1) to (x2, y2); a connector between them along its svg:d or the
+    /// route of its draw:type (OdfConnectors).
+    /// </summary>
     private SlideShape? Line(XElement element, PageContext context, OdfScope scope)
     {
         _budget.Object();
         var a = new SKPoint(Points(Attr(element, Svg + "x1")) ?? 0, Points(Attr(element, Svg + "y1")) ?? 0);
         var b = new SKPoint(Points(Attr(element, Svg + "x2")) ?? 0, Points(Attr(element, Svg + "y2")) ?? 0);
-        if (Attr(element, Draw + "transform") is { } transform)
-        {
-            var matrix = Transform(transform, SKMatrix.Identity);
-            (a, b) = (matrix.MapPoint(a), matrix.MapPoint(b));
-        }
         if (!float.IsFinite(a.X) || !float.IsFinite(a.Y) || !float.IsFinite(b.X) || !float.IsFinite(b.Y))
             return null;
+        SKPath path;
+        if (element.Name.LocalName == "connector")
+        {
+            path = OdfConnectors.PathData(Attr(element, Svg + "d"), a, b, 72 / 2540.0, OdfEnhancedGeometry.MaxTokens, out var commands)
+                   ?? OdfConnectors.Route(Attr(element, Draw + "type"), a, b);
+            Commands(commands + 1);
+        }
+        else
+        {
+            path = new SKPath();
+            path.MoveTo(a);
+            path.LineTo(b);
+        }
+        if (Attr(element, Draw + "transform") is { } transform)
+            path.Transform(Transform(transform, SKMatrix.Identity));
+        var bounds = path.Bounds;
+        if (!float.IsFinite(bounds.Left) || !float.IsFinite(bounds.Top) || !float.IsFinite(bounds.Right) || !float.IsFinite(bounds.Bottom))
+        {
+            path.Dispose();
+            return null;
+        }
+        path.Offset(-bounds.Left, -bounds.Top);
         var props = OdfGraphicStyles.Props(StyleChain(element, context, scope), "graphic-properties");
         Shadow(props);
-        var bounds = new SKRect(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Max(a.X, b.X), Math.Max(a.Y, b.Y));
-        var path = new SKPath();
-        path.MoveTo(a.X - bounds.Left, a.Y - bounds.Top);
-        path.LineTo(b.X - bounds.Left, b.Y - bounds.Top);
         var shape = new SlideShape { Bounds = bounds, Paths = [new SlidePath(path, PathFill.None)], Line = _styles.Line(props, stroke: true) };
         return shape.Line is null ? null : shape;
     }

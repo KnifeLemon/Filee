@@ -155,7 +155,7 @@ internal sealed partial class OdtWriter
     {
         var w = Math.Max(0, shape.Width);
         var h = Math.Max(0, shape.Height);
-        var open = shape.Kind is HShapeKind.Line or HShapeKind.Path;
+        var open = shape.Kind is HShapeKind.Line || shape is { Kind: HShapeKind.Path, Geometry.Path.Closed: false };
         var props = new StringBuilder(open ? " draw:fill=\"none\"" : Fill(shape.Fill ?? shape.Gradient?.Colors.FirstOrDefault()))
             .Append(Stroke(shape.Line));
         if (open && shape.Line.Style != HBorderStyle.None)
@@ -164,8 +164,9 @@ internal sealed partial class OdtWriter
         {
             case HShapeKind.Path when shape.Geometry is { Path: { } path } geometry:
                 {
-                    // An open path (bent or curved connector, free-form line): a draw:path whose view box is its box in
-                    // model units (points may lie outside it), with the line's markers.
+                    // A path (bent or curved connector, free-form line or shape): a draw:path whose view box is its box in
+                    // model units (points may lie outside it), with the line's markers when open, closed (Z) and filled
+                    // when closed.
                     var (sx, sy) = (geometry.Width > 0 ? w / (double)geometry.Width : 1, geometry.Height > 0 ? h / (double)geometry.Height : 1);
                     string Point(HPoint p) => $"{Number(OpenPaths.Round(p.X * sx))} {Number(OpenPaths.Round(p.Y * sy))}";
                     var d = new StringBuilder($"M {Point(path.Start)}");
@@ -176,6 +177,8 @@ internal sealed partial class OdtWriter
                         else
                             d.Append($" L {Point(segment.End)}");
                     }
+                    if (path.Closed)
+                        d.Append(" Z");
                     var viewBox = $" svg:viewBox=\"0 0 {Number(Math.Max(1, w))} {Number(Math.Max(1, h))}\" svg:d=\"{d}\"";
                     return ShapeElement("path", "Shape", shape.Anchor, shape.OuterMargin, shape.ZOrder, props.ToString(), Math.Max(1, w), Math.Max(1, h), viewBox, "");
                 }

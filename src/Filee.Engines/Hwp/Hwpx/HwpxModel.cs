@@ -1035,15 +1035,16 @@ internal enum HShapeKind
     Arc,
 
     /// <summary>
-    /// An open path of straight and curved pieces (<see cref="HGeometry.Path"/>), with arrowheads: bent and curved
+    /// A path of straight and curved pieces (<see cref="HGeometry.Path"/>): open, with arrowheads, for bent and curved
     /// connectors (Word bentConnector / curvedConnector, ODF draw:connector, 한글 꺾인 / 곡선 연결선) and open
-    /// free-form lines. Every writer writes it.
+    /// free-form lines; closed (<see cref="HPath.Closed"/>) and filled for free-form shapes (Word custGeom, ODF
+    /// draw:path / draw:polygon, 한글 다각형). Every writer writes it.
     /// </summary>
     Path,
 }
 
 /// <summary>
-/// A drawing without text: rectangle, ellipse, straight line or open path (and, read for layout, polygon, curve or arc).
+/// A drawing without text: rectangle, ellipse, straight line or path (and, read for layout, polygon, curve or arc).
 /// </summary>
 internal sealed class HShape(HShapeKind kind) : HObject
 {
@@ -1058,7 +1059,7 @@ internal sealed class HShape(HShapeKind kind) : HObject
     /// <summary>Stacking order among floating objects (higher is in front); null = document order.</summary>
     public int? ZOrder { get; set; }
 
-    /// <summary>Outline of a polygon, curve, arc or open path; null for the other kinds.</summary>
+    /// <summary>Outline of a polygon, curve, arc or path; null for the other kinds.</summary>
     public HGeometry? Geometry { get; set; }
     public string? Fill { get; set; }
     public HGradient? Gradient { get; set; }

@@ -508,11 +508,15 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
             "<hp:textMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/></hp:drawText><hc:pt x=\"0\" y=\"0\"/><hc:pt x=\"4000\" y=\"2000\"/><hc:pt x=\"0\" y=\"2000\"/>");
         var path = Package(Path.Combine(fx.NewFolder(), "shapes.hwpx"), RefList(), Hp(Hr(polygon + curve + arc + labelled)));
 
-        // For the writers nothing changes: shapes they cannot draw are skipped, text keeps a box without outline.
+        // For the writers: a polygon is a closed path, shapes they cannot draw are skipped, text keeps a box without outline.
         var skipped = new Dictionary<string, int>();
         var plain = Paragraphs(ReadHwpx(path, skipped: skipped))[1].Inlines;
-        Assert.Equal((1, 1, 1), (skipped["polygon"], skipped["curve"], skipped["arc"]));
-        Assert.Equal(HBorderStyle.None, Assert.IsType<HTextBox>(Assert.Single(plain)).Line.Style);
+        Assert.False(skipped.ContainsKey("polygon"));
+        Assert.Equal((1, 1), (skipped["curve"], skipped["arc"]));
+        Assert.Equal(2, plain.Count);
+        var closed = Assert.IsType<HShape>(plain[0]);
+        Assert.Equal((HShapeKind.Path, true, 2, "#00FF00"), (closed.Kind, closed.Geometry!.Path!.Closed, closed.Geometry.Path.Segments.Count, closed.Fill));
+        Assert.Equal(HBorderStyle.None, Assert.IsType<HTextBox>(plain[1]).Line.Style);
 
         var inlines = Paragraphs(ReadHwpx(path, forLayout: true))[1].Inlines;
         var shape = Assert.IsType<HShape>(inlines[0]);

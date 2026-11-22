@@ -228,11 +228,13 @@ internal sealed partial class HwpxWriter
         var id = NextId();
         var w = Math.Max(1, shape.Width);
         var h = Math.Max(1, shape.Height);
-        var open = shape.Kind is HShapeKind.Line or HShapeKind.Path;
+        var closed = shape is { Kind: HShapeKind.Path, Geometry.Path.Closed: true };
+        var open = shape.Kind is HShapeKind.Line || shape.Kind == HShapeKind.Path && !closed;
         var (element, extra) = shape.Kind switch
         {
             HShapeKind.Ellipse => ("ellipse", " intervalDirty=\"0\" hasArcPr=\"0\" arcType=\"NORMAL\""),
             HShapeKind.Line => ("line", " isReverseHV=\"0\""),
+            HShapeKind.Path when closed => ("polygon", ""),
             HShapeKind.Path => ("connectLine", $" type=\"{ConnectorType(shape)}\""),
             _ => ("rect", $" ratio=\"{shape.CornerRatio}\""),
         };
@@ -258,6 +260,9 @@ internal sealed partial class HwpxWriter
                     sb.Append($"<hc:startPt x=\"{x1}\" y=\"{y1}\"/><hc:endPt x=\"{x2}\" y=\"{y2}\"/>");
                     break;
                 }
+            case HShapeKind.Path when closed:
+                sb.Append(PolygonGeometry(shape.Geometry!, w, h));
+                break;
             case HShapeKind.Path:
                 sb.Append(ConnectorGeometry(shape.Geometry!, w, h));
                 break;
@@ -307,6 +312,19 @@ internal sealed partial class HwpxWriter
         foreach (var point in between)
             sb.Append(Point("point", point, " type=\"2\""));
         return sb.Append(Point("point", path.End, " type=\"26\"")).Append("</hp:controlPoints>").ToString();
+    }
+
+    /// <summary>
+    /// The corners (hc:pt) of a closed path as a 한글 polygon in its box, its curves flattened into straight pieces and
+    /// the first corner again at the end, as 한글 writes a polygon that closes.
+    /// </summary>
+    private static string PolygonGeometry(HGeometry geometry, int w, int h)
+    {
+        var (sx, sy) = (geometry.Width > 0 ? w / (double)geometry.Width : 1, geometry.Height > 0 ? h / (double)geometry.Height : 1);
+        var corners = OpenPaths.Flattened(geometry.Path!);
+        if (corners[^1] != corners[0])
+            corners.Add(corners[0]);
+        return string.Concat(corners.Select(p => $"<hc:pt x=\"{OpenPaths.Round(p.X * sx)}\" y=\"{OpenPaths.Round(p.Y * sy)}\"/>"));
     }
 
     /// <summary>

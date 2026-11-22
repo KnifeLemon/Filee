@@ -207,21 +207,23 @@ internal sealed partial class RtfReader
             1 or 2 or 202 => HShapeKind.Rectangle,
             3 => HShapeKind.Ellipse,
             20 or 32 => HShapeKind.Line,
-            (0 or (>= 33 and <= 40)) when OpenPath(shape) is not null => HShapeKind.Path,
+            (0 or (>= 33 and <= 40)) when PathGeometry(shape) is not null => HShapeKind.Path,
             _ => null,
         };
     }
 
     /// <summary>
-    /// The open path of a bent or curved connector (shapeType 33 to 36 bentConnector2..5, 37 to 40
-    /// curvedConnector2..5, adjustValue / adjust2Value / adjust3Value in 1/21600 of the box) or of a free-form shape
-    /// (shapeType 0: pVerticies through pSegmentInfo, one move then lines and cubic Béziers, in geoLeft ... geoBottom),
-    /// in the shape's box (model units), not yet mirrored; null when the shape is closed, escapes or is too long.
+    /// The geometry of a bent or curved connector (shapeType 33 to 36 bentConnector2..5, 37 to 40
+    /// curvedConnector2..5, adjustValue / adjust2Value / adjust3Value in 1/21600 of the box; the preset kept with it) or
+    /// of a free-form shape (shapeType 0: pVerticies through pSegmentInfo, one move then lines and cubic Béziers, closed
+    /// or not, in geoLeft ... geoBottom), in the shape's box (model units), mirrored by fFlipH / fFlipV; null when the
+    /// shape escapes, has more than one contour or is too long.
     /// </summary>
-    private static HPath? OpenPath(ShapeContext shape)
+    private static HGeometry? PathGeometry(ShapeContext shape)
     {
         var (width, height) = Size(shape);
         var (w, h) = (HwpxUnits.FromTwips(width), HwpxUnits.FromTwips(height));
+        var (flipH, flipV) = (shape.Flag("fFlipH"), shape.Flag("fFlipV"));
         var type = shape.Number("shapeType") ?? -1;
         if (type is >= 33 and <= 40)
         {
@@ -232,8 +234,15 @@ internal sealed partial class RtfReader
                 if (shape.Number(property) is { } value)
                     adjust[guide] = "val " + ((long)value * 100000 / 21600).ToString(CultureInfo.InvariantCulture);
             }
-            return OpenPaths.Preset(name, w, h, adjust);
+            return OpenPaths.PresetGeometry(name, w, h, adjust, flipH, flipV);
         }
+        return FreeFormPath(shape, w, h) is { } path ? new HGeometry(w, h, Path: OpenPaths.Mirrored(path, w, h, flipH, flipV)) : null;
+    }
+
+    /// <summary>A free-form shape's path in a <paramref name="w"/> × <paramref name="h"/> box, not yet mirrored (see PathGeometry).</summary>
+    private static HPath? FreeFormPath(ShapeContext shape, int w, int h)
+    {
+        var type = shape.Number("shapeType") ?? -1;
         if (type != 0 || !shape.Properties.TryGetValue("pVerticies", out var vertices) || vertices.Length > MaxFreeFormChars)
             return null;
         var points = FreeFormPoints(vertices);
@@ -256,9 +265,13 @@ internal sealed partial class RtfReader
         var next = 0;
         HPoint? start = null;
         var pieces = new List<HPathSegment>();
+        var closed = false;
         foreach (var segment in segments)
         {
             var count = Math.Max(1, segment & 0x1FFF);
+            // Only the end may follow the close (anything else starts another contour).
+            if (closed && segment >> 13 != 4)
+                return null;
             switch (segment >> 13)
             {
                 case 0: // lines, a point each
@@ -283,13 +296,29 @@ internal sealed partial class RtfReader
                         return null;
                     start = Map(points[next++]);
                     break;
+                case 3: // the close: back to the start, a filled shape
+                    if (start is null || pieces.Count == 0)
+                        return null;
+                    closed = true;
+                    break;
                 case 4: // the end
-                    return start is { } first && pieces.Count > 0 ? new HPath(first, pieces) : null;
-                default: // close, escapes: not an open line the model draws
+                    return Finished();
+                default: // escapes: not a path the model draws
                     return null;
             }
         }
-        return start is { } begun && pieces.Count > 0 ? new HPath(begun, pieces) : null;
+        return Finished();
+
+        HPath? Finished()
+        {
+            if (start is not { } first || pieces.Count == 0)
+                return null;
+            // A straight piece back to the start before the close: the close draws it.
+            if (closed && pieces.Count > 1 && pieces[^1] is { Curved: false } last && last.End == first)
+                pieces.RemoveAt(pieces.Count - 1);
+            // Closed round one straight piece: no inside.
+            return closed && pieces is [{ Curved: false }] ? null : new HPath(first, pieces, closed);
+        }
     }
 
     /// <summary>Characters of pVerticies or pSegmentInfo read at most.</summary>
@@ -336,32 +365,32 @@ internal sealed partial class RtfReader
     private static HShape Drawing(ShapeContext shape, HShapeKind kind)
     {
         var (width, height) = Size(shape);
-        var line = kind is HShapeKind.Line or HShapeKind.Path;
+        // The flips are in the path.
+        var geometry = kind == HShapeKind.Path ? PathGeometry(shape) : null;
+        var line = kind is HShapeKind.Line || geometry is { Path.Closed: false };
         var drawing = new HShape(kind)
         {
-            Width = HwpxUnits.FromTwips(line ? width : Math.Max(1, width)),
-            Height = HwpxUnits.FromTwips(line ? height : Math.Max(1, height)),
+            Width = HwpxUnits.FromTwips(line || geometry is not null ? width : Math.Max(1, width)),
+            Height = HwpxUnits.FromTwips(line || geometry is not null ? height : Math.Max(1, height)),
             Fill = !line && shape.Number("fFilled") is not 0 ? ShapeColor(shape.Number("fillColor") ?? 0xFFFFFF) : null,
             Line = shape.Number("fLine") is 0 ? HBorder.None : Outline(shape),
+            Geometry = geometry,
         };
-        if (kind == HShapeKind.Path && OpenPath(shape) is { } path)
-        {
-            // The flips are in the path.
-            drawing.Geometry = new HGeometry(drawing.Width, drawing.Height,
-                Path: OpenPaths.Mirrored(path, drawing.Width, drawing.Height, shape.Flag("fFlipH"), shape.Flag("fFlipV")));
-        }
-        if (line)
+        if (line || geometry is not null)
         {
             drawing.FlipHorizontal = kind == HShapeKind.Line && shape.Flag("fFlipH");
             drawing.FlipVertical = kind == HShapeKind.Line && shape.Flag("fFlipV");
             var rotation = new HTransform((shape.Number("rotation") ?? 0) / 65536.0 % 360, false, false);
             drawing.Transform = rotation.IsIdentity ? null : rotation;
-            drawing.Head = Arrowhead(shape, "lineStart");
-            drawing.Tail = Arrowhead(shape, "lineEnd");
         }
         else
         {
             drawing.Transform = shape.Transform();
+        }
+        if (line)
+        {
+            drawing.Head = Arrowhead(shape, "lineStart");
+            drawing.Tail = Arrowhead(shape, "lineEnd");
         }
         if (shape.Number("shapeType") == 2)
             drawing.CornerRatio = (int)Math.Round(Math.Clamp(shape.Number("adjustValue") ?? 3600, 0, 10800) * 100.0 / 21600);
