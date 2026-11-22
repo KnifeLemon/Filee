@@ -32,7 +32,7 @@ internal static class CueSheet
     private const int UserDataSize = 2048;
     private const int SectorsPerChunk = 256;
     private const long MaxCueBytes = 1024 * 1024;
-    private const long IsoSignatureOffset = 16L * UserDataSize + 1;
+    private const long IsoDescriptorSector = 16;
     private const byte Mode2Form2Flag = 0x20;
 
     /// <summary>Reads <paramref name="cuePath"/> and resolves its single data track and companion BIN file.</summary>
@@ -42,8 +42,41 @@ internal static class CueSheet
         if (new FileInfo(fullCuePath).Length > MaxCueBytes)
             throw Refused("the cue sheet is too large");
         var cueDirectory = Path.GetDirectoryName(fullCuePath) ?? ".";
-        using var reader = new StreamReader(fullCuePath, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        using var reader = new StringReader(DecodeCue(File.ReadAllBytes(fullCuePath)));
         return Parse(reader, cueDirectory);
+    }
+
+    /// <summary>
+    /// The cue sheet's text: UTF-8 (with or without a byte order mark) when its bytes are valid UTF-8, otherwise the
+    /// system's ANSI code page, which older ripping tools wrote names in (Windows-1252, Shift-JIS, CP949, …).
+    /// </summary>
+    internal static string DecodeCue(byte[] bytes)
+    {
+        try
+        {
+            return new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            return LegacyEncoding().GetString(bytes);
+        }
+    }
+
+    /// <summary>The system's ANSI code page, or Latin-1 where there is none (or it is UTF-8).</summary>
+    internal static Encoding LegacyEncoding()
+    {
+        var codePage = CultureInfo.CurrentCulture.TextInfo.ANSICodePage;
+        if (codePage is <= 0 or 65001)
+            return Encoding.Latin1;
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        try
+        {
+            return Encoding.GetEncoding(codePage);
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException)
+        {
+            return Encoding.Latin1;
+        }
     }
 
     /// <summary>Parses a cue sheet from <paramref name="reader"/> and resolves the BIN path relative to <paramref name="cueDirectory"/>.</summary>
@@ -125,6 +158,8 @@ internal static class CueSheet
             throw Refused("INDEX 01 points past the end of the BIN file");
 
         var sectorsToCopy = totalSectors - track.StartSector;
+        // Checked first, so a track that isn't ISO 9660 is refused without copying up to 700 MB.
+        VerifyIso9660(source, layout, track.StartSector, sectorsToCopy);
         var output = step.Output.Allocate("iso");
         if (output is null)
             return [];
@@ -141,7 +176,6 @@ internal static class CueSheet
             using (var destination = new FileStream(temporary, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1 << 16))
             {
                 StreamUserData(source, destination, layout, sectorsToCopy, progress, cancellationToken);
-                VerifyIso9660(destination);
             }
             File.Move(temporary, output, overwrite: true);
             if (MarkOfTheWeb.Read(track.BinPath) is { } mark)
@@ -199,13 +233,17 @@ internal static class CueSheet
         }
     }
 
-    private static void VerifyIso9660(FileStream destination)
+    /// <summary>
+    /// Refuses a track whose sector 16 (the first volume descriptor) lacks the "CD001" signature, read straight from
+    /// the BIN file before anything is copied.
+    /// </summary>
+    private static void VerifyIso9660(FileStream source, CueSectorLayout layout, long startSector, long sectors)
     {
         Span<byte> signature = stackalloc byte[5];
-        if (destination.Length < IsoSignatureOffset + signature.Length)
+        if (sectors <= IsoDescriptorSector)
             throw Refused("the data track isn't an ISO 9660 file system");
-        destination.Position = IsoSignatureOffset;
-        if (destination.ReadAtLeast(signature, signature.Length, throwOnEndOfStream: false) < signature.Length
+        source.Position = (startSector + IsoDescriptorSector) * layout.SectorSize + layout.DataOffset + 1;
+        if (source.ReadAtLeast(signature, signature.Length, throwOnEndOfStream: false) < signature.Length
             || !signature.SequenceEqual("CD001"u8))
             throw Refused("the data track isn't an ISO 9660 file system");
     }
@@ -281,22 +319,43 @@ internal static class CueSheet
             _ => throw Refused($"unsupported track mode {mode}; only a single data track fits in an ISO"),
         };
 
-    private static string ResolveBinPath(string cueDirectory, string fileName)
+    /// <summary>
+    /// The BIN file the cue names, always inside the cue's folder. A relative path is followed only while it stays in
+    /// that folder. An absolute path (a drive, a root, a UNC share such as <c>\\host\share</c>) or one that climbs out
+    /// with <c>..</c> is never opened or even checked: a downloaded cue could otherwise read any file on the PC, or
+    /// make Windows connect to another computer and send it the user's credentials. For those, and for old absolute
+    /// paths from the ripping PC, the file name alone is looked for in the cue's folder.
+    /// </summary>
+    internal static string ResolveBinPath(string cueDirectory, string fileName)
     {
-        var candidate = Path.Combine(cueDirectory, fileName);
-        if (File.Exists(candidate))
+        var folder = Path.GetFullPath(cueDirectory);
+        if (!LooksRooted(fileName) && InFolder(folder, fileName) is { } candidate && File.Exists(candidate))
             return candidate;
 
-        var slash = fileName.LastIndexOfAny(['/', '\\']);
+        // After the last separator or drive colon ("C:disc.bin" names disc.bin).
+        var slash = fileName.LastIndexOfAny(['/', '\\', ':']);
         var nameOnly = slash >= 0 ? fileName[(slash + 1)..] : fileName;
-        if (nameOnly.Length > 0)
-        {
-            var local = Path.Combine(cueDirectory, nameOnly);
-            if (File.Exists(local))
-                return local;
-        }
+        if (nameOnly is { Length: > 0 } and not ("." or "..") && !LooksRooted(nameOnly)
+            && InFolder(folder, nameOnly) is { } local && File.Exists(local))
+            return local;
 
         throw Refused($"the BIN file \"{fileName}\" is missing");
+    }
+
+    /// <summary>Rooted on any system: <c>/x</c>, <c>\x</c>, <c>\\host\share</c>, or a drive (<c>C:\x</c>, <c>C:x</c>).</summary>
+    private static bool LooksRooted(string path) =>
+        path.StartsWith('/') || path.StartsWith('\\') || path.Length >= 2 && path[1] == ':' || Path.IsPathRooted(path);
+
+    /// <summary>The full path of <paramref name="relative"/> under <paramref name="folder"/>, or null when it leaves it.</summary>
+    private static string? InFolder(string folder, string relative)
+    {
+        var full = Path.GetFullPath(Path.Combine(folder, relative));
+        var back = Path.GetRelativePath(folder, full);
+        return back == "." || back == ".." || Path.IsPathRooted(back)
+               || back.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+               || back.StartsWith("../", StringComparison.Ordinal)
+            ? null
+            : full;
     }
 
     private static ReadOnlySpan<char> FirstToken(string line)

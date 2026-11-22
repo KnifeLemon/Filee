@@ -176,6 +176,96 @@ public class BinCueTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(originalIso, await File.ReadAllBytesAsync(Assert.Single(job2.Outputs), Ct));
     }
 
+    // ───────── Where the BIN is looked for ─────────
+
+    [Fact]
+    public void A_relative_path_inside_the_cues_folder_is_followed()
+    {
+        var root = fx.NewFolder();
+        Directory.CreateDirectory(Path.Combine(root, "disc"));
+        var bin = Path.Combine(root, "disc", "game.bin");
+        File.WriteAllBytes(bin, [0]);
+
+        Assert.Equal(Path.GetFullPath(bin), CueSheet.ResolveBinPath(root, "disc/game.bin"));
+        Assert.Equal(Path.GetFullPath(bin), CueSheet.ResolveBinPath(root, "disc" + Path.DirectorySeparatorChar + "game.bin"));
+    }
+
+    [Fact]
+    public void An_absolute_path_outside_the_cues_folder_is_never_opened()
+    {
+        var root = fx.NewFolder();
+        var cueFolder = Path.Combine(root, "cue");
+        Directory.CreateDirectory(cueFolder);
+        var outside = Path.Combine(root, "secret.bin");
+        File.WriteAllBytes(outside, [1]);
+
+        // Only the file name counts: missing in the cue's folder, the file elsewhere is not used.
+        var error = Assert.Throws<ConversionRefusedException>(() => CueSheet.ResolveBinPath(cueFolder, Path.GetFullPath(outside)));
+        Assert.Contains("missing", error.Detail, StringComparison.Ordinal);
+
+        // With a file of that name in the cue's folder, that one is read.
+        var local = Path.Combine(cueFolder, "secret.bin");
+        File.WriteAllBytes(local, [2]);
+        Assert.Equal(Path.GetFullPath(local), CueSheet.ResolveBinPath(cueFolder, Path.GetFullPath(outside)));
+    }
+
+    [Theory]
+    [InlineData("../secret.bin")]
+    [InlineData(@"..\secret.bin")]
+    [InlineData("../../secret.bin")]
+    [InlineData("sub/../../secret.bin")]
+    public void A_path_that_climbs_out_of_the_cues_folder_is_refused(string fileName)
+    {
+        var root = fx.NewFolder();
+        var cueFolder = Path.Combine(root, "a", "cue");
+        Directory.CreateDirectory(cueFolder);
+        File.WriteAllBytes(Path.Combine(root, "a", "secret.bin"), [1]);
+        File.WriteAllBytes(Path.Combine(root, "secret.bin"), [1]);
+
+        var error = Assert.Throws<ConversionRefusedException>(() => CueSheet.ResolveBinPath(cueFolder, fileName));
+        Assert.Contains("missing", error.Detail, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(@"\\filee-test-host.invalid\share\disc.bin")]
+    [InlineData("//filee-test-host.invalid/share/disc.bin")]
+    [InlineData(@"\disc.bin")]
+    [InlineData(@"C:disc.bin")]
+    public void A_rooted_or_network_path_is_looked_for_by_its_name_in_the_cues_folder(string fileName)
+    {
+        var cueFolder = fx.NewFolder();
+        var local = Path.Combine(cueFolder, "disc.bin");
+        File.WriteAllBytes(local, [0]);
+
+        Assert.Equal(Path.GetFullPath(local), CueSheet.ResolveBinPath(cueFolder, fileName));
+    }
+
+    [Fact]
+    public void A_cue_that_isnt_utf8_is_read_in_the_system_code_page()
+    {
+        var encoding = CueSheet.LegacyEncoding();
+        const string name = "Déjà vu.bin";
+        var bytes = encoding.GetBytes($"FILE \"{name}\" BINARY\r\n");
+        Assert.SkipUnless(encoding.GetString(bytes) == $"FILE \"{name}\" BINARY\r\n", "the system code page has no é or à");
+        Assert.SkipWhen(Utf8IsValid(bytes), "the name's bytes are valid UTF-8 in this code page");
+
+        Assert.Contains(name, CueSheet.DecodeCue(bytes), StringComparison.Ordinal);
+        Assert.Equal("FILE \"Déjà vu.bin\" BINARY", CueSheet.DecodeCue(Encoding.UTF8.GetBytes("FILE \"Déjà vu.bin\" BINARY")));
+    }
+
+    private static bool Utf8IsValid(byte[] bytes)
+    {
+        try
+        {
+            _ = new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(bytes);
+            return true;
+        }
+        catch (DecoderFallbackException)
+        {
+            return false;
+        }
+    }
+
     // ───────── Refusals ─────────
 
     [Fact]
