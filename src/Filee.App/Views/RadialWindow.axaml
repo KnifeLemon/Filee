@@ -49,6 +49,7 @@
                  HoleRatio="{Binding HoleRatio}"
                  SliceOpacity="{Binding SliceOpacity}"
                  ShowCaptions="{Binding ShowCaptions}"
+                 TickProgress="{Binding TickProgress}"
                  LabelScale="{Binding LabelScale}"
                  DefaultShow="{Binding DefaultShow}"
                  GroupRingSize="{Binding GroupRingSize}"
