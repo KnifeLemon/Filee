@@ -1,6 +1,6 @@
 // The fonts Annotate's labels are drawn in, handed to the painter (Filee.Engines): the UI's font chain (SoftPalette) in
 // bold, as the box a label is typed in shows it, so the label drawn is the label typed. The embedded Noto fonts are
-// read the first time a label is drawn, their bold faces only.
+// read the first time a label is drawn: their bold faces, and their regular ones for the note under an exported frame.
 
 using Avalonia.Media;
 using Avalonia.Platform;
@@ -14,7 +14,8 @@ internal static class AnnotationFonts
     private const string EmbeddedPrefix = "fonts:Filee#";
     private const string SystemPrefix = SoftPalette.SystemKey + "#";
 
-    private static readonly Lazy<IReadOnlyList<SKTypeface>> Embedded = new(LoadEmbedded);
+    private static readonly Lazy<IReadOnlyList<SKTypeface>> Embedded = new(() => LoadEmbedded("-Bold."));
+    private static readonly Lazy<IReadOnlyList<SKTypeface>> EmbeddedRegular = new(() => LoadEmbedded("-Regular."));
     private static (string Language, bool SystemFont)? _chain;
 
     /// <summary>
@@ -30,6 +31,7 @@ internal static class AnnotationFonts
         AnnotationPainter.UseFonts(() => Chain(language, systemFont));
         var family = SoftPalette.FontFamilyFor(language, systemFont);
         AnnotationPainter.UseFallback(codePoint => FallbackFor(codePoint, family));
+        AnnotationPainter.UseRegular(bold => EmbeddedRegular.Value.FirstOrDefault(face => face.FamilyName == bold.FamilyName));
     }
 
     /// <summary>
@@ -74,15 +76,18 @@ internal static class AnnotationFonts
         return chain;
     }
 
-    /// <summary>The embedded fonts' bold faces; none when they weren't fetched (build/fetch-fonts.ps1).</summary>
-    private static IReadOnlyList<SKTypeface> LoadEmbedded()
+    /// <summary>
+    /// The embedded fonts' faces whose file name has <paramref name="weight"/> ("-Bold."); none when they weren't
+    /// fetched (build/fetch-fonts.ps1).
+    /// </summary>
+    private static IReadOnlyList<SKTypeface> LoadEmbedded(string weight)
     {
         var faces = new List<SKTypeface>();
         try
         {
             foreach (var uri in AssetLoader.GetAssets(new Uri("avares://Filee/Assets/Fonts"), null))
             {
-                if (!uri.AbsolutePath.Contains("-Bold.", StringComparison.Ordinal))
+                if (!uri.AbsolutePath.Contains(weight, StringComparison.Ordinal))
                     continue;
                 using var stream = AssetLoader.Open(uri);
                 using var data = SKData.Create(stream);

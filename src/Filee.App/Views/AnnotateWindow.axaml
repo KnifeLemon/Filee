@@ -101,7 +101,7 @@
                         Tool="{Binding Mode}"
                         MarkColor="{Binding Color}"
                         MarkWidth="{Binding Width}"
-                        ImagePadding="36,70,36,118"
+                        ImagePadding="{Binding PicturePadding}"
                         AccentBrush="{DynamicResource AccentBrush}" />
 
     <!-- Typing a text: the tag itself over the picture where it goes, in its colour and size (TextTag gets them when
@@ -132,7 +132,7 @@
     </Button>
 
     <!-- Bottom: the bar and the keys -->
-    <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,0,16,12" Spacing="7" IsVisible="{Binding IsEditing}">
+    <StackPanel x:Name="BottomStack" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,0,16,12" Spacing="7" IsVisible="{Binding IsEditing}">
       <TextBlock Classes="caption danger" Text="{Binding StatusNotice}" HorizontalAlignment="Center"
                  IsVisible="{Binding StatusNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       <!-- About the picture shown: a frame of an HDR video whose colours couldn't be converted -->
@@ -219,6 +219,20 @@
           <Button x:Name="SaveButton" Classes="accent" Content="{Binding SaveText}" Command="{Binding SaveCommand}"
                   Margin="6,0,0,0" CornerRadius="999" Padding="16,8" />
         </StackPanel>
+      </Border>
+      <!-- A frame from Cut a clip, under the tools: its time and number, and a note that goes with it into the
+           export -->
+      <Border Classes="float" Padding="5" IsVisible="{Binding IsFrame}">
+        <DockPanel>
+          <Border DockPanel.Dock="Left" CornerRadius="999" Padding="10,5" VerticalAlignment="Center"
+                  Background="{DynamicResource SurfaceAltBrush}">
+            <TextBlock x:Name="FrameLabelText" Text="{Binding FrameLabel}" FontSize="12" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimaryBrush}" />
+          </Border>
+          <TextBox x:Name="FrameNoteBox" Text="{Binding FrameNote}" Margin="8,0,0,0" MaxLength="2000" AcceptsReturn="False"
+                   PlaceholderText="{DynamicResource annotate.frame_note}"
+                   AutomationProperties.Name="{DynamicResource annotate.frame_note_name}" />
+        </DockPanel>
       </Border>
       <TextBlock Classes="caption" HorizontalAlignment="Center" Text="{DynamicResource annotate.keys}" />
     </StackPanel>

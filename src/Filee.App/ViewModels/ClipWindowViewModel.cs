@@ -91,6 +91,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     private readonly MarkedFrames? _marks;
     private readonly Action<string, string?>? _annotate;
+    private readonly Action<IReadOnlyList<string>, Preset>? _exportFrames;
 
     /// <summary>
     /// Cancelled when the window closes, unless it closed after the last video (F, then Enter): a frame being taken
@@ -560,13 +561,19 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// <param name="annotate">
     /// Opens a frame "Mark this frame" took in Annotate, with a note about it; null: the window offers no marking.
     /// </param>
+    /// <param name="exportFrames">
+    /// Starts the export of the marked frames (their copies in time order, the export's preset).
+    /// </param>
     public ClipWindowViewModel(IReadOnlyList<string> files, Preset tool, ILocalizer loc, UserDataStore store, IVideoFrameSource frames,
         Func<string, string> targetFor, Action<string, Preset> export, ILogger? log = null, bool ringtone = false,
-        MarkedFrames? marks = null, Action<string, string?>? annotate = null)
+        MarkedFrames? marks = null, Action<string, string?>? annotate = null, Action<IReadOnlyList<string>, Preset>? exportFrames = null)
     {
         _ringtone = ringtone;
         _marks = marks;
         _annotate = annotate;
+        _exportFrames = exportFrames;
+        if (marks is not null)
+            marks.CopiesChanged += OnCopiesChanged;
         _files = files;
         _tool = tool;
         _loc = loc;
@@ -609,6 +616,9 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         SaveText = _loc[index < _files.Count - 1 ? "clip.save_next" : "clip.save"];
         ClearPictures();
         UseCutter(null);
+        // The last video's list, ticks and export go at once, not when the next one has been read.
+        _trayCts?.Cancel();
+        ShowMarkedFrames([]);
         Loudness = [];
         MusicLoudness = [];
         _detailWanted = default;
@@ -644,6 +654,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
 
         _video = video;
         HasPicture = video.HasPicture;
+        _ = ReloadMarkedFramesAsync();
         Duration = video.Duration;
         ViewEnd = video.Duration;
         SelectedLane = ClipLane.Video;
@@ -757,6 +768,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             CanFast = cutter is null || _edit!.IsPlainCut;
             FitView(refit: false);
             SequencePlayhead = _edit?.ClipTimeAt(Playhead) ?? 0;
+            SequenceMarkedTimes = InClip(MarkedTimes);
             if (cutter is not null && (cutter.Start, cutter.End) != _detailWanted)
                 ScheduleDetail();
             if (SelectedIndex >= Pieces.Count)
@@ -1520,7 +1532,9 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         IsMarkingFrame = true;
         try
         {
-            frame = _marks.NewPath(video, seconds);
+            // Its number is counted meanwhile (packets only, usually well under a second); the save waits for it. Not
+            // with the window's token: a frame still in Annotate after this window closes keeps its number.
+            frame = _marks.NewPath(video, seconds, _video?.Duration ?? 0, counting => _frames.FrameNumberAsync(video, seconds, counting));
             var still = await _frames.WriteStillAsync(video, seconds, frame, _markCts.Token);
             // Dropped meanwhile: the window closed, or Filee is quitting and took the frames.
             if (_markCts.IsCancellationRequested || !_marks.IsWanted(frame))
@@ -1548,6 +1562,278 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         {
             IsMarkingFrame = false;
         }
+    }
+
+    // ───────────────────────── The marked frames (#1205 step 3) ─────────────────────────
+
+    /// <summary>The file open now.</summary>
+    internal string? CurrentFile => CurrentIndex < _files.Count ? _files[CurrentIndex] : null;
+
+    /// <summary>The video's marked copies, in time order, as the list beside "Mark this frame" shows them.</summary>
+    public ObservableCollection<MarkedFrameItem> MarkedFrames { get; } = [];
+
+    /// <summary>How many there are: the button's badge.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMarkedFrames))]
+    [NotifyPropertyChangedFor(nameof(MarkedFramesSpoken))]
+    [NotifyPropertyChangedFor(nameof(ExportFramesText))]
+    private int _markedCount;
+
+    /// <summary>The list's export button: "Export 3 frames…".</summary>
+    public string ExportFramesText => MarkedCount == 1 ? _loc["clip.export_frames_one"] : _loc.Format("clip.export_frames", MarkedCount);
+
+    /// <summary>What a screen reader says for the button: "Marked frames: 3".</summary>
+    public string MarkedFramesSpoken => _loc.Format("clip.marked_frames_spoken", MarkedCount);
+
+    /// <summary>The "Marked frames" button shows: a video with marked copies, where frames can be marked.</summary>
+    public bool HasMarkedFrames => MarkedCount > 0 && ShowsMarkFrame;
+
+    /// <summary>The list is open.</summary>
+    [ObservableProperty] private bool _isTrayOpen;
+
+    /// <summary>The marked frames' times in the video: the overview's ticks.</summary>
+    [ObservableProperty] private IReadOnlyList<double> _markedTimes = [];
+
+    /// <summary>Those inside the clip, as times in the clip: the sequence's ticks.</summary>
+    [ObservableProperty] private IReadOnlyList<double> _sequenceMarkedTimes = [];
+
+    /// <summary>The export card is open.</summary>
+    [ObservableProperty] private bool _isExporting;
+
+    /// <summary>The export is one PDF (true) or a folder of PNGs; the choice is remembered.</summary>
+    public bool ExportAsPdf
+    {
+        get => _store.Settings.FrameExportAsPdf;
+        set
+        {
+            if (_store.Settings.FrameExportAsPdf == value)
+                return;
+            _store.Settings.FrameExportAsPdf = value;
+            _store.SaveQuietly(); // read only here: nothing else re-applies the settings for it
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ExportAsPngs));
+            OnPropertyChanged(nameof(ExportTarget));
+        }
+    }
+
+    public bool ExportAsPngs
+    {
+        get => !ExportAsPdf;
+        set => ExportAsPdf = !value;
+    }
+
+    /// <summary>
+    /// What the export makes, next to the video, as it will be named: "Site walk frames.pdf", or the folder "Site walk
+    /// frames", with " (2)" when that is taken.
+    /// </summary>
+    public string ExportTarget => CurrentFile is { } video ? Path.GetFileName(FrameExport.Target(video, ExportAsPdf, ExportFolders.ContainsKey)) : "";
+
+    /// <summary>
+    /// The PNG folders handed to exports, made only when their jobs run: by any Cut a clip window while Filee runs, so
+    /// an export queued before the window was closed and opened again keeps its folder to itself.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> ExportFolders = new(Filee.Core.Platform.FileSystemPaths.Comparer);
+
+    private CancellationTokenSource? _trayCts;
+
+    /// <summary>A copy was saved or removed (on another thread): the list reads again if it is this video's.</summary>
+    private void OnCopiesChanged(string video) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (!_closed && CurrentFile is { } open && Filee.Core.Platform.FileSystemPaths.Comparer.Equals(Path.GetFullPath(video), Path.GetFullPath(open)))
+            _ = ReloadMarkedFramesAsync();
+    });
+
+    /// <summary>
+    /// Reads the video's marked copies again (off the UI thread) and shows them; their pictures are read once the list
+    /// is open.
+    /// </summary>
+    internal async Task ReloadMarkedFramesAsync()
+    {
+        _trayCts?.Cancel();
+        if (_closed)
+            return; // the window has let its list go already
+        if (_marks is null || _video is not { HasPicture: true } video || CurrentFile is not { } path)
+        {
+            ShowMarkedFrames([]);
+            return;
+        }
+        var cts = _trayCts = new CancellationTokenSource();
+        var tool = _store.AnnotateToolAsSaved();
+        IReadOnlyList<MarkedCopy> copies;
+        try
+        {
+            copies = await _marks.CopiesOfAsync(path, video.Duration, tool, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _log?.LogWarning(ex, "Could not read the marked frames of {File}", path);
+            return;
+        }
+        if (cts.IsCancellationRequested || _closed)
+            return;
+        ShowMarkedFrames(copies);
+        if (IsTrayOpen)
+            ReadThumbnails();
+    }
+
+    /// <summary>
+    /// Shows <paramref name="copies"/>: a copy listed already, unchanged, keeps its row and its picture, so a save or a
+    /// remove reads only what is new.
+    /// </summary>
+    private void ShowMarkedFrames(IReadOnlyList<MarkedCopy> copies)
+    {
+        var word = _loc["clip.frame_number"];
+        var kept = MarkedFrames.ToDictionary(item => item.Copy);
+        MarkedFrames.Clear();
+        foreach (var copy in copies)
+            MarkedFrames.Add(kept.Remove(copy, out var item) ? item
+                : new MarkedFrameItem(copy, FrameTags.Label(copy.Facts, word, CultureInfo.CurrentCulture),
+                    !string.IsNullOrWhiteSpace(copy.Facts.Note) ? copy.Facts.Note.Trim() : _loc["clip.marked_no_note"], _loc["clip.remove_marked"]));
+        foreach (var gone in kept.Values)
+            gone.Thumbnail?.Dispose();
+        MarkedCount = copies.Count;
+        MarkedTimes = [.. copies.Select(c => c.Facts.FrameSeconds)];
+        SequenceMarkedTimes = InClip(MarkedTimes);
+        if (copies.Count == 0)
+            IsTrayOpen = IsExporting = false;
+    }
+
+    /// <summary>
+    /// The times of <paramref name="times"/> in the clip (as the sequence lays it out), for those it keeps.
+    /// </summary>
+    private List<double> InClip(IReadOnlyList<double> times) =>
+        _edit is { } edit ? [.. times.Where(t => edit.Parts.Any(p => t >= p.Start && t <= p.End)).Select(edit.ClipTimeAt)] : [];
+
+    partial void OnIsTrayOpenChanged(bool value)
+    {
+        if (value)
+            ReadThumbnails();
+    }
+
+    /// <summary>Reads the pictures the list doesn't have yet, a few at a time, off the UI thread.</summary>
+    private void ReadThumbnails()
+    {
+        var ct = _trayCts?.Token ?? CancellationToken.None;
+        foreach (var item in MarkedFrames.Where(item => item.Thumbnail is null && !item.Reading).ToList())
+        {
+            item.Reading = true;
+            _ = ThumbnailAsync(item, ct);
+        }
+    }
+
+    /// <summary>
+    /// At most this many listed pictures are read at once (the timeline's own pictures go three at a time too).
+    /// </summary>
+    private readonly SemaphoreSlim _thumbnailGate = new(ParallelThumbnails);
+
+    private async Task ThumbnailAsync(MarkedFrameItem item, CancellationToken ct)
+    {
+        try
+        {
+            await _thumbnailGate.WaitAsync(ct);
+            try
+            {
+                var bitmap = await Task.Run(() =>
+                {
+                    using var file = File.OpenRead(item.Copy.Path);
+                    return Avalonia.Media.Imaging.Bitmap.DecodeToWidth(file, ThumbnailWidth);
+                }, ct);
+                if (ct.IsCancellationRequested || _closed)
+                    bitmap.Dispose();
+                else
+                    item.Thumbnail = bitmap;
+            }
+            finally
+            {
+                _thumbnailGate.Release();
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OperationCanceledException or ArgumentException or InvalidOperationException)
+        {
+        }
+        finally
+        {
+            item.Reading = false;
+            // Cut short by a reload (a save, a ✕) whose own read skipped it while this one ran: read again for the
+            // list.
+            if (ct.IsCancellationRequested && !_closed && IsTrayOpen && item.Thumbnail is null && MarkedFrames.Contains(item))
+                ReadThumbnails();
+        }
+    }
+
+    /// <summary>
+    /// How wide a listed frame's picture is decoded, in pixels (twice what it shows at, for sharp screens).
+    /// </summary>
+    private const int ThumbnailWidth = 144;
+
+    [RelayCommand]
+    private void ToggleTray()
+    {
+        IsExporting = false;
+        IsTrayOpen = !IsTrayOpen && HasMarkedFrames;
+    }
+
+    /// <summary>A row clicked: the playhead goes to that frame, and the list closes.</summary>
+    [RelayCommand]
+    private void GoToMarkedFrame(MarkedFrameItem? item)
+    {
+        if (item is null || _closed)
+            return;
+        IsTrayOpen = false;
+        ActiveHandle = ClipHandle.Playhead;
+        // The copy keeps the frame's time as the playhead had it, so the picture shows that frame.
+        MovePlayhead(item.Copy.Facts.FrameSeconds);
+    }
+
+    /// <summary>
+    /// The ✕: the copy to the Trash (off the UI thread: a network drive can be slow), or what stopped it said.
+    /// </summary>
+    [RelayCommand]
+    private async Task RemoveMarkedFrameAsync(MarkedFrameItem? item)
+    {
+        if (item is null || _marks is not { } marks || CurrentFile is not { } video)
+            return;
+        if (await Task.Run(() => marks.Remove(item.Copy, video)) is { } refusal && !_closed)
+            ShowMessage(_loc[refusal.ReasonKey]);
+    }
+
+    [RelayCommand]
+    private void OpenExport()
+    {
+        if (!HasMarkedFrames || _exportFrames is null)
+            return;
+        IsTrayOpen = false;
+        OnPropertyChanged(nameof(ExportTarget));
+        IsExporting = true;
+    }
+
+    [RelayCommand]
+    private void CancelExport() => IsExporting = false;
+
+    /// <summary>Export: one job over the copies in time order, shown in the toast like any other.</summary>
+    [RelayCommand]
+    private void Export()
+    {
+        if (!IsExporting || _exportFrames is null || CurrentFile is not { } video)
+            return;
+        IsExporting = false;
+        var word = _loc["clip.frame_number"];
+        Preset preset;
+        if (ExportAsPdf)
+            preset = FrameExport.Pdf(video, FrameExport.UsesLetter(RegionInfo.CurrentRegion), word);
+        else
+        {
+            // A folder handed to an export still queued isn't made yet: the next export takes the next name, and a
+            // cancelled one leaves no empty folder.
+            var folder = FrameExport.Target(video, pdf: false, ExportFolders.ContainsKey);
+            ExportFolders[folder] = true;
+            preset = FrameExport.Pngs(video, word, folder);
+        }
+        _exportFrames([.. MarkedFrames.Select(item => item.Copy.Path)], preset);
     }
 
     /// <summary>
@@ -1721,6 +2007,11 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         if (_closed)
             return;
         _closed = true;
+        if (_marks is not null)
+            _marks.CopiesChanged -= OnCopiesChanged;
+        _trayCts?.Cancel();
+        foreach (var item in MarkedFrames)
+            item.Thumbnail?.Dispose();
         if (!_keepsMarking)
             _markCts.Cancel();
         _playCts?.Cancel();

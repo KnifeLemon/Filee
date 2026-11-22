@@ -41,7 +41,7 @@ internal static class PdfFinishing
                     document.SecuritySettings.OwnerPassword = options.Password;
                     document.SecurityHandler.SetEncryptionToV5();
                 }
-                document.Save(finished);
+                PdfSharpConverter.SaveDated(document, finished);
             }
             File.Move(finished, path, overwrite: true);
         }

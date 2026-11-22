@@ -171,7 +171,8 @@ public sealed class AnnotateWindowTests : IDisposable
     /// <summary>
     /// "Mark this frame" from Cut a clip, through the app's own windows and job queue: Annotate opens on the frame
     /// above the clip window (which stays on top), a second frame joins it, the marked copy is saved next to the video,
-    /// and the frames go once saved, or once the window closes with them unsaved.
+    /// and the frames go once saved, or once the window closes with them unsaved. Step 3: Annotate shows the frame's
+    /// time and number, and the copy carries them with the note typed, so Cut a clip's tray finds it.
     /// </summary>
     [AvaloniaFact]
     public void A_marked_frame_opens_in_Annotate_joins_an_open_window_and_is_saved_next_to_its_video()
@@ -185,7 +186,7 @@ public sealed class AnnotateWindowTests : IDisposable
         File.WriteAllBytes(video, [0]);
         string Frame(double seconds)
         {
-            var frame = marks.NewPath(video, seconds);
+            var frame = marks.NewPath(video, seconds, 10, _ => Task.FromResult<long?>((long)(seconds * 30)));
             File.Copy(Picture($"picture {seconds}.png"), frame);
             return frame;
         }
@@ -199,6 +200,8 @@ public sealed class AnnotateWindowTests : IDisposable
             Wait(() => vm.PreviewImage is not null && !vm.IsBusy);
             Assert.False(window.Topmost); // no clip window to stay above here (AnnotateOnTop below)
             Assert.Equal("Site walk 0m01.500s.png", vm.CurrentFileName);
+            Wait(() => vm.FrameLabel == "0:01.500 · frame 45");
+            Assert.True(vm.IsFrame);
 
             windows.AnnotateFrame(second);
             Assert.Same(window, windows.AnnotateWindow);
@@ -207,6 +210,7 @@ public sealed class AnnotateWindowTests : IDisposable
             RenderTests.Pump();
             vm.Mode = AnnotateMode.Box;
             Drag(window, (0.2, 0.3), (0.6, 0.5));
+            vm.FrameNote = "Loose cable, left of the panel";
             vm.SaveCommand.Execute(null);
             var saved = Path.Combine(videos, "Site walk 0m01.500s Annotated.png");
             for (var i = 0; i < 3000 && (!File.Exists(saved) || Directory.Exists(Path.GetDirectoryName(first))); i++)
@@ -217,6 +221,8 @@ public sealed class AnnotateWindowTests : IDisposable
             Assert.True(File.Exists(saved), "the marked copy is saved next to the video");
             Assert.False(Directory.Exists(Path.GetDirectoryName(first)), "a saved frame goes");
             Assert.Null(marks.VideoOf(first));
+            Assert.Equal(new FrameFacts("Site walk.mp4", 10, 1, 1.5, 45, "Loose cable, left of the panel"), FrameTags.ReadFile(saved));
+            Assert.Equal([saved], marks.CopiesOf(video, 10, BuiltInData.AnnotatePresets().Single(), TestContext.Current.CancellationToken).Select(c => c.Path));
 
             Wait(() => vm.CurrentIndex == 1 && vm.PreviewImage is not null && !vm.IsBusy);
             window.Close();
@@ -1480,6 +1486,223 @@ public sealed class AnnotateWindowTests : IDisposable
             RenderTests.Pump();
             Assert.Equal(mode == ThemeMode.Dark ? ThemeVariant.Dark : ThemeVariant.Light, window.ActualThemeVariant);
             RenderTests.Save(window, $"annotate-{mode.ToString().ToLowerInvariant()}.png");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // ───────── A marked frame's time and note (#1205 step 3) ─────────
+
+    private const string Label = "2:04.700 · frame 3,741";
+
+    private static TextBox NoteBox(AnnotateWindow window) => window.FindControl<TextBox>("FrameNoteBox")!;
+
+    [AvaloniaFact]
+    public async Task A_frame_can_be_saved_with_only_a_note_or_nothing_and_any_other_picture_still_needs_a_mark()
+    {
+        var (window, vm, exported) = Open(files: 2);
+        try
+        {
+            var frame = vm.RemainingFiles[0];
+            vm.SetFrame(frame, Label);
+            Assert.True(vm.IsFrame);
+            Assert.Equal(Label, vm.FrameLabel);
+            Assert.True(vm.SaveCommand.CanExecute(null)); // nothing drawn
+            vm.FrameNote = "Loose cable";
+            await vm.SaveCommand.ExecuteAsync(null);
+            Wait(() => !vm.IsBusy);
+            Assert.Equal(frame, Assert.Single(exported).Path);
+            Assert.Equal("Loose cable", vm.FrameNoteFor(frame));
+            // The next picture is a picture of one's own: a mark first, as before, and no bar.
+            Assert.False(vm.IsFrame);
+            Assert.False(vm.SaveCommand.CanExecute(null));
+            Assert.False(NoteBox(window).IsEffectivelyVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Each_frame_keeps_its_own_note_and_an_earlier_one_is_offered()
+    {
+        var (window, vm, _) = Open(files: 2);
+        try
+        {
+            var (first, second) = (vm.RemainingFiles[0], vm.RemainingFiles[1]);
+            vm.SetFrame(first, Label);
+            vm.OfferEarlierNote(first, "the earlier note");
+            vm.SetFrame(second, "4:07.267 · frame 7,418");
+            Assert.Equal("the earlier note", vm.FrameNote);
+            vm.FrameNote = "changed";
+            Assert.Equal("changed", vm.FrameNoteFor(first));
+            Assert.Equal("", vm.FrameNoteFor(second));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_note_stops_at_300_characters_and_keeps_no_control_characters()
+    {
+        var (window, vm, _) = Open();
+        try
+        {
+            vm.SetFrame(vm.RemainingFiles[0], Label);
+            vm.FrameNote = string.Concat(Enumerable.Repeat("🔌", 400));
+            Assert.Equal(300, new System.Globalization.StringInfo(vm.FrameNote).LengthInTextElements);
+            vm.FrameNote = "a\0b\tc\u0007d\uD83De";
+            Assert.Equal("ab cde", vm.FrameNote); // NUL, BEL and the broken pair out; the tab a space
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Typing_in_the_note_picks_no_tool_and_moves_no_mark()
+    {
+        var (window, vm, _) = Open();
+        try
+        {
+            vm.SetFrame(vm.RemainingFiles[0], Label);
+            RenderTests.Pump();
+            vm.Mode = AnnotateMode.Box;
+            Drag(window, (0.2, 0.2), (0.4, 0.4));
+            vm.Mode = AnnotateMode.Select;
+            vm.Marks.Select(0);
+            var box = NoteBox(window);
+            box.Focus();
+            window.KeyTextInput("Pab");
+            foreach (var key in new[] { Avalonia.Input.Key.P, Avalonia.Input.Key.A, Avalonia.Input.Key.B, Avalonia.Input.Key.Left, Avalonia.Input.Key.Delete })
+                Key(window, key);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(AnnotateMode.Select, vm.Mode);
+            Assert.Equal(1, vm.Marks.Count);
+            Assert.StartsWith("Pa", vm.FrameNote, StringComparison.Ordinal);
+            // Esc leaves the note for the picture, and doesn't close the window.
+            Key(window, Avalonia.Input.Key.Escape);
+            Assert.True(window.IsVisible);
+            Assert.False(box.IsFocused);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// The bar sits under the tools, and nothing at the foot (the tools, the bar, a notice about the picture above
+    /// them) covers the picture, also when the notice is two lines long.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("")]
+    [InlineData("The colours of this HDR frame couldn't be converted, so they may look washed out. The colours of this HDR frame couldn't be converted, so they may look washed out.")]
+    public void The_bar_is_under_the_tools_and_nothing_at_the_foot_covers_the_picture(string notice)
+    {
+        var (window, vm, _) = Open(width: 800, height: 600);
+        try
+        {
+            vm.SetFrame(vm.RemainingFiles[0], Label);
+            vm.SetNote(vm.RemainingFiles[0], notice);
+            RenderTests.Pump();
+            var box = NoteBox(window);
+            Assert.True(box.IsEffectivelyVisible);
+            var tools = window.FindControl<RadioButton>("SelectTool")!;
+            Assert.True(tools.TranslatePoint(default, window)!.Value.Y < box.TranslatePoint(default, window)!.Value.Y, "the bar is above the tools");
+            var picture = window.AnnotationCanvas.CalculateImageBounds();
+            var pictureBottom = window.AnnotationCanvas.TranslatePoint(new Point(0, picture.Bottom), window)!.Value.Y;
+            var foot = window.GetVisualDescendants().OfType<Control>().First(c => c.Name == "BottomStack");
+            var top = foot.GetVisualChildren().OfType<Control>().Where(c => c.IsEffectivelyVisible && c.Bounds.Height > 0)
+                .Min(c => c.TranslatePoint(default, window)!.Value.Y);
+            Assert.True(pictureBottom <= top, $"picture ends at {pictureBottom}, the foot starts at {top}");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_note_of_stacked_marks_stays_small_enough_to_be_read_back()
+    {
+        var (window, vm, _) = Open();
+        try
+        {
+            vm.SetFrame(vm.RemainingFiles[0], Label);
+            vm.FrameNote = string.Concat(Enumerable.Repeat("a" + new string('\u0301', 40), 300));
+            Assert.True(vm.FrameNote.Length <= AnnotateViewModel.MaxNoteUnits, $"{vm.FrameNote.Length} code units");
+            var text = FrameTags.ToText(new FrameFacts("v.mp4", 1, 1, 1, 1, vm.FrameNote));
+            Assert.True(text.Length < 64 * 1024, $"{text.Length} bytes of text");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// Through the app's own windows: a frame marked again shows its time at once and its number once counted, and the
+    /// note saved with its earlier copy is offered, not held up by the count.
+    /// </summary>
+    [AvaloniaFact]
+    public void Marking_a_frame_again_offers_its_earlier_note_and_the_number_follows_the_time()
+    {
+        TestServices.EnsureInitialized("en");
+        var windows = AppHost.Get<WindowService>();
+        var marks = AppHost.Get<MarkedFrames>();
+        var videos = Path.Combine(_folder, "again");
+        Directory.CreateDirectory(videos);
+        var video = Path.Combine(videos, "Site walk.mp4");
+        File.WriteAllBytes(video, [0]);
+        // The earlier copy, saved with a note, next to the video.
+        var earlier = Path.Combine(videos, "Site walk 0m03.500s Annotated.png");
+        File.Copy(Picture("earlier.png"), earlier);
+        using (var image = new ImageMagick.MagickImage(earlier))
+        {
+            image.SetAttribute(FrameTags.Key, FrameTags.ToText(new FrameFacts("Site walk.mp4", 10, 1, 3.5, 105, "Loose cable")));
+            image.Write(earlier);
+        }
+        var counting = new TaskCompletionSource<long?>();
+        var frame = marks.NewPath(video, 3.5, 10, _ => counting.Task);
+        File.Copy(Picture("again.png"), frame);
+        try
+        {
+            windows.AnnotateFrame(frame);
+            var vm = Assert.IsType<AnnotateViewModel>(windows.AnnotateWindow!.DataContext);
+            Wait(() => vm.FrameNote == "Loose cable");
+            Assert.Equal("0:03.500 · frame …", vm.FrameLabel);
+            counting.SetResult(105);
+            Wait(() => vm.FrameLabel == "0:03.500 · frame 105");
+        }
+        finally
+        {
+            windows.AnnotateWindow?.Close();
+            counting.TrySetResult(null);
+            marks.Discard(frame);
+        }
+    }
+
+    /// <summary>Enter in the note, which the box leaves alone, saves the frame.</summary>
+    [AvaloniaFact]
+    public void Enter_in_the_note_saves()
+    {
+        var (window, vm, exported) = Open(files: 2);
+        try
+        {
+            vm.SetFrame(vm.RemainingFiles[0], Label);
+            RenderTests.Pump();
+            NoteBox(window).Focus();
+            window.KeyTextInput("Crack");
+            Key(window, Avalonia.Input.Key.Enter);
+            Wait(() => exported.Count == 1);
+            Assert.Equal("Crack", vm.FrameNoteFor(exported[0].Path));
         }
         finally
         {

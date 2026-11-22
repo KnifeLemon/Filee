@@ -826,7 +826,24 @@ public sealed class ImageOptions
     /// as it is.
     /// </summary>
     [JsonIgnore]
-    public bool ReworksPixels => TurnsOrMirrors || HidesAreas || HasAnnotations || AddsBackdrop;
+    public bool ReworksPixels => TurnsOrMirrors || HidesAreas || HasAnnotations || AddsBackdrop || HasFrame || FrameCaption is not null;
+
+    /// <summary>
+    /// A marked video frame's copy (#1205): the facts it is written with, as PNG text (<see cref="FrameTags"/>), set
+    /// after any metadata is dropped; null for every other preset. A frame saved with no marks is written all the same.
+    /// </summary>
+    public FrameFacts? Frame { get; set; }
+
+    /// <summary>
+    /// The export of marked video frames (#1205): a marked frame's copy gets a white strip below the picture with its
+    /// time and number and its note, read from its own <see cref="FrameTags"/> text; this is the translated word for a
+    /// frame and its number, with <c>{0}</c> for the number ("frame {0}"). Null for every other preset.
+    /// </summary>
+    public string? FrameCaption { get; set; }
+
+    /// <summary>The picture is a marked video frame's copy (<see cref="Frame"/>).</summary>
+    [JsonIgnore]
+    public bool HasFrame => Frame is not null;
 
     /// <summary>"Annotate": the marks drawn on the picture as it is seen; null for every other preset.</summary>
     public List<Annotation>? Annotations
@@ -1274,6 +1291,12 @@ public sealed class PdfOptions
     public PdfSheetOrientation MergeOrientation { get; set; } = PdfSheetOrientation.Auto;
 
     public PdfPageSize PageSize { get; set; } = PdfPageSize.FitImage;
+
+    /// <summary>
+    /// Pictures wider than this many pixels go into a PDF as high-quality JPEG rather than lossless (the export of
+    /// marked video frames, #1205); null for every other preset.
+    /// </summary>
+    public int? JpegAboveWidth { get; set; }
 
     /// <summary>Page margin in millimetres (ignored for <see cref="PdfPageSize.FitImage"/>).</summary>
     public double MarginMm { get; set; }

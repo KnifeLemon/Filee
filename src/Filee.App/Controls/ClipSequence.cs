@@ -112,6 +112,12 @@ public sealed class ClipSequence : Control
         AvaloniaProperty.Register<ClipSequence, IBrush?>(nameof(MusicBrush), new SolidColorBrush(Color.FromRgb(214, 138, 54)));
 
     public IReadOnlyList<ClipPiece>? Pieces { get => GetValue(PiecesProperty); set => SetValue(PiecesProperty, value); }
+    /// <summary>The times in the clip of the marked frames it keeps (#1205): a tick at each.</summary>
+    public static readonly StyledProperty<IReadOnlyList<double>?> MarkedTimesProperty =
+        AvaloniaProperty.Register<ClipSequence, IReadOnlyList<double>?>(nameof(MarkedTimes));
+
+    public IReadOnlyList<double>? MarkedTimes { get => GetValue(MarkedTimesProperty); set => SetValue(MarkedTimesProperty, value); }
+
     public double Playhead { get => GetValue(PlayheadProperty); set => SetValue(PlayheadProperty, value); }
     public int SelectedIndex { get => GetValue(SelectedIndexProperty); set => SetValue(SelectedIndexProperty, value); }
     public ClipLane SelectedLane { get => GetValue(SelectedLaneProperty); set => SetValue(SelectedLaneProperty, value); }
@@ -204,7 +210,7 @@ public sealed class ClipSequence : Control
     {
         AffectsRender<ClipSequence>(PiecesProperty, PlayheadProperty, SelectedIndexProperty, SelectedIndicesProperty, SelectedLaneProperty, ThumbnailsProperty,
             LoudnessProperty, DetailStartProperty, DetailEndProperty, MusicProperty, MusicLoudnessProperty, FadeInProperty, FadeOutProperty,
-            GapTextProperty, NoMusicTextProperty, AccentBrushProperty, TrackBrushProperty, StageBrushProperty, ForegroundProperty);
+            GapTextProperty, NoMusicTextProperty, AccentBrushProperty, TrackBrushProperty, StageBrushProperty, ForegroundProperty, MarkedTimesProperty);
         FocusableProperty.OverrideDefaultValue<ClipSequence>(false);
     }
 
@@ -301,6 +307,7 @@ public sealed class ClipSequence : Control
         }
         DrawFades(context);
         DrawMusic(context, accent);
+        MarkTicks.Draw(context, MarkedTimes, XOf, Content.Left, Content.Right, RulerHeight, MusicLane.Bottom, accent);
         DrawPlayhead(context);
         if (_drag == Drag.Marquee)
         {

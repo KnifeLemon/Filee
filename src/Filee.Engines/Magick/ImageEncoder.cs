@@ -11,9 +11,9 @@ namespace Filee.Engines.Magick;
 internal static class ImageEncoder
 {
     /// <summary>
-    /// Image formats ImageMagick can read (see <see cref="ImageReader"/> for RAW, layered and metafile sources).
-    /// Camera RAW is decoded by LibRaw; HEIC, DICOM, Photo CD, OpenEXR, Radiance HDR and FITS are read only. EMF/WMF
-    /// are Windows metafiles, which ImageMagick renders through GDI+ on Windows only (<see cref="Metafiles"/>). APNG is
+    /// Image formats ImageMagick can read (see <see cref="ImageReader"/> for RAW, layered and metafile sources). Camera
+    /// RAW is decoded by LibRaw; HEIC, DICOM, Photo CD, OpenEXR, Radiance HDR and FITS are read only. EMF/WMF are
+    /// Windows metafiles, which ImageMagick renders through GDI+ on Windows only (<see cref="Metafiles"/>). APNG is
     /// read and written by Filee's own <see cref="Apng"/> (its frames decoded and encoded by ImageMagick); FITS is read
     /// by Filee's own <see cref="Fits"/> and written to TIFF by <see cref="FitsRendering"/>. ANI (an animated cursor) is
     /// read by Filee's own <see cref="Ani"/>, its frames decoded by ImageMagick. GIMP's XCF is read and written by Filee's
@@ -307,6 +307,12 @@ internal static class ImageEncoder
     /// <summary>Applies resize / colour / metadata options to one frame.</summary>
     public static void ApplyOptions(IMagickImage<byte> image, ImageOptions options, string targetFormat)
     {
+        // A marked video frame's copy (#1205): what it says about itself is for the export's strip only. A picture made
+        // from it through the image step (resized, converted, marked again as a picture of its own) isn't that frame's
+        // copy, so the text goes, and a frame being saved gets its own below. Routes that skip this step can keep it;
+        // MarkedFrames replaces only copies named as Annotate names them.
+        var carried = FrameTags.FromText(image.GetAttribute(FrameTags.Key));
+        image.RemoveAttribute(FrameTags.Key);
         var turned = options.TurnsOrMirrors || image.Orientation is not (Orientation.TopLeft or Orientation.Undefined);
         image.AutoOrient();
 
@@ -387,6 +393,11 @@ internal static class ImageEncoder
         if (options.Backdrop is { } look)
             BackdropComposer.Apply(image, look);
 
+        // The export of marked video frames: the time and note in a strip below the picture as it now is, read from its
+        // own text before the metadata goes. A PDF page draws them itself, as outlines (Pdf/FramePage).
+        if (targetFormat != "pdf")
+            Annotations.FrameCaption.Apply(image, options, carried);
+
         if (options.Dpi is > 0)
             image.Density = new Density(options.Dpi.Value, options.Dpi.Value, DensityUnit.PixelsPerInch);
 
@@ -396,6 +407,21 @@ internal static class ImageEncoder
             image.Strip();
             if (colorProfile is not null)
                 image.SetProfile(colorProfile);
+        }
+
+        // A marked video frame's copy says what it is (#1205), after the metadata is dropped so it stays: one plain
+        // ASCII text (tEXt, or zTXt when long). Magick's Strip keeps the picture's other text (a title, an author) and
+        // only tells the PNG writer to leave every text chunk out; so that text goes here, and the writer may write
+        // text again, which is then this alone.
+        if (options.Frame is { } frame)
+        {
+            if (!options.KeepMetadata)
+                foreach (var name in image.AttributeNames.ToList())
+                    image.RemoveAttribute(name);
+            image.SetAttribute(FrameTags.Key, FrameTags.ToText(frame));
+            if (image.GetArtifact("png:exclude-chunk") is { } excluded)
+                image.SetArtifact("png:exclude-chunk", string.Join(',', excluded.Split(',')
+                    .Where(chunk => chunk.Trim() is not ("tEXt" or "zTXt") && !chunk.Trim().Equals("all", StringComparison.OrdinalIgnoreCase))));
         }
 
         if (NoAlpha.Contains(targetFormat) && image.HasAlpha)

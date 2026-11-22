@@ -126,6 +126,21 @@ public sealed class UserDataStore
     public void SaveDonutLook() => Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
 
     /// <summary>
+    /// Keeps a choice that only its own window reads (the export of marked frames: PDF or PNGs), quietly as
+    /// <see cref="SaveUiScale"/>: nothing else re-applies the settings for it.
+    /// </summary>
+    public void SaveQuietly() => Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
+
+    /// <summary>The Annotate tool as saved in the library, or the built-in one when it isn't there.</summary>
+    public Preset AnnotateTool() => FindPreset(BuiltInData.AnnotateId) is { IsAnnotateTool: true } saved ? saved : BuiltInData.AnnotatePresets().Single();
+
+    /// <summary>
+    /// The Annotate tool with the app-wide output settings applied (<see cref="AppSettings.WithDefaultOutput"/>), as a
+    /// save with it runs: where its copies are written.
+    /// </summary>
+    public Preset AnnotateToolAsSaved() => Settings.WithDefaultOutput(AnnotateTool());
+
+    /// <summary>
     /// Remembers where the main window was (<see cref="AppSettings.MainWindow"/>), quietly as <see cref="SaveUiScale"/>:
     /// nothing else depends on it.
     /// </summary>

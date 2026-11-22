@@ -483,6 +483,164 @@ public class ExactSeekTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public static TheoryData<string> StillVideos => ["30fps.mp4", "2997fps.mp4", "30fps.ts", "dvd.vob", "opengop.mp4", "bframes.avi", "wrap.ts"];
 
     /// <summary>
+    /// A marked frame's number is its place among the frames FFmpeg shows, counted from 0 as its <c>n</c> counts, so
+    /// <c>select=eq(n\,N)</c> finds the same frame: the frame <see cref="VideoFrames.WriteStillAsync"/> writes for that
+    /// time, in every container the seeks are checked in.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Videos))]
+    public async Task A_frame_number_is_the_frames_place_among_those_shown(string name)
+    {
+        SkipUnlessInstalled();
+        var video = await VideoAsync(name);
+        var frames = await FramesAsync(video);
+        List<string> wrong = [];
+        foreach (var k in new[] { 0, 1, 11, 23, frames.Count - 1 })
+        {
+            var counted = await VideoFrames.FrameNumberAsync(video, frames[k].Time, Ct);
+            if (counted != k)
+                wrong.Add($"{frames[k].Time:0.000000} s: {counted?.ToString(CultureInfo.InvariantCulture) ?? "none"} instead of {k}");
+            // Between two frames (a playhead time to the millisecond), the next one: the one shown.
+            if (k > 0 && await VideoFrames.FrameNumberAsync(video, (frames[k - 1].Time + frames[k].Time) / 2, Ct) is var between && between != k)
+                wrong.Add($"between {k - 1} and {k}: {between?.ToString(CultureInfo.InvariantCulture) ?? "none"}");
+        }
+        Assert.True(wrong.Count == 0, string.Join("; ", wrong));
+    }
+
+    /// <summary>
+    /// Every frame's number, and between frames the next one's, is its place among the frames FFmpeg shows.
+    /// </summary>
+    private async Task AssertEveryFrameNumberAsync(string video)
+    {
+        var frames = await FramesAsync(video);
+        List<string> wrong = [];
+        for (var k = 0; k < frames.Count; k++)
+        {
+            foreach (var time in k == 0 ? [frames[0].Time] : new[] { frames[k].Time, (frames[k - 1].Time + frames[k].Time) / 2 })
+            {
+                var counted = await VideoFrames.FrameNumberAsync(video, time, Ct);
+                if (counted != k)
+                    wrong.Add($"{time:0.000000} s: {counted?.ToString(CultureInfo.InvariantCulture) ?? "none"} instead of {k}");
+            }
+        }
+        Assert.True(wrong.Count == 0, $"{wrong.Count} wrong: " + string.Join("; ", wrong.Take(8)));
+    }
+
+    /// <summary>
+    /// Encoders' own B-frame choices, where a frame is decoded well after a frame shown later than it: the count reads
+    /// far enough past the time for every frame shown before it to be in.
+    /// </summary>
+    [Theory]
+    [InlineData("x265.mp4", "30", "libx265")]
+    [InlineData("x265-24.mp4", "24", "libx265")]
+    [InlineData("x264-15.mp4", "15", "libx264")]
+    [InlineData("bf8.mp4", "60", "bf8")]
+    public async Task Every_frame_number_is_right_with_an_encoders_own_b_frames(string name, string rate, string codec)
+    {
+        SkipUnlessInstalled();
+        string[] args = codec switch
+        {
+            "libx265" => ["-c:v", "libx265", "-x265-params", "log-level=error", "-pix_fmt", "yuv420p", "-tag:v", "hvc1"],
+            "libx264" => ["-c:v", "libx264", "-pix_fmt", "yuv420p"],
+            _ => ["-c:v", "libx264", "-bf", "8", "-b_strategy", "0", "-pix_fmt", "yuv420p"],
+        };
+        await AssertEveryFrameNumberAsync(await NumberedAsync(name, rate, 4, args, size: "64x32"));
+    }
+
+    /// <summary>
+    /// A file that starts where decoding can't (a recording joined mid-stream, a copy cut at a group of pictures that
+    /// refers back): the packets FFmpeg drops aren't counted. An MP4 or MOV copy cut between key frames keeps the
+    /// group's start in an edit list that FFmpeg decodes from and never shows, its key frame included.
+    /// </summary>
+    [Theory]
+    [InlineData("dvd.vob", "cut")]
+    [InlineData("30fps.ts", "trimmed")]
+    [InlineData("mpeg2.ts", "cut")]
+    [InlineData("mpeg2.ts", "trimmed")]
+    [InlineData("gop40.mp4", "cut")]
+    [InlineData("gop40.mov", "cut")]
+    public async Task Every_frame_number_is_right_in_a_file_that_starts_mid_stream(string name, string how)
+    {
+        SkipUnlessInstalled();
+        var source = name == "mpeg2.ts"
+            ? await NumberedAsync(name, "25", 4, ["-c:v", "mpeg2video", "-bf", "2", "-g", "12", "-f", "mpegts"], size: "64x32")
+            : name.StartsWith("gop40", StringComparison.Ordinal)
+                // Key frames at 0, 1.333 and 2.667 s: a cut at 1.5 s starts within a group.
+                ? await NumberedAsync(name, "30", 4, ["-c:v", "libx264", "-g", "40", "-keyint_min", "40", "-sc_threshold", "0", "-pix_fmt", "yuv420p"], size: "64x32")
+                : await VideoAsync(name);
+        var video = Path.Combine(fx.NewFolder(), how + Path.GetExtension(name));
+        if (how == "cut")
+        {
+            var cut = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg, [.. MediaEncoding.Common, "-ss", "1.5", "-i", source, "-c", "copy", video],
+                TimeSpan.FromMinutes(1), Ct);
+            Assert.True(cut.ExitCode == 0, cut.StandardError);
+        }
+        else
+        {
+            var bytes = await File.ReadAllBytesAsync(source, Ct);
+            await File.WriteAllBytesAsync(video, bytes[(bytes.Length / 5)..], Ct);
+        }
+        await AssertEveryFrameNumberAsync(video);
+    }
+
+    /// <summary>
+    /// Packets with only a decode time (MPEG-1 in a program stream, an AVI with B-frames, an AVI with frames left out):
+    /// the frames FFmpeg shows are counted, decoding up to the time, so every frame has its number.
+    /// </summary>
+    [Theory]
+    [InlineData("mpeg1.mpg")]
+    [InlineData("bframes.avi")]
+    [InlineData("gaps.avi")]
+    public async Task Packets_with_only_a_decode_time_give_the_right_number(string name)
+    {
+        SkipUnlessInstalled();
+        var video = name == "gaps.avi"
+            ? await NumberedAsync(name, "30", 3, ["-vf", "select='not(eq(mod(n\\,7)\\,6))'", "-fps_mode", "passthrough", "-c:v", "mpeg4", "-bf", "2", "-q:v", "3"])
+            : await VideoAsync(name);
+        await AssertEveryFrameNumberAsync(video);
+    }
+
+    /// <summary>
+    /// Past the last frame there is no frame, and a file without a picture has none: no number either.
+    /// </summary>
+    [Fact]
+    public async Task No_frame_no_number()
+    {
+        SkipUnlessInstalled();
+        var video = await VideoAsync("30fps.mp4");
+        Assert.Null(await VideoFrames.FrameNumberAsync(video, 10, Ct));
+        var sound = Path.Combine(fx.NewFolder(), "tone.m4a");
+        var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg, [.. MediaEncoding.Common, "-f", "lavfi", "-i", "sine=d=2", "-c:a", "aac", sound],
+            TimeSpan.FromMinutes(1), Ct);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+        Assert.Null(await VideoFrames.FrameNumberAsync(sound, 1, Ct));
+    }
+
+    /// <summary>
+    /// Near the end of an hour of video the number is still right, and counting it reads packets only, so a save that
+    /// waits for it isn't held up.
+    /// </summary>
+    [Fact]
+    public async Task The_number_of_a_frame_near_the_end_of_a_long_video()
+    {
+        SkipUnlessInstalled();
+        var video = await NumberedAsync("hour.mp4", "30", 3600, ["-c:v", "libx264", "-preset", "ultrafast", "-g", "30", "-pix_fmt", "yuv420p"],
+            size: "32x16");
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Equal(107715, await VideoFrames.FrameNumberAsync(video, 3590.5, Ct));
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30), $"counting took {watch.Elapsed}");
+    }
+
+    /// <summary>A stream without a container has no times to count by: no number, rather than a wrong one.</summary>
+    [Fact]
+    public async Task A_file_with_no_packet_times_has_no_number()
+    {
+        SkipUnlessInstalled();
+        var video = await NumberedAsync("raw.h264", "25", 2, ["-c:v", "libx264", "-g", "25"]);
+        Assert.Null(await VideoFrames.FrameNumberAsync(video, 1.0, Ct));
+    }
+
+    /// <summary>
     /// The frame "Mark this frame" opens in Annotate is the frame the window shows at that time, as a PNG at the size
     /// the video is shown at.
     /// </summary>

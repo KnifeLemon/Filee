@@ -161,6 +161,8 @@ internal static class SharedPresetRules
                 ("number", new IntRule(-9999, 9999))), 500)
             { Nullable = true }),
             ("annotationColor", Colour with { Nullable = true }),
+            ("frame", new LeftOutRule("set by the app on one marked video frame's save")),
+            ("frameCaption", new LeftOutRule("set by the app on one export of marked video frames")),
             ("annotationWidth", Enum<AnnotationWidth>()),
             ("backdrop", Backdrop with { Nullable = true }),
             ("backdropLook", Backdrop with { Nullable = true }),
@@ -210,6 +212,7 @@ internal static class SharedPresetRules
             ("animationSpeed", new NumberRule(0.1, 10)))),
         ("pdf", Obj(
             ("mergeIntoSingle", Flag),
+            ("jpegAboveWidth", new LeftOutRule("set by the app on one export of marked video frames")),
             ("sourceBookmarks", Flag),
             ("normalizeMergePaper", Flag),
             ("mergePaper", Enum<PdfSheetPaper>()),

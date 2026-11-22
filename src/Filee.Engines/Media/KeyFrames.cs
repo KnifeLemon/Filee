@@ -534,6 +534,102 @@ internal static class KeyFrames
             ? [input[(at + 3)..]]
             : input.StartsWith("concat:", StringComparison.Ordinal) ? input["concat:".Length..].Split('|') : [input];
 
+    /// <summary>
+    /// The place among the frames shown of the frame shown at <paramref name="seconds"/> from the file's start (the
+    /// first one shown at or after it), counted from 0 as FFmpeg's <c>n</c> counts: the first video stream's packets
+    /// shown before that time from where decoding can start, read up to a little past it, without decoding; where
+    /// packets have no display time, the frames FFmpeg shows, decoding up to it. Null for a stream without a container
+    /// (no times to count by), a time past the last frame, a file without a picture, or one ffprobe can't read in
+    /// time.
+    /// </summary>
+    public static async Task<long?> FrameNumberAsync(string ffprobe, string input, double seconds, CancellationToken cancellationToken)
+    {
+        seconds = double.IsFinite(seconds) ? Math.Max(0, seconds) : 0;
+        if (await FormatAsync(ffprobe, input, cancellationToken).ConfigureAwait(false) is not var (_, origin, _, _))
+            return null;
+        // A frame shown up to a microsecond before the time is the one taken there, as the still takes it, so it isn't
+        // counted as before it (SeekPoint.Tolerance).
+        var before = origin + seconds - SeekPoint.Tolerance;
+        // Far enough past the time for every frame shown before it to be read, however late it is decoded (an
+        // encoder's B-frames: eight at 60 fps reach 0.15 s).
+        var until = "%" + Absolute(origin + seconds + NumberReach);
+        // Compact text, a line a packet ("1.033333,K__"): near the end of a long video that is hundreds of thousands.
+        var listed = await RunAsync(ffprobe,
+            ["-hide_banner", "-v", "error", "-select_streams", "V:0", "-read_intervals", until,
+                "-show_entries", "packet=pts_time,flags", "-print_format", "csv=p=0", input],
+            cancellationToken).ConfigureAwait(false);
+        if (listed is null)
+            return null;
+        // In the order decoded. A packet to be dropped (D: an edit list's lead-in, which an MP4 or MOV cut between key
+        // frames starts with, its key frame included) is decoded and never shown.
+        var packets = new List<(double? Shown, bool Key, bool Dropped)>();
+        foreach (var line in listed.AsSpan().EnumerateLines())
+        {
+            if (line.IsWhiteSpace())
+                continue;
+            var comma = line.IndexOf(',');
+            var flags = comma < 0 ? [] : line[(comma + 1)..];
+            var time = comma < 0 ? line : line[..comma];
+            packets.Add((double.TryParse(time, NumberStyles.Float, CultureInfo.InvariantCulture, out var at) && double.IsFinite(at) ? at : null,
+                flags.Contains('K'), flags.Contains('D')));
+        }
+        if (packets.All(packet => packet.Shown is not null || packet.Dropped))
+        {
+            // Decoding starts at the first key frame, dropped or not: FFmpeg drops what comes before it (a recording
+            // joined mid-stream), and what is shown before it (an open group's leading pictures, which refer back to
+            // frames that aren't there, after a cut).
+            var first = packets.FindIndex(packet => packet.Key && packet.Shown is not null);
+            if (first < 0)
+                return null;
+            var start = packets[first].Shown!.Value;
+            return CountBefore(packets.Skip(first).Where(packet => !packet.Dropped).Select(packet => packet.Shown!.Value)
+                .Where(time => time >= start - SeekPoint.Tolerance), before);
+        }
+        // Packets with only a decode time (DVD video, MPEG-1, AVI): when FFmpeg shows each frame depends on its
+        // decoder, so the frames it shows are counted, decoding up to the time. Exact, but slower: a long file can pass
+        // the look's time limit, and then there is no number rather than a wrong one.
+        var json = await RunAsync(ffprobe,
+            ["-hide_banner", "-v", "error", "-select_streams", "V:0", "-read_intervals", until,
+                "-show_entries", "frame=best_effort_timestamp_time,pts_time,pkt_dts_time", "-print_format", "json", input],
+            cancellationToken).ConfigureAwait(false);
+        if (json is null)
+            return null;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("frames", out var list) || list.ValueKind != JsonValueKind.Array)
+                return null;
+            // A frame without any time (an AVI's last, sometimes) isn't shown at one: left out, as FFmpeg's own list
+            // does.
+            return CountBefore(list.EnumerateArray()
+                .Select(frame => Time(frame, "best_effort_timestamp_time") ?? Time(frame, "pts_time") ?? Time(frame, "pkt_dts_time")).OfType<double>(), before);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// How many of <paramref name="shown"/> come before <paramref name="before"/>; null past the last frame.
+    /// </summary>
+    private static long? CountBefore(IEnumerable<double> shown, double before)
+    {
+        long count = 0;
+        var after = false;
+        foreach (var time in shown)
+        {
+            if (time < before)
+                count++;
+            else
+                after = true;
+        }
+        return after ? count : null;
+    }
+
+    /// <summary>How far past the time the count reads, in seconds (<see cref="FrameNumberAsync"/>).</summary>
+    private const double NumberReach = 2;
+
     /// <summary>ffprobe's output, or null when it couldn't run or failed.</summary>
     private static async Task<string?> RunAsync(string ffprobe, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {

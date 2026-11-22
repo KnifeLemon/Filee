@@ -71,8 +71,9 @@ public sealed class HistoryEntry
             Failures = failures,
             // history.json isn't the place for a PDF password: a retry takes it from the preset again. No Retry for
             // parts of a picture to hide, marks drawn on it, a background set behind it or metadata changes: a Filee
-            // from before them would write the file as it is.
-            Preset = failures.Count > 0 && !job.Preset.Image.HidesAreas && !job.Preset.Image.HasAnnotations
+            // from before them would write the file as it is. Nor for a marked video frame's copy: its note and video
+            // aren't kept in the history, and the frame is gone once Filee quits.
+            Preset = failures.Count > 0 && !job.Preset.Image.HidesAreas && !job.Preset.Image.HasAnnotations && !job.Preset.Image.HasFrame
                      && !job.Preset.Image.AddsBackdrop && !job.Preset.EditsMetadata
                 ? job.Preset.Clone().WithoutPassword(mark: true)
                 : null,

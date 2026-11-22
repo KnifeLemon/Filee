@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using Filee.App.Controls;
 using Filee.App.Services;
 using Filee.App.ViewModels;
@@ -37,10 +38,21 @@ public partial class ClipWindow : Window
         // later; their key-up must not press it either. A button reached with Tab is pressed by them as usual.
         AddHandler(KeyUpEvent, (_, e) =>
         {
-            if (e.Key is Key.Space or Key.Enter && !ControlTakes(e))
+            // The export card's controls get their key-ups: a choice clicked and then given Space mustn't stay pressed.
+            if (e.Key is Key.Space or Key.Enter && !ControlTakes(e) && _vm is not { IsExporting: true })
                 e.Handled = true;
         }, RoutingStrategies.Tunnel);
         ResizeGrip.PointerPressed += OnGripPressed;
+        // The marked frames' list closes on a press anywhere else, which still does what it does.
+        AddHandler(PointerPressedEvent, (_, e) =>
+        {
+            if (_vm is { IsTrayOpen: true } vm && e.Source is Visual source
+                && !source.GetSelfAndVisualAncestors().Any(v => v == MarkedFramesList || v == MarkedFramesButton))
+            {
+                _focusByKeyboard = false; // a click: Space and Enter go back to playing and saving
+                vm.IsTrayOpen = false;
+            }
+        }, RoutingStrategies.Tunnel, handledEventsToo: true);
     }
 
     internal ClipTimeline ClipTimeline => Timeline;
@@ -114,8 +126,80 @@ public partial class ClipWindow : Window
             Sequence.VolumeDragged += vm.SetPieceVolume;
             Sequence.MusicMoved += vm.MoveMusic;
             Sequence.MusicVolumeDragged += vm.SetMusicVolume;
+            vm.PropertyChanged += OnViewModelChanged;
+            vm.MarkedFrames.CollectionChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(KeepFocusInList);
             Closed += (_, _) => vm.Dispose();
         }
+    }
+
+    // ───────────────────────── The marked frames' list and export ─────────────────────────
+
+    /// <summary>
+    /// The list and the export card take the keyboard when they open (the card holds it, as a dialog does, and Tab goes
+    /// round inside it), and give it back to the Marked frames button when they close.
+    /// </summary>
+    private void OnViewModelChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_vm is not { } vm)
+            return;
+        // As the focus was last moved: by Tab when the keyboard is in use, so Space and Enter press what has it; else
+        // quietly, so after a click they still play and save, whatever was clicked last.
+        var how = Moved;
+        if (e.PropertyName == nameof(ClipWindowViewModel.IsExporting))
+        {
+            // The card holds the keyboard as a dialog does: its choice has the focus, shown as keyboard focus only when
+            // the keyboard opened it; its keys are its own either way. Closed, the focus goes back as it was moving.
+            if (vm.IsExporting)
+                _beforeCard = how;
+            // Closed with a click, quietly; with a key, as the focus was moving before the card opened.
+            var back = _focusByKeyboard ? _beforeCard : NavigationMethod.Unspecified;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (vm.IsExporting)
+                    (vm.ExportAsPdf ? ExportPdfChoice : ExportPngsChoice).Focus(how);
+                else if (FocusIn(ExportCard) || FocusManager?.GetFocusedElement() is null)
+                    BackToButton(back);
+            }, Avalonia.Threading.DispatcherPriority.Loaded);
+        }
+        else if (e.PropertyName == nameof(ClipWindowViewModel.IsTrayOpen))
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (vm.IsTrayOpen)
+                    FirstRow()?.Focus(how);
+                // Hiding the list takes the focus from its row before this runs: nothing has it then.
+                else if (!vm.IsExporting && (FocusIn(MarkedFramesList) || FocusManager?.GetFocusedElement() is null))
+                    BackToButton(how);
+            }, Avalonia.Threading.DispatcherPriority.Loaded);
+    }
+
+    /// <summary>How the focus was moving when the export card opened.</summary>
+    private NavigationMethod _beforeCard = NavigationMethod.Unspecified;
+
+    /// <summary>How the window moves the focus itself: as the user last moved it, with the keyboard or not.</summary>
+    private NavigationMethod Moved => _focusByKeyboard ? NavigationMethod.Tab : NavigationMethod.Unspecified;
+
+    /// <summary>
+    /// A row gone from under the focus (its ✕, a reload): the focus goes to the first row, not nowhere.
+    /// </summary>
+    private void KeepFocusInList()
+    {
+        if (_vm is { IsTrayOpen: true } && (FocusManager?.GetFocusedElement() is not Visual focused || !focused.IsAttachedToVisualTree() || !focused.IsEffectivelyVisible))
+            FirstRow()?.Focus(Moved);
+    }
+
+    private Button? FirstRow() =>
+        MarkedFramesList.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.Classes.Contains("row") && b.IsEffectivelyVisible)
+        ?? (ExportFramesButton.IsEffectivelyVisible ? ExportFramesButton : null);
+
+    private bool FocusIn(Visual area) =>
+        FocusManager?.GetFocusedElement() is Visual focused && focused.GetSelfAndVisualAncestors().Contains(area);
+
+    private void BackToButton(NavigationMethod how)
+    {
+        if (MarkedFramesButton.IsEffectivelyVisible)
+            MarkedFramesButton.Focus(how);
+        else
+            Focus();
     }
 
     // ───────────────────────── Keys ─────────────────────────
@@ -145,6 +229,30 @@ public partial class ClipWindow : Window
     {
         if (_vm is not { } vm)
             return;
+        // The export card is over the window: Esc closes it, Enter exports, and the clip's own keys wait.
+        if (vm.IsExporting)
+        {
+            if (e.Key == Key.Escape)
+            {
+                vm.CancelExportCommand.Execute(null);
+                e.Handled = true;
+            }
+            // Enter exports, unless Cancel or Export itself has the keyboard (a choice of format doesn't keep it).
+            else if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None
+                     && !(ControlTakes(e) && FocusManager?.GetFocusedElement() is Button and not RadioButton))
+            {
+                vm.ExportCommand.Execute(null);
+                e.Handled = true;
+            }
+            return;
+        }
+        // Esc closes the marked frames' list before anything else.
+        if (vm.IsTrayOpen && e.Key == Key.Escape)
+        {
+            vm.IsTrayOpen = false;
+            e.Handled = true;
+            return;
+        }
         if (ControlTakes(e))
             return;
         var plain = e.KeyModifiers == KeyModifiers.None;

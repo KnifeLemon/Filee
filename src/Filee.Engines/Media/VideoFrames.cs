@@ -99,7 +99,19 @@ public static class VideoFrames
         return new FrameStill(written, written && video.IsHdr && !toneMap);
     }
 
-    /// <summary>The time of the timeline's picture <paramref name="index"/> of <paramref name="count"/>: the middle of its part.</summary>
+    /// <summary>
+    /// The number of the frame <see cref="WriteStillAsync"/> writes for <paramref name="seconds"/>, counted from 0 as
+    /// FFmpeg's <c>n</c> counts (<see cref="KeyFrames.FrameNumberAsync"/>); null when it can't be counted.
+    /// </summary>
+    public static async Task<long?> FrameNumberAsync(string path, double seconds, CancellationToken cancellationToken)
+    {
+        var (_, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
+        return await KeyFrames.FrameNumberAsync(ffprobe, MediaInput.For(path), seconds, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The time of the timeline's picture <paramref name="index"/> of <paramref name="count"/>: the middle of its part.
+    /// </summary>
     public static double ThumbnailTime(int index, int count, double duration) =>
         count <= 0 || duration <= 0 ? 0 : duration * (index + 0.5) / count;
 }

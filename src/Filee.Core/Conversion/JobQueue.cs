@@ -1108,6 +1108,8 @@ public sealed partial class JobQueue : IAsyncDisposable
             copy.Image.HiddenAreas = null;
             copy.Image.Annotations = null;
             copy.Image.Backdrop = null;
+            copy.Image.Frame = null;
+            copy.Image.FrameCaption = null;
             return copy;
         }
 
@@ -1219,18 +1221,8 @@ public sealed partial class JobQueue : IAsyncDisposable
             new OutputPathResolver.Tokens(sourcePath, job.PresetDisplayName, index, job.CreatedAt,
                 job.Files.Any(f => f.IsFolder && FileSystemPaths.Comparer.Equals(f.SourcePath, sourcePath))));
 
-    /// <summary>
-    /// The rule for a single output file: with <see cref="OutputRule.SubfolderOnlyForSeveralFiles"/> it is saved next to
-    /// the source instead of in the subfolder.
-    /// </summary>
-    private static OutputRule ForOneFile(OutputRule rule)
-    {
-        if (!rule.SubfolderOnlyForSeveralFiles || rule.Location != OutputLocation.Subfolder)
-            return rule;
-        var single = rule.Clone();
-        single.Location = OutputLocation.SameFolder;
-        return single;
-    }
+    /// <summary>The rule for a single output file (<see cref="OutputRule.ForOneFile"/>).</summary>
+    private static OutputRule ForOneFile(OutputRule rule) => rule.ForOneFile();
 
     /// <summary>
     /// With <see cref="OutputRule.SubfolderOnlyForSeveralFiles"/>: moves the one file a source became out of the

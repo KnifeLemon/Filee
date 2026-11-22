@@ -1183,6 +1183,518 @@ public class ClipWindowTests
 
     // ───────────────────────── Helpers ─────────────────────────
 
+    // ───────────────────────── The marked frames (#1205 step 3) ─────────────────────────
+
+    /// <summary>A marked copy of the open video's frame at <paramref name="seconds"/>, next to the video.</summary>
+    internal static string MarkedCopy(ClipWindowViewModel vm, double seconds, string note = "", string? video = null, string? name = null,
+        uint width = 64, uint height = 36)
+    {
+        video ??= vm.CurrentFile!;
+        var path = Path.Combine(Path.GetDirectoryName(video)!, name ?? MarkedFrames.NameFor(video, seconds).Replace(".png", " Annotated.png", StringComparison.Ordinal));
+        using var image = new MagickImage(new MagickColor("#3E63DD"), width, height);
+        image.SetAttribute(FrameTags.Key, FrameTags.ToText(new FrameFacts(Path.GetFileName(video), Length, new FileInfo(video).Length, seconds,
+            (long)(seconds * 30), note)));
+        image.Write(path, MagickFormat.Png);
+        return path;
+    }
+
+    internal static void Reload(ClipWindowViewModel vm)
+    {
+        var reading = vm.ReloadMarkedFramesAsync();
+        WaitFor(() => reading.IsCompleted);
+        Pump();
+    }
+
+    private static readonly double[] MarkedSeconds = [247.267, 41.633, 124.7];
+
+    [AvaloniaFact]
+    public void The_marked_frames_are_listed_in_time_order_with_ticks_on_both_timelines()
+    {
+        WithClipWindow("en", false, ["Site walk.mp4"], (window, vm, _, _) =>
+        {
+            Assert.False(vm.HasMarkedFrames);
+            Assert.False(window.FindControl<Button>("MarkedFramesButton")!.IsEffectivelyVisible);
+            foreach (var seconds in MarkedSeconds)
+                MarkedCopy(vm, seconds, seconds == 124.7 ? "Loose cable" : "");
+            var other = Path.Combine(Path.GetDirectoryName(vm.CurrentFile)!, "Holiday.mp4");
+            File.WriteAllBytes(other, [0, 0]);
+            MarkedCopy(vm, 10, video: other, name: "Holiday 0m10.000s Annotated.png"); // another video's
+            Reload(vm);
+
+            Assert.Equal(["0:41.633 · frame 1,248", "2:04.700 · frame 3,741", "4:07.267 · frame 7,418"], vm.MarkedFrames.Select(f => f.Label));
+            Assert.Equal(["No note", "Loose cable", "No note"], vm.MarkedFrames.Select(f => f.Note));
+            Assert.Equal(3, vm.MarkedCount);
+            Assert.True(window.FindControl<Button>("MarkedFramesButton")!.IsEffectivelyVisible);
+            Assert.Equal([41.633, 124.7, 247.267], window.ClipTimeline.MarkedTimes!);
+            // The sequence shows the ones the clip keeps, at their time in the clip: after the clip moves, and after
+            // the frames change with the clip where it is.
+            Assert.Empty(window.ClipSequence.MarkedTimes!);
+            vm.MoveHandle(ClipHandle.Start, 120);
+            vm.SetLength(9);
+            Pump();
+            Assert.Equal(4.7, Assert.Single(window.ClipSequence.MarkedTimes!), 6);
+            MarkedCopy(vm, 125.5);
+            Reload(vm);
+            Assert.Equal([4.7, 5.5], window.ClipSequence.MarkedTimes!.Select(t => Math.Round(t, 6)));
+        }, annotate: (_, _) => { });
+    }
+
+    [AvaloniaFact]
+    public void A_sound_and_a_video_without_marked_frames_show_no_button()
+    {
+        WithClipWindow("en", false, ["nopicture.mp4"], (window, vm, _, _) =>
+        {
+            // A sound has no frames to mark: copies that say they are its frames show no button either.
+            foreach (var seconds in MarkedSeconds)
+                MarkedCopy(vm, seconds);
+            Reload(vm);
+            Assert.Equal(0, vm.MarkedCount);
+            Assert.False(vm.HasMarkedFrames);
+            Assert.False(window.FindControl<Button>("MarkedFramesButton")!.IsEffectivelyVisible);
+        }, annotate: (_, _) => { });
+    }
+
+    [AvaloniaFact]
+    public void A_row_moves_the_playhead_to_its_frame_and_closes_the_list()
+    {
+        WithClipWindow("en", false, ["Site walk.mp4"], (_, vm, _, _) =>
+        {
+            foreach (var seconds in MarkedSeconds)
+                MarkedCopy(vm, seconds);
+            Reload(vm);
+            vm.ToggleTrayCommand.Execute(null);
+            Assert.True(vm.IsTrayOpen);
+            vm.GoToMarkedFrameCommand.Execute(vm.MarkedFrames[1]);
+            Assert.False(vm.IsTrayOpen);
+            Assert.Equal(124.7, vm.Playhead, 6);
+            Assert.Equal(ClipHandle.Playhead, vm.ActiveHandle);
+        }, annotate: (_, _) => { });
+    }
+
+    [AvaloniaFact]
+    public void Remove_moves_the_copy_to_the_trash_or_says_why_it_couldnt()
+    {
+        Filee.Core.Platform.TrashRefusal? refuse = new("trash.no_recycle_bin");
+        var trashed = new List<string>();
+        WithClipWindow("en", false, ["Site walk.mp4"], (_, vm, _, _) =>
+        {
+            foreach (var seconds in MarkedSeconds)
+                MarkedCopy(vm, seconds);
+            Reload(vm);
+            vm.RemoveMarkedFrameCommand.Execute(vm.MarkedFrames[0]);
+            WaitFor(() => vm.Message == AppHost.Get<ILocalizer>()["trash.no_recycle_bin"]);
+            WaitFor(() => vm.MarkedCount == 3);
+            refuse = null;
+            vm.RemoveMarkedFrameCommand.Execute(vm.MarkedFrames[0]);
+            WaitFor(() => vm.MarkedCount == 2);
+            Assert.Single(trashed);
+            Assert.Equal([124.7, 247.267], vm.MarkedTimes);
+        }, annotate: (_, _) => { }, trash: path =>
+        {
+            if (refuse is { } refusal)
+                return refusal;
+            trashed.Add(path);
+            File.Delete(path);
+            return null;
+        });
+    }
+
+    [AvaloniaFact]
+    public void A_copy_saved_from_Annotate_joins_the_list_at_once_and_opening_the_video_again_brings_them_back()
+    {
+        WithClipWindow("en", false, ["Site walk.mp4"], (_, vm, _, _) =>
+        {
+            var marks = Marks.TryGetValue(vm, out var m) ? m : throw new InvalidOperationException();
+            Reload(vm);
+            Assert.Equal(0, vm.MarkedCount);
+            // A frame's copy saved: the store says so, and the list reads again on its own.
+            var frame = marks.NewPath(vm.CurrentFile!, 124.7, Length, _ => Task.FromResult<long?>(3741));
+            var conversion = marks.ApplyAsync(frame, AnnotateTool.ConversionOf(BuiltInData.AnnotatePresets().Single(), "png", []), "", TestContext.Current.CancellationToken);
+            WaitFor(() => conversion.IsCompleted);
+            var job = new Filee.Core.Conversion.ConversionJob([frame], conversion.Result, "Annotate");
+            job.Files[0].State = Filee.Core.Conversion.FileState.Done;
+            job.Files[0].Outputs.Add(MarkedCopy(vm, 124.7));
+            marks.OnJobFinished(job);
+            WaitFor(() => vm.MarkedCount == 1);
+            // Opened again (the next time, or after closing): the copies are there.
+            foreach (var seconds in new[] { 41.633, 247.267 })
+                MarkedCopy(vm, seconds);
+            var loading = vm.LoadFileAsync(0);
+            WaitFor(() => loading.IsCompleted);
+            WaitFor(() => vm.MarkedCount == 3);
+        }, annotate: (_, _) => { });
+    }
+
+    [AvaloniaFact]
+    public void Export_queues_one_job_over_the_copies_in_time_order_and_the_choice_is_remembered()
+    {
+        var exported = new List<(IReadOnlyList<string> Copies, Preset Preset)>();
+        TestServices.EnsureInitialized("en");
+        var store = AppHost.Get<UserDataStore>();
+        var before = store.Settings.FrameExportAsPdf;
+        try
+        {
+            WithClipWindow("en", false, ["Site walk.mp4"], (window, vm, _, _) =>
+            {
+                var copies = MarkedSeconds.Select(s => (Seconds: s, Path: MarkedCopy(vm, s))).OrderBy(c => c.Seconds).Select(c => c.Path).ToList();
+                Reload(vm);
+                vm.ExportAsPdf = true;
+                vm.OpenExportCommand.Execute(null);
+                Assert.True(vm.IsExporting);
+                Assert.Equal("Site walk frames.pdf", vm.ExportTarget);
+                vm.ExportAsPngs = true;
+                Assert.Equal("Site walk frames", vm.ExportTarget);
+                vm.ExportCommand.Execute(null);
+                Assert.False(vm.IsExporting);
+                var (paths, preset) = Assert.Single(exported);
+                Assert.Equal(copies, paths);
+                Assert.Equal("png", preset.TargetFormat);
+                Assert.Equal("frame {0}", preset.Image.FrameCaption);
+                Assert.False(store.Settings.FrameExportAsPdf); // remembered for next time, on disk too
+                Assert.Matches("\"frameExportAsPdf\":\\s*false", File.ReadAllText(Path.Combine(store.Directory, "settings.json")));
+                // PDF.
+                vm.OpenExportCommand.Execute(null);
+                vm.ExportAsPdf = true;
+                Press(window, Key.Enter);
+                Assert.Equal("pdf", exported[^1].Preset.TargetFormat);
+            }, annotate: (_, _) => { }, frameExports: exported);
+        }
+        finally
+        {
+            store.Settings.FrameExportAsPdf = before;
+        }
+    }
+
+    [AvaloniaFact]
+    public void Esc_closes_the_export_then_the_list_before_the_window()
+    {
+        WithClipWindow("en", false, ["Site walk.mp4"], (window, vm, _, _) =>
+        {
+            foreach (var seconds in MarkedSeconds)
+                MarkedCopy(vm, seconds);
+            Reload(vm);
+            vm.OpenExportCommand.Execute(null);
+            Press(window, Key.Space); // the clip's keys wait while the card is open
+            Assert.False(vm.IsPlaying);
+            Press(window, Key.Escape);
+            Assert.False(vm.IsExporting);
+            vm.ToggleTrayCommand.Execute(null);
+            Press(window, Key.Escape);
+            Assert.False(vm.IsTrayOpen);
+            Assert.True(window.IsVisible);
+        }, annotate: (_, _) => { }, frameExports: []);
+    }
+
+    /// <summary>
+    /// The list and the export card take the keyboard when they open and give it back to the button when they close;
+    /// in the card, Tab goes round inside it and Enter on a choice exports.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_list_and_the_export_card_take_the_keyboard_and_give_it_back()
+    {
+        var exported = new List<(IReadOnlyList<string> Copies, Preset Preset)>();
+        WithClipWindow("en", false, ["Site walk.mp4"], (window, vm, _, _) =>
+        {
+            foreach (var seconds in MarkedSeconds)
+                MarkedCopy(vm, seconds);
+            Reload(vm);
+            Control? Focused() => window.FocusManager?.GetFocusedElement() as Control;
+            var button = window.FindControl<Button>("MarkedFramesButton")!;
+            var list = window.FindControl<Border>("MarkedFramesList")!;
+            var card = window.FindControl<Border>("ExportCard")!;
+
+            vm.ToggleTrayCommand.Execute(null);
+            Pump();
+            Assert.True(Focused() is Button { } row && row.Classes.Contains("row") && row.GetSelfAndVisualAncestors().Contains(list), $"focus on {Focused()}");
+            Press(window, Key.Escape);
+            Pump();
+            Assert.Same(button, Focused());
+
+            vm.OpenExportCommand.Execute(null);
+            Pump();
+            Assert.True(Focused()?.GetSelfAndVisualAncestors().Contains(card), $"focus on {Focused()}");
+            for (var i = 0; i < 8; i++)
+            {
+                Press(window, Key.Tab);
+                Pump();
+                Assert.True(Focused()?.GetSelfAndVisualAncestors().Contains(card), $"Tab left the card for {Focused()}");
+            }
+            window.FindControl<RadioButton>("ExportPdfChoice")!.Focus(NavigationMethod.Tab);
+            Press(window, Key.Enter);
+            Assert.Single(exported);
+            Pump();
+            Assert.Same(button, Focused());
+        }, annotate: (_, _) => { }, frameExports: exported);
+    }
+
+    /// <summary>
+    /// Used with the mouse, the list and the card leave Space and Enter to the window: after a row picked, the card
+    /// closed with a click, or the list opened from the keyboard and closed with a click on the picture, Space plays
+    /// rather than pressing the button the focus went back to. In the card, Space is its choice's.
+    /// </summary>
+    [AvaloniaFact]
+    public void After_the_list_or_the_card_used_with_the_mouse_Space_still_plays()
+    {
+        WithClipWindow("en", false, ["Site walk.mp4"], (window, vm, frames, _) =>
+        {
+            foreach (var seconds in MarkedSeconds)
+                MarkedCopy(vm, seconds);
+            Reload(vm);
+            void Click(Control control)
+            {
+                var at = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
+                window.MouseDown(at, MouseButton.Left);
+                window.MouseUp(at, MouseButton.Left);
+                Pump();
+            }
+            void SpacePlays()
+            {
+                frames.HoldPlaying = new TaskCompletionSource();
+                Press(window, Key.Space);
+                WaitFor(() => vm.IsPlaying);
+                Assert.False(vm.IsTrayOpen);
+                vm.StopPlaying();
+                frames.HoldPlaying.TrySetResult();
+                WaitFor(() => !vm.IsPlaying);
+            }
+            var button = window.FindControl<Button>("MarkedFramesButton")!;
+            Click(button);
+            Assert.True(vm.IsTrayOpen);
+            Click(window.FindControl<Border>("MarkedFramesList")!.GetVisualDescendants().OfType<Button>().First(b => b.Classes.Contains("row")));
+            Assert.False(vm.IsTrayOpen);
+            SpacePlays();
+
+            Click(button);
+            Click(window.FindControl<Button>("ExportFramesButton")!);
+            Assert.True(vm.IsExporting);
+            // The card holds the keyboard however it was opened (no focus ring after a click): Space presses its
+            // choice, which doesn't stay pressed.
+            Pump();
+            var choice = Assert.IsAssignableFrom<RadioButton>(window.FocusManager?.GetFocusedElement());
+            Assert.DoesNotContain(":focus-visible", choice.Classes);
+            Press(window, Key.Space);
+            window.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.None, null);
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(choice.IsPressed);
+            Assert.False(vm.IsPlaying);
+            // A choice clicked, then given Space: it doesn't stay pressed either.
+            var pngs = window.FindControl<RadioButton>("ExportPngsChoice")!;
+            Click(pngs);
+            Press(window, Key.Space);
+            window.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.None, null);
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(pngs.IsPressed);
+            var cancel = window.FindControl<Border>("ExportCard")!.GetVisualDescendants().OfType<Button>()
+                .First(b => b.Content as string == AppHost.Get<ILocalizer>()["common.cancel"]);
+            Click(cancel);
+            Assert.False(vm.IsExporting);
+            SpacePlays();
+
+            // The card opened from the keyboard (its choice shows keyboard focus) and closed with a click: Space plays.
+            window.FindControl<Button>("MarkFrameButton")!.Focus(NavigationMethod.Tab);
+            vm.OpenExportCommand.Execute(null);
+            Pump();
+            Assert.True(vm.IsExporting);
+            Assert.Contains(":focus-visible", Assert.IsAssignableFrom<RadioButton>(window.FocusManager?.GetFocusedElement()).Classes);
+            Click(cancel);
+            Assert.False(vm.IsExporting);
+            SpacePlays();
+
+            // Opened from the keyboard, closed with a click on the picture (which takes no focus): Space plays too.
+            window.FindControl<Button>("MarkFrameButton")!.Focus(NavigationMethod.Tab);
+            button.Focus(NavigationMethod.Tab);
+            Press(window, Key.Enter);
+            Pump();
+            Assert.True(vm.IsTrayOpen);
+            var picture = new Point(window.Bounds.Width / 2, 200);
+            window.MouseDown(picture, MouseButton.Left);
+            window.MouseUp(picture, MouseButton.Left);
+            Pump();
+            Assert.False(vm.IsTrayOpen);
+            SpacePlays();
+        }, annotate: (_, _) => { }, frameExports: []);
+    }
+
+    /// <summary>A press anywhere outside the list closes it, and still does what it does there.</summary>
+    [AvaloniaFact]
+    public void A_click_elsewhere_closes_the_list()
+    {
+        WithClipWindow("en", false, ["Site walk.mp4"], (window, vm, _, _) =>
+        {
+            foreach (var seconds in MarkedSeconds)
+                MarkedCopy(vm, seconds);
+            Reload(vm);
+            vm.ToggleTrayCommand.Execute(null);
+            Pump();
+            var list = window.FindControl<Border>("MarkedFramesList")!;
+            var inside = list.TranslatePoint(new Point(list.Bounds.Width / 2, 6), window)!.Value;
+            window.MouseDown(inside, MouseButton.Left);
+            window.MouseUp(inside, MouseButton.Left);
+            Assert.True(vm.IsTrayOpen);
+            window.MouseDown(new Point(16, window.Bounds.Height / 2), MouseButton.Left);
+            window.MouseUp(new Point(16, window.Bounds.Height / 2), MouseButton.Left);
+            Assert.False(vm.IsTrayOpen);
+        }, annotate: (_, _) => { });
+    }
+
+    /// <summary>The ticks are drawn on the timeline: the picture differs from the same one without them.</summary>
+    [AvaloniaFact]
+    public void The_ticks_are_drawn_on_the_timeline()
+    {
+        WithClipWindow("en", false, ["Site walk.mp4"], (window, vm, _, _) =>
+        {
+            foreach (var seconds in MarkedSeconds)
+                MarkedCopy(vm, seconds);
+            Reload(vm);
+            Pump();
+            var timeline = window.ClipTimeline;
+            var area = timeline.TranslatePoint(default, window)!.Value;
+            var with = Pixels(window, area, timeline.Bounds.Size);
+            timeline.MarkedTimes = [];
+            Pump();
+            var without = Pixels(window, area, timeline.Bounds.Size);
+            Assert.True(with.Zip(without).Count(p => p.First != p.Second) > 20, "no tick drawn");
+        }, annotate: (_, _) => { });
+
+        static uint[] Pixels(ClipWindow window, Point at, Size size)
+        {
+            using var frame = window.CaptureRenderedFrame()!;
+            var rect = new PixelRect((int)at.X, (int)at.Y, (int)size.Width, (int)size.Height);
+            var pixels = new uint[rect.Width * rect.Height];
+            var pin = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
+            try { frame.CopyPixels(rect, pin.AddrOfPinnedObject(), pixels.Length * 4, rect.Width * 4); }
+            finally { pin.Free(); }
+            return pixels;
+        }
+    }
+
+    /// <summary>
+    /// The next video's length still being read (a slow drive): the last video's list, button and export are gone
+    /// already, not left to export under the next video's name.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_last_videos_list_goes_as_soon_as_the_next_one_opens()
+    {
+        WithClipWindow("en", false, ["First.mp4", "Second.mp4"], (window, vm, frames, _) =>
+        {
+            foreach (var seconds in MarkedSeconds)
+                MarkedCopy(vm, seconds);
+            Reload(vm);
+            vm.ToggleTrayCommand.Execute(null);
+            Assert.True(vm.HasMarkedFrames);
+            frames.HoldProbe = new TaskCompletionSource();
+            var loading = vm.LoadFileAsync(1);
+            Pump();
+            Assert.True(vm.IsLoading);
+            Assert.False(vm.HasMarkedFrames);
+            Assert.False(vm.IsTrayOpen);
+            Assert.Empty(vm.MarkedFrames);
+            Assert.Empty(window.ClipTimeline.MarkedTimes!);
+            frames.HoldProbe.SetResult();
+            WaitFor(() => loading.IsCompleted);
+        }, annotate: (_, _) => { });
+    }
+
+    /// <summary>
+    /// The list reads again while its pictures are still being read (a ✕, a save): every row gets its picture, none
+    /// is left blank.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_reload_while_pictures_are_read_leaves_no_row_blank()
+    {
+        WithClipWindow("en", false, ["Site walk.mp4"], (_, vm, _, _) =>
+        {
+            for (var i = 0; i < 9; i++)
+                MarkedCopy(vm, 10 + i * 20, width: 3840, height: 2160);
+            Reload(vm);
+            vm.ToggleTrayCommand.Execute(null);
+            var reading = vm.ReloadMarkedFramesAsync(); // as a save or a ✕ does
+            WaitFor(() => reading.IsCompleted);
+            for (var i = 0; i < 2000 && vm.MarkedFrames.Any(f => f.Thumbnail is null); i++)
+            {
+                Pump();
+                Thread.Sleep(5);
+            }
+            Assert.All(vm.MarkedFrames, f => Assert.NotNull(f.Thumbnail));
+        }, annotate: (_, _) => { });
+    }
+
+    /// <summary>
+    /// The button says how many frames go out, and the card the name the export will get: " (2)" when it is taken.
+    /// </summary>
+    [AvaloniaFact]
+    public void Export_says_how_many_frames_and_the_name_they_will_get()
+    {
+        WithClipWindow("en", false, ["Site walk.mp4"], (_, vm, _, _) =>
+        {
+            var only = MarkedCopy(vm, 41.633);
+            Reload(vm);
+            Assert.Equal("Export 1 frame…", vm.ExportFramesText);
+            MarkedCopy(vm, 124.7);
+            Reload(vm);
+            Assert.Equal("Export 2 frames…", vm.ExportFramesText);
+            var folder = Path.GetDirectoryName(only)!;
+            File.WriteAllText(Path.Combine(folder, "Site walk frames.pdf"), "an earlier export");
+            Directory.CreateDirectory(Path.Combine(folder, "Site walk frames"));
+            vm.ExportAsPdf = true;
+            vm.OpenExportCommand.Execute(null);
+            Assert.Equal("Site walk frames (2).pdf", vm.ExportTarget);
+            vm.ExportAsPngs = true;
+            Assert.Equal("Site walk frames (2)", vm.ExportTarget);
+        }, annotate: (_, _) => { }, frameExports: []);
+    }
+
+    /// <summary>
+    /// Two PNG exports queued one after the other each get a folder of their own, also from another Cut a clip window
+    /// (closed and opened again on the video), and no folder is made before its job runs.
+    /// </summary>
+    [AvaloniaFact]
+    public void Two_png_exports_in_a_row_get_two_folders()
+    {
+        var exported = new List<(IReadOnlyList<string> Copies, Preset Preset)>();
+        WithClipWindow("en", false, ["Site walk.mp4"], (_, vm, _, _) =>
+        {
+            MarkedCopy(vm, 41.633);
+            Reload(vm);
+            vm.ExportAsPngs = true;
+            for (var i = 0; i < 2; i++)
+            {
+                vm.OpenExportCommand.Execute(null);
+                vm.ExportCommand.Execute(null);
+            }
+            var video = vm.CurrentFile!;
+            WithClipWindow("en", false, [video], (_, again, _, _) =>
+            {
+                again.ExportAsPngs = true;
+                again.OpenExportCommand.Execute(null);
+                again.ExportCommand.Execute(null);
+            }, annotate: (_, _) => { }, frameExports: exported);
+            Assert.Equal(["Site walk frames", "Site walk frames (2)", "Site walk frames (3)"], exported.Select(e => Path.GetFileName(e.Preset.Output.CustomFolder)));
+            // Nothing is made before the jobs run: a cancelled export leaves no empty folder behind.
+            Assert.All(exported, e => Assert.False(Directory.Exists(e.Preset.Output.CustomFolder)));
+        }, annotate: (_, _) => { }, frameExports: exported);
+    }
+
+    /// <summary>
+    /// A row shows its own frame (the first at or after its time, as the picture takes it): where the copy is at the
+    /// frame's own time (2.0667 s, which to the millisecond would be past it) and where it was marked between frames
+    /// (2.067, showing the frame at 2.1 s); marking again from there is the same frame time to the millisecond.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(62 / 30.0, 62)]
+    [InlineData(2.067, 63)]
+    public void A_row_shows_its_own_frame_and_marking_it_again_is_that_frame(double seconds, int frame)
+    {
+        WithClipWindow("en", false, ["Site walk.mp4"], (_, vm, _, _) =>
+        {
+            MarkedCopy(vm, seconds);
+            Reload(vm);
+            vm.GoToMarkedFrameCommand.Execute(vm.MarkedFrames[0]);
+            Assert.Equal(frame, (int)Math.Ceiling((vm.PreviewTime - 1e-6) * 30));
+            Assert.Equal(FrameTags.Milliseconds(seconds), FrameTags.Milliseconds(vm.Playhead));
+        }, annotate: (_, _) => { });
+    }
+
     /// <summary>
     /// Opens the window on made-up videos (a file name with "broken" can't be read, one with "nopicture" is a sound) of
     /// <paramref name="duration"/> seconds, waits until the timeline and the large picture are there, and runs
@@ -1192,12 +1704,15 @@ public class ClipWindowTests
     /// </summary>
     internal static void WithClipWindow(string language, bool dark, string[] names,
         Action<ClipWindow, ClipWindowViewModel, PaintedFrames, List<(string Path, Preset Preset)>> act, double duration = Length, Preset? tool = null,
-        Action<string, string?>? annotate = null)
+        Action<string, string?>? annotate = null, Func<string, Filee.Core.Platform.TrashRefusal?>? trash = null,
+        List<(IReadOnlyList<string> Copies, Preset Preset)>? frameExports = null)
     {
         TestServices.EnsureInitialized(language);
         var theme = AppHost.Get<ThemeService>();
         if (dark)
             theme.Apply(new ThemeSettings { Mode = ThemeMode.Dark }, language);
+        // The export's remembered choice is put back after the test, so no test leaves it for the next.
+        var exportAsPdf = AppHost.Get<UserDataStore>().Settings.FrameExportAsPdf;
         var folder = Directory.CreateTempSubdirectory("filee-clip-window-").FullName;
         ClipWindow? window = null;
         MarkedFrames? marks = null;
@@ -1209,9 +1724,10 @@ public class ClipWindowTests
             var frames = new PaintedFrames(duration);
             var exports = new List<(string, Preset)>();
             tool ??= BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip");
-            marks = annotate is null ? null : new MarkedFrames(Path.Combine(folder, "work"));
+            marks = annotate is null ? null : new MarkedFrames(Path.Combine(folder, "work"), trash: trash);
             var vm = new ClipWindowViewModel(files, tool, AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), frames,
-                _ => "mkv", (path, preset) => exports.Add((path, preset)), marks: marks, annotate: annotate);
+                _ => "mkv", (path, preset) => exports.Add((path, preset)), marks: marks, annotate: annotate,
+                exportFrames: frameExports is null ? null : (copies, preset) => frameExports.Add((copies, preset)));
             if (marks is not null)
                 Marks.AddOrUpdate(vm, marks);
             window = new ClipWindow { DataContext = vm, Width = 1240, Height = 880 };
@@ -1223,6 +1739,7 @@ public class ClipWindowTests
         }
         finally
         {
+            AppHost.Get<UserDataStore>().Settings.FrameExportAsPdf = exportAsPdf;
             if (window?.IsVisible == true)
                 window.Close();
             marks?.Dispose();
@@ -1304,11 +1821,18 @@ public class ClipWindowTests
                 await hold.Task.WaitAsync(cancellationToken).ContinueWith(_ => { }, TaskScheduler.Default);
         }
 
-        public Task<VideoSummary> ProbeAsync(string path, CancellationToken cancellationToken) =>
-            Path.GetFileName(path).Contains("broken", StringComparison.Ordinal)
-                ? Task.FromException<VideoSummary>(new InvalidOperationException("Invalid data found when processing input"))
-                : Path.GetFileName(path).Contains("nopicture", StringComparison.Ordinal) ? Task.FromResult(new VideoSummary(duration, 0, 0, 0))
-                : Task.FromResult(new VideoSummary(duration, 1920, 1080, 30));
+        /// <summary>Reading a video's length waits here, when set (a slow drive).</summary>
+        public TaskCompletionSource? HoldProbe { get; set; }
+
+        public async Task<VideoSummary> ProbeAsync(string path, CancellationToken cancellationToken)
+        {
+            if (HoldProbe is { } hold)
+                await hold.Task.WaitAsync(cancellationToken);
+            return Path.GetFileName(path).Contains("broken", StringComparison.Ordinal)
+                ? throw new InvalidOperationException("Invalid data found when processing input")
+                : Path.GetFileName(path).Contains("nopicture", StringComparison.Ordinal) ? new VideoSummary(duration, 0, 0, 0)
+                : new VideoSummary(duration, 1920, 1080, 30);
+        }
 
         /// <summary>The frames "Mark this frame" took: the time asked for and where it was written.</summary>
         public List<(double Seconds, string Output)> Stills { get; } = [];
@@ -1323,6 +1847,10 @@ public class ClipWindowTests
         public TaskCompletionSource? HoldStill { get; set; }
 
         public bool StillThrows { get; set; }
+
+        /// <summary>A frame's number: the frame at 30 frames a second.</summary>
+        public Task<long?> FrameNumberAsync(string path, double seconds, CancellationToken cancellationToken) =>
+            Task.FromResult<long?>((long)Math.Floor(seconds * 30 + 1e-9));
 
         public async Task<FrameStill> WriteStillAsync(string path, double seconds, string output, CancellationToken cancellationToken)
         {

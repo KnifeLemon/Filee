@@ -92,30 +92,86 @@ internal static class LabelText
     /// <summary>
     /// Lays <paramref name="text"/> out from <paramref name="x"/> on <paramref name="baseline"/>, adding its glyphs to
     /// <paramref name="builder"/> when there is one, and returns how wide it is. Drawn as text, not outlines, so colour
-    /// emoji show.
+    /// emoji show. Bold as labels are, or in each font's regular face when <paramref name="bold"/> is false.
     /// </summary>
-    public static float Lay(string text, float size, SKTextBlobBuilder? builder, float x, float baseline)
+    public static float Lay(string text, float size, SKTextBlobBuilder? builder, float x, float baseline, bool bold = true) =>
+        Walk(text, size, bold, x, baseline, builder is null ? null : (font, glyphs, positions) =>
+        {
+            var buffer = builder.AllocatePositionedRun(font, glyphs.Length);
+            buffer.SetGlyphs(glyphs);
+            buffer.SetPositions(positions);
+        });
+
+    /// <summary>
+    /// Lays <paramref name="text"/> out as <see cref="Lay"/> does, adding each glyph's outline to
+    /// <paramref name="path"/> (y down), and returns how wide it is. A glyph with no outline that still shows something
+    /// (a colour emoji) is added to <paramref name="pictures"/> instead, to be placed as a picture.
+    /// </summary>
+    public static float Outline(string text, float size, bool bold, SKPath path, List<LabelGlyph> pictures, float x, float baseline) =>
+        Walk(text, size, bold, x, baseline, (font, glyphs, positions) =>
+        {
+            var bounds = new SKRect[glyphs.Length];
+            font.GetGlyphWidths(glyphs, new float[glyphs.Length], bounds);
+            for (var i = 0; i < glyphs.Length; i++)
+            {
+                using var outline = font.GetGlyphPath(glyphs[i]);
+                if (outline is { IsEmpty: false })
+                    path.AddPath(outline, positions[i].X, positions[i].Y);
+                else if (!bounds[i].IsEmpty)
+                    pictures.Add(new(font.Typeface, font.Size, font.Embolden, glyphs[i], positions[i]));
+            }
+        });
+
+    /// <summary>
+    /// The runs of <paramref name="text"/> shaped in their fonts from <paramref name="x"/>, each handed to
+    /// <paramref name="sink"/> with its glyphs placed on <paramref name="baseline"/>; returns the width.
+    /// </summary>
+    private static float Walk(string text, float size, bool bold, float x, float baseline, Action<SKFont, ushort[], SKPoint[]>? sink)
     {
         var pen = x;
         lock (ShaperLock)
         {
             foreach (var run in Runs(text))
             {
-                using var font = FontOf(run.Face, size);
+                var face = bold ? run.Face : RegularOf(run.Face);
+                using var font = bold ? FontOf(face, size) : new SKFont(face, size) { Edging = SKFontEdging.Antialias, Subpixel = true };
                 // Unshaped only when the font's data can't be read.
                 var (glyphs, positions, width) = Shaper.Glyphs(run.Text, font, run.RightToLeft)
                                                  ?? (font.GetGlyphs(run.Text), font.GetGlyphPositions(run.Text), font.MeasureText(run.Text));
-                if (builder is not null && glyphs.Length > 0)
-                {
-                    var buffer = builder.AllocatePositionedRun(font, glyphs.Length);
-                    buffer.SetGlyphs(glyphs);
-                    buffer.SetPositions([.. positions.Select(p => new SKPoint(p.X + pen, p.Y + baseline))]);
-                }
+                if (sink is not null && glyphs.Length > 0)
+                    sink(font, glyphs, [.. positions.Select(p => new SKPoint(p.X + pen, p.Y + baseline))]);
                 pen += width;
             }
         }
         return pen - x;
     }
+
+    private static volatile Func<SKTypeface, SKTypeface?>? _regular;
+    private static readonly ConcurrentDictionary<SKTypeface, SKTypeface> Regulars = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// How the regular face of a label's (bold) font is found: the app knows its embedded fonts' regular faces, which
+    /// the system doesn't. Without it, or when it has none, the system's regular face of the same family.
+    /// </summary>
+    public static void UseRegular(Func<SKTypeface, SKTypeface?> regular)
+    {
+        _regular = regular;
+        Regulars.Clear();
+    }
+
+    /// <summary>
+    /// The regular face of <paramref name="face"/>'s family, or the face itself where there is none (an emoji font, a
+    /// face only Skia makes bold, which it then isn't).
+    /// </summary>
+    private static SKTypeface RegularOf(SKTypeface face) => Regulars.GetOrAdd(face, static bold =>
+    {
+        if (!bold.IsBold)
+            return bold;
+        if (_regular?.Invoke(bold) is { } found)
+            return found;
+        return SKFontManager.Default.MatchFamily(bold.FamilyName, SKFontStyle.Normal) is { } system
+               && string.Equals(system.FamilyName, bold.FamilyName, StringComparison.OrdinalIgnoreCase) ? system : bold;
+    });
 
     /// <summary>
     /// Where the baseline of <paramref name="text"/> goes for its line to be centred on <paramref name="middle"/>: the
@@ -539,3 +595,8 @@ internal static class LabelText
         [.. SKFontManager.Default.FontFamilies.OrderBy(IsSerifOrMono).Select(family => SKFontManager.Default.MatchFamily(family, SKFontStyle.Bold))
             .OfType<SKTypeface>()]);
 }
+
+/// <summary>
+/// A glyph of a label that has no outline (a colour emoji), to be drawn as a picture where it is laid out.
+/// </summary>
+internal sealed record LabelGlyph(SKTypeface Face, float Size, bool Embolden, ushort Glyph, SKPoint At);
