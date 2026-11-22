@@ -487,6 +487,40 @@ public class PdfAFontRepairTests(EngineFixture fx) : IClassFixture<EngineFixture
         Assert.InRange(Advances(cidProgram, cid.GlyphOfCid(lackingCid)).Hmtx, 554, 556);
     }
 
+    /// <summary>
+    /// An OpenType program with TrueType outlines (FontFile3 /OpenType) under a CIDFontType2: its widths go into the
+    /// program and a CID it lacks gets an empty glyph, and it stays an OpenType FontFile3.
+    /// </summary>
+    [Fact]
+    public void An_opentype_program_with_truetype_outlines_is_repaired_and_stays_opentype()
+    {
+        var program = Filee.Engines.Fonts.SfntFont.Read(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fonts", "FileeTest-TrueType.ttf")));
+        var lacking = program.GlyphCount + 3;
+        var path = PdfAEmbeddingTests.Page(Path.Combine(fx.NewFolder(), "opentype-tt.pdf"), $"BT /F1 24 Tf 72 700 Td <0003{lacking:X4}> Tj ET", "/Font << /F1 5 0 R >>", extra:
+        [
+            "<< /Type /Font /Subtype /Type0 /BaseFont /FileeTest-TrueType /Encoding /Identity-H /DescendantFonts [6 0 R] >>",
+            "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /FileeTest-TrueType /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> " +
+                $"/CIDToGIDMap /Identity /DW 1000 /W [3 [777] {lacking} [444]] /FontDescriptor 7 0 R >>",
+            PdfATestFonts.Descriptor("FileeTest-TrueType", 8, 4).Replace("/FontFile2", "/FontFile3", StringComparison.Ordinal),
+            PdfATestFonts.Program().Replace("/Length1", "/Subtype /OpenType /Length1", StringComparison.Ordinal),
+        ]);
+
+        Assert.Equal(PdfArchiveOutcome.Archived, Archive(path, PdfATestFonts.None));
+
+        PdfA2bChecks.Assert2b(path);
+        using var document = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        var cidFont = (PdfDictionary)V(((PdfArray)V(Font(document).Elements["/DescendantFonts"])!).Elements[0])!;
+        var descriptor = (PdfDictionary)V(cidFont.Elements["/FontDescriptor"])!;
+        Assert.False(descriptor.Elements.ContainsKey("/FontFile2"));
+        var file = (PdfDictionary)V(descriptor.Elements["/FontFile3"])!;
+        Assert.Equal("/OpenType", file.Elements.GetName("/Subtype"));
+        var repaired = Filee.Engines.Fonts.SfntFont.Read(file.Stream.UnfilteredValue);
+        Assert.True(repaired.GlyphCount > program.GlyphCount);
+        var unitsPerEm = Filee.Engines.Fonts.FontTables.UnitsPerEm(repaired.Require("head"));
+        var advance = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(repaired.Require("hmtx").AsSpan(3 * 4));
+        Assert.InRange(advance * 1000.0 / unitsPerEm, 776, 778);
+    }
+
     [Fact]
     public void Type_1_and_cff_advances_follow_the_dictionarys_widths()
     {

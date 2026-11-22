@@ -91,16 +91,17 @@ internal static partial class PdfAFonts
         if (Resolve(font.Elements["/FontDescriptor"]) is not PdfDictionary descriptor)
             return null;
         var file = Resolve(descriptor.Elements["/FontFile2"]) as PdfDictionary;
-        if (file?.Stream is null && Resolve(descriptor.Elements["/FontFile3"]) is PdfDictionary { Stream: not null } openType && Name(openType, "/Subtype") == "/OpenType")
-            file = openType;
+        var openType = false;
+        if (file?.Stream is null && Resolve(descriptor.Elements["/FontFile3"]) is PdfDictionary { Stream: not null } three && Name(three, "/Subtype") == "/OpenType")
+            (file, openType) = (three, true);
         if (file?.Stream is null)
             return null;
         var bytes = file.Stream.UnfilteredValue;
         if (bytes.Length == 0 || bytes.Length > PdfFontUses.MaxStreamSize * 8L)
             return null;
         var sfnt = SfntFont.Read(bytes);
-        if (sfnt.HasCffOutlines)
-            return null; // CFF outlines: RepairType1 / RepairCidCff
+        if (openType && sfnt.HasCffOutlines)
+            return null; // OpenType with CFF outlines: RepairType1 / RepairCidCff
         _ = sfnt.Require("head");
         _ = sfnt.Require("hhea");
         _ = sfnt.Require("hmtx");
