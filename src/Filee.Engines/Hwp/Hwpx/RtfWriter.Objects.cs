@@ -243,9 +243,9 @@ internal sealed partial class RtfWriter
         if (type < 0)
             return;
         var o = _out;
-        var open = shape.Kind is HShapeKind.Line or HShapeKind.Path;
+        var open = shape.Kind is HShapeKind.Line || shape is { Kind: HShapeKind.Path, Geometry.Path.Closed: false };
         var w = Math.Max(1, shape.Width);
-        var h = Math.Max(open ? 0 : 1, shape.Height);
+        var h = Math.Max(open || shape.Kind == HShapeKind.Path ? 0 : 1, shape.Height);
         o.Open();
         o.Control("\\shp");
         o.Open();
@@ -275,9 +275,9 @@ internal sealed partial class RtfWriter
     }
 
     /// <summary>
-    /// An open path as Word's free-form shape properties ([MS-ODRAW] 2.3.6): the geometry space (geoRight / geoBottom,
-    /// the path's own box), the points (pVerticies, an array of x, y pairs) and the segments (pSegmentInfo: a move,
-    /// runs of lines or cubic Béziers of three points each, the end), in a complex path (shapePath 4).
+    /// A path as Word's free-form shape properties ([MS-ODRAW] 2.3.6): the geometry space (geoRight / geoBottom, the
+    /// path's own box), the points (pVerticies, an array of x, y pairs) and the segments (pSegmentInfo: a move, runs of
+    /// lines or cubic Béziers of three points each, the close of a closed one, the end), in a complex path (shapePath 4).
     /// </summary>
     private void FreeForm(HGeometry geometry)
     {
@@ -296,6 +296,8 @@ internal sealed partial class RtfWriter
             else
                 segments.Add(kind | 1);
         }
+        if (path.Closed)
+            segments.Add(0x6001);
         segments.Add(0x8000);
         Property("pSegmentInfo", $"2;{Number(segments.Count)};" + string.Join(";", segments.Select(Number)));
     }

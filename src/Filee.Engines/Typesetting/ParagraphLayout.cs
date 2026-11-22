@@ -1205,6 +1205,7 @@ internal sealed partial class ParagraphLayouter
         });
         // A right-to-left paragraph's start indent is on the right.
         var lineLeft = (settings.RightToLeft ? settings.Right : settings.Left + indent) + shiftLeft;
+        CentreUpright(parts, mark, source);
 
         // Glyph positions, parts in visual order; the runs are kept in logical order, so the PDF's text reads in the
         // order it was written whatever the direction.
@@ -1284,8 +1285,8 @@ internal sealed partial class ParagraphLayouter
             }
         }
 
-        var (height, baseline, textHeight, below) = stored is var (segment, _)
-            ? ((segment.VerticalSize + segment.Spacing) / 100f, segment.Baseline / 100f, segment.TextHeight / 100f, segment.Spacing / 100f)
+        var (height, baseline, textHeight, below, clipped) = stored is var (segment, _)
+            ? ((segment.VerticalSize + segment.Spacing) / 100f, segment.Baseline / 100f, segment.TextHeight / 100f, segment.Spacing / 100f, false)
             : LineHeight(parts, settings, mark, source);
         var bookmarks = ranges.Bookmarks(start, end, text.Length).Select(b => (lineLeft + offset, b.Name)).ToList();
         return new LineBox
@@ -1305,6 +1306,7 @@ internal sealed partial class ParagraphLayouter
             Notes = ranges.Notes(start, Math.Max(end, start + 1)),
             StoredTop = stored is var (top, _) ? top.VerticalPosition / 100f : null,
             Below = below,
+            ClipTop = clipped ? 0 : null,
             StoredPageStart = stored is var (flagged, _) && (flagged.Flags & 1) != 0,
             StoredColumnStart = stored is var (column, _) && (column.Flags & 2) != 0,
         };
@@ -1351,9 +1353,10 @@ internal sealed partial class ParagraphLayouter
     }
 
     /// <summary>
-    /// The line's pitch, the distance from its top to the baseline, the height of its text and the spacing below the text.
+    /// The line's pitch, the distance from its top to the baseline, the height of its text, the spacing below the text and
+    /// whether what reaches above the line's top is cut off there (Word's exact line too small for its content).
     /// </summary>
-    private (float Height, float Baseline, float TextHeight, float Below) LineHeight(List<Part> parts, Settings settings, TextStyle mark, ParagraphText source)
+    private (float Height, float Baseline, float TextHeight, float Below, bool Clipped) LineHeight(List<Part> parts, Settings settings, TextStyle mark, ParagraphText source)
     {
         var rule = settings.LineHeight;
         // Word's "at least" and "exactly" measure the fonts as its single spacing does (not the font size), and the text
@@ -1434,7 +1437,9 @@ internal sealed partial class ParagraphLayouter
         };
         height = Math.Max(0, height);
         var baseline = standing ? height - descent : ascent;
-        return (height, baseline, textHeight, Math.Max(0, height - baseline - descent));
+        // Word cuts an exact line's content off at its top (see ParagraphLayout.WordLines.cs).
+        var clipped = standing && rule.Rule == HLineHeightRule.Exact && ascent > baseline + Epsilon;
+        return (height, baseline, textHeight, Math.Max(0, height - baseline - descent), clipped);
 
         // The text's extent spaced by the multiple, with what the pictures reach beyond it.
         float Spaced(float textUp, float textDown) =>

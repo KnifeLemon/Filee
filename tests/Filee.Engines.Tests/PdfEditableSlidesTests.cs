@@ -1194,6 +1194,74 @@ public class PdfEditableSlidesTests(EngineFixture fx) : IClassFixture<EngineFixt
         Assert.True(right - left > 30, $"ligature ink from {left} to {right}");
     }
 
+    /// <summary>
+    /// A JPEG 2000 picture (a bare codestream of Jpeg2000TestFile's, black on its left half and white on its right,
+    /// with no /ColorSpace: the codestream's grey) and a Type 3 glyph whose procedure shows a red "H" in Helvetica,
+    /// under a blue Screen band.
+    /// </summary>
+    internal static string MakeJpxPdf(string folder)
+    {
+        var content =
+            "q 200 0 0 200 60 200 cm /Jx Do Q\n" +
+            "BT /T3 60 Tf 400 230 Td (.) Tj ET\n" +
+            "q /GS1 gs 0 0 1 rg 40 180 820 120 re f Q\n";
+        return RawPdf(Path.Combine(folder, "jpx.pdf"), content, (document, page) =>
+        {
+            var pixels = new byte[64 * 64];
+            for (var i = 0; i < pixels.Length; i++)
+                pixels[i] = (byte)(i % 64 < 32 ? 0 : 255);
+            var picture = new Sharp.PdfDictionary(document);
+            picture.Elements.SetName("/Type", "/XObject");
+            picture.Elements.SetName("/Subtype", "/Image");
+            picture.Elements.SetInteger("/Width", 64);
+            picture.Elements.SetInteger("/Height", 64);
+            picture.Elements.SetName("/Filter", "/JPXDecode");
+            picture.CreateStream(Jpeg2000TestFile.Grey(64, 64, pixels, new Jpeg2000TestFile.Layout { TileWidth = 32, TileHeight = 32 }));
+            Resource(document, page, "/XObject", "/Jx", picture);
+            var font = Type3Font(document, "1000 0 0 0 750 750 d0 1 0 0 rg BT /F1 1000 Tf 0 0 Td (H) Tj ET");
+            var helvetica = new Sharp.PdfDictionary(document);
+            helvetica.Elements.SetName("/Type", "/Font");
+            helvetica.Elements.SetName("/Subtype", "/Type1");
+            helvetica.Elements.SetName("/BaseFont", "/Helvetica");
+            document.Internals.AddObject(helvetica);
+            var fonts = new Sharp.PdfDictionary(document);
+            fonts.Elements.SetReference("/F1", helvetica);
+            font.Elements.GetDictionary("/Resources")!.Elements["/Font"] = fonts;
+            Resource(document, page, "/Font", "/T3", font);
+            Resource(document, page, "/ExtGState", "/GS1", BlendState(document, "/Screen"));
+        });
+    }
+
+    [Fact]
+    public async Task Backdrops_have_jpeg_2000_pictures_and_the_text_of_type_3_glyphs()
+    {
+        var pptx = await ConvertAsync(MakeJpxPdf(fx.NewFolder()));
+        var deck = PptxSlideReader.Read(pptx, cancellationToken: Token);
+        using var bitmap = SlideOutput.ToBitmaps(deck, 72, cancellationToken: Token).Single();
+        SKColor At(double x, double y) => bitmap.GetPixel((int)x, (int)(Height - y));
+        static bool Blue(SKColor c) => c is { Red: < 60, Green: < 60, Blue: > 200 };
+        static bool White(SKColor c) => c is { Red: > 220, Green: > 220, Blue: > 220 };
+
+        // JPEG 2000: its black half screened blue is blue (white before: the picture was missing), its white half white.
+        Assert.True(Blue(At(100, 250)), At(100, 250).ToString());
+        Assert.True(White(At(220, 250)), At(220, 250).ToString());
+        // The Type 3 glyph's "H" (about 43 × 43 pt from 400, 230), red screened blue: magenta strokes, not a dot.
+        var (magenta, columns) = (0, new HashSet<int>());
+        for (var x = 395; x < 450; x++)
+        {
+            for (var y = 232; y < 280; y++)
+            {
+                if (At(x, y) is { Red: > 200, Green: < 80, Blue: > 200 })
+                {
+                    magenta++;
+                    columns.Add(x);
+                }
+            }
+        }
+        Assert.True(magenta > 150, $"{magenta} magenta pixels");
+        Assert.True(columns.Max() - columns.Min() > 20, $"magenta from {columns.Min()} to {columns.Max()}");
+    }
+
     private static Sharp.PdfDictionary RgbPicture(Sharp.PdfDocument document, int width, int height, Func<int, (int R, int G, int B)> pixel)
     {
         var picture = new Sharp.PdfDictionary(document);

@@ -30,8 +30,9 @@
 //
 // - Tables (TableLayout): rows bound by spanning cells move to a page together, header rows repeat, and a table splits
 //   by its page break mode. A Word floating table (HTable.Float) is placed as a floating object instead, against the
-//   paragraph after it or the page, and the text after it goes around it; one longer than a column splits across
-//   pages, and one that must not overlap (w:tblOverlap never) goes below the floating tables in its way (see Float).
+//   paragraph after it or the page, and the text after it goes around it; one that runs past the column's bottom
+//   splits across pages as a table in the flow does (not measured in a Word PDF), and one that must not overlap
+//   (w:tblOverlap never) goes below the floating tables in its way (see Float).
 // - Paragraph spacing: in a Word document the larger of a paragraph's space after and the next one's space before
 //   goes between them (HDocument.CollapseParagraphSpacing); the model keeps both.
 // - Sections written vertically (HSection.TextFlow: Word tbRl / btLr, 한글 세로쓰기, ODF tb-rl pages): the body is laid
@@ -227,8 +228,10 @@ internal sealed class PageComposer
         /// The paragraph line it is, when that line may be laid out anew for a column of another width (no border, not
         /// 한글's stored line, not beside an object); see BalanceSized.
         /// </param>
+        /// <param name="Outline">The outline entry (index in _outline) of the heading whose first line it is, moved with it.</param>
         private sealed record Placed(int Column, float X, float Y, float Height, Action<PageContent, float, float> Draw,
-            Action<PageContent, float, float, bool>? Under = null, (HParagraph Paragraph, ParagraphBox Box, LineBox Line)? Source = null);
+            Action<PageContent, float, float, bool>? Under = null, (HParagraph Paragraph, ParagraphBox Box, LineBox Line)? Source = null,
+            int? Outline = null);
 
         /// <summary>The columns of the region being filled: from <see cref="_regionTop"/> down, side by side.</summary>
         private HColumns _columns = HColumns.Single;
@@ -291,9 +294,9 @@ internal sealed class PageComposer
 
         /// <summary>Puts something into the current column at the current position.</summary>
         private void Put(float x, float height, Action<PageContent, float, float> draw, Action<PageContent, float, float, bool>? under = null,
-            (HParagraph, ParagraphBox, LineBox)? source = null)
+            (HParagraph, ParagraphBox, LineBox)? source = null, int? outline = null)
         {
-            _placed.Add(new Placed(_column, x, _y, height, draw, under, source));
+            _placed.Add(new Placed(_column, x, _y, height, draw, under, source, outline));
             _empty = false;
             _columnEmpty = false;
         }
@@ -322,6 +325,15 @@ internal sealed class PageComposer
                 return;
             }
             var placed = balance && _columns.Count > 1 && !_columnBroken ? Balance(_placed) : _placed;
+            // A heading balancing moved: its outline entry (a PDF bookmark) goes with it.
+            if (Current.Turned is null && !ReferenceEquals(placed, _placed))
+            {
+                foreach (var item in placed)
+                {
+                    if (item.Outline is { } entry && entry < _outline.Count)
+                        _outline[entry] = _outline[entry] with { Top = item.Y };
+                }
+            }
             var page = Current.Body;
             // Paragraph borders and backgrounds first, under the text and tables; things come in their columns' order.
             var started = new HashSet<int>();
@@ -492,6 +504,8 @@ internal sealed class PageComposer
                         end++;
                     var lines = Lines(paragraph, box, line.Start, widths[column]);
                     var pending = gap;
+                    // The heading's outline entry goes with its first line, wherever that goes.
+                    var outline = item.Outline;
                     for (var k = 0; k < lines.Count;)
                     {
                         var piece = lines[k];
@@ -505,8 +519,8 @@ internal sealed class PageComposer
                             k = 0;
                             continue;
                         }
-                        result.Add(new Placed(column, 0, top, piece.Height, piece.Draw, null, (paragraph, box, piece)));
-                        (y, first, pending) = (top + piece.Height, false, 0);
+                        result.Add(new Placed(column, 0, top, piece.Height, piece.Draw, null, (paragraph, box, piece), outline));
+                        (y, first, pending, outline) = (top + piece.Height, false, 0, null);
                         k++;
                     }
                     u = end;
@@ -1162,8 +1176,12 @@ internal sealed class PageComposer
                 _y = Math.Max(_y, _regionTop + top);
             else if (!stored)
                 _y = Clear(_y, line.Height);
+            int? outline = null;
             if (first && paragraph.HeadingLevel > 0)
+            {
+                outline = _outline.Count;
                 _outline.Add(new OutlineEntry(Title(paragraph), _pages.Count - 1, Current.Turned is null ? _y : Current.Geometry.BodyTop, paragraph.HeadingLevel - 1));
+            }
             // An object placed against the paper or the page goes on the page of the line that holds it, as 한글 places
             // it; the paragraph's first line places the others.
             if (first && !_anchored.Remove(paragraph))
@@ -1187,7 +1205,7 @@ internal sealed class PageComposer
                 var height = line.Height;
                 under = (content, x, top, columnTop) => content.Draw(canvas => slice.Draw(canvas, x, top, height, columnTop));
             }
-            Put(0, line.Height, line.Draw, under, box.Border is null && !box.StoredLines && !line.Beside ? (paragraph, box, line) : null);
+            Put(0, line.Height, line.Draw, under, box.Border is null && !box.StoredLines && !line.Beside ? (paragraph, box, line) : null, outline);
             _row = along ? _row with { Bottom = Math.Max(_row.Bottom, _y + line.Height) } : (_pages.Count, _column, _y, _y + line.Height);
             _y = _row.Bottom;
             if (box.Border is not null)
@@ -1446,10 +1464,11 @@ internal sealed class PageComposer
         /// ahead into <paramref name="next"/>, so it keeps its list number), never above the text before it, or against
         /// the page. Text after it goes around it (as around a picture wrapped square). With w:tblOverlap never it goes
         /// down below the floating tables it would overlap. One that moves with the text and would run past the
-        /// column's bottom goes to the next column with its paragraph when it fits in one; a longer one is split as
-        /// Word splits it: the rows that fit stay, the rest goes on at the top of the next columns (FloatParts), its
-        /// header rows repeated, and the text there goes around it too. False for a table against the page taller than a
-        /// column, which stays in the flow (split by its rows).
+        /// column's bottom is split as Word splits it: the rows that fit stay, the rest goes on at the top of the next
+        /// columns (FloatParts), its header rows repeated, and the text there goes around it too. It goes to the next
+        /// column whole, with its paragraph, only when not even its first rows fit (or a row that may split, part of it)
+        /// or it must not split (HTablePageBreak.None). False for a table against the page taller than a column, which
+        /// stays in the flow (split by its rows).
         /// </summary>
         private bool Float(HTable table, HAnchor anchor, TableBox box, List<HBlock> blocks, int index, ref object? next)
         {
@@ -1477,7 +1496,8 @@ internal sealed class PageComposer
                 }
                 if (!anchor.AllowOverlap)
                     area = Unlapped(area);
-                if (!withText || _columnEmpty || area.Bottom <= Bottom + Epsilon || height > ColumnHeight + Epsilon)
+                if (!withText || _columnEmpty || area.Bottom <= Bottom + Epsilon || height > ColumnHeight + Epsilon
+                    || box.PageBreak != HTablePageBreak.None && Starts(box, Bottom - area.Top))
                     break;
                 NextColumn();
                 _inStep = false;
@@ -1504,6 +1524,20 @@ internal sealed class PageComposer
                     AddNote(_numbered[_numberedChecked]);
             }
             return true;
+        }
+
+        /// <summary>
+        /// The first part of a split floating table holds something in <paramref name="room"/>: its first rows bound
+        /// together, or a part of its first row where that may split (as FloatPart splits it).
+        /// </summary>
+        private static bool Starts(TableBox box, float room)
+        {
+            if (room <= Epsilon || box.Groups() is not [var (first, count), ..])
+                return false;
+            var rows = box.Rows.Skip(first).Take(count).ToList();
+            if (rows.Sum(r => r.Height) <= room + Epsilon)
+                return true;
+            return rows is [{ CantSplit: false } row] && box.PageBreak is not HTablePageBreak.Cell && TableLayout.Split(row, room) is not null;
         }
 
         /// <summary>

@@ -725,6 +725,35 @@ public sealed class VerticalTextTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void A_picture_wider_than_the_em_stands_in_the_middle_of_its_vertical_line()
+    {
+        // A 40 pt wide picture in a line of 10 pt Hangul written vertically: centred across on the characters' em box
+        // middle, as the upright characters are (it stood on their baseline and reached 16 pt past them), and inside its
+        // cell; in a cell and in a section written vertically.
+        NeedFonts();
+        foreach (var inCell in new[] { true, false })
+        {
+            var document = new HDocument();
+            var section = Section(inCell ? HTextFlow.Horizontal : HTextFlow.Vertical);
+            var paragraph = Plain(new HText("가나", Korean()), new HImage(Red(40, 20)) { Width = 4000, Height = 2000 }, new HText("다", Korean()));
+            section.Blocks.Add(inCell ? OneCell(HTextFlow.Vertical, paragraph) : paragraph);
+            document.Sections.Add(section);
+
+            var page = new PageComposer(new FontResolver(_fonts), _shaper).Compose(document, Token).Pages[0];
+
+            var red = RedArea(page);
+            Assert.InRange(red.Width, 39, 41);
+            var middles = Middles(page);
+            var axis = middles.Single(m => m.Character == '가').Middle.X;
+            Assert.Equal(axis, middles.Single(m => m.Character == '다').Middle.X, 0.1f);
+            Assert.True(Math.Abs(axis - (red.Left + red.Right) / 2f) <= 1, $"{(inCell ? "cell" : "section")}: axis {axis}, picture {red}");
+            // The cell (100 pt from the left margin) holds it.
+            if (inCell)
+                Assert.True(red.Left >= 72 && red.Right <= 172, $"{red}");
+        }
+    }
+
+    [Fact]
     public void A_hangul_note_written_vertically_keeps_its_direction_and_is_not_left_out()
     {
         var folder = fx.NewFolder();

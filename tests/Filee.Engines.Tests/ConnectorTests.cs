@@ -1,9 +1,10 @@
 // Bent and curved connectors in the document model (HShapeKind.Path, HGeometry.Path): Word's connector presets
-// (wps bentConnector / curvedConnector with adjust values, VML types 33 to 40) and open free-form lines, ODF
-// draw:connector (svg:d, or its draw:type without one), draw:path and draw:polyline, 한글 hp:connectLine STROKE / ARC,
-// RTF shape types 33 to 40 and open free-forms, and a slide's p:cxnSp, all built in code, are read as paths with their
-// arrowheads; a model built in code goes through the DOCX, RTF, ODT, HWPX and HWP writers and back; the renderer draws
-// the path.
+// (wps bentConnector / curvedConnector with adjust values, VML types 33 to 40) and free-form lines and shapes, ODF
+// draw:connector (svg:d, or its draw:type without one), draw:path, draw:polyline and draw:polygon, 한글
+// hp:connectLine STROKE / ARC and hp:polygon, RTF shape types 33 to 40 and free-forms, and a slide's p:cxnSp with its
+// arrowheads, all built in code, are read as paths (closed ones filled); a model built in code goes through the DOCX,
+// RTF, ODT, HWPX and HWP writers and back; connector presets go back to DOCX as presets; the renderer draws the path,
+// and the slide reader draws ODF connectors along their route.
 
 using System.IO.Compression;
 using System.Text;
@@ -13,6 +14,8 @@ using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Hwp.Hwpx.Odt;
+using Filee.Engines.Odf.Draw;
+using Filee.Engines.Slides;
 using Filee.Engines.Typesetting;
 using SkiaSharp;
 using static Filee.Engines.Tests.DocxBuilder;
@@ -216,6 +219,7 @@ public class ConnectorTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var elbow = Shape("<a:prstGeom prst=\"bentConnector2\"><a:avLst/></a:prstGeom>", " flipV=\"1\"");
         var free = Shape("<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l=\"l\" t=\"t\" r=\"r\" b=\"b\"/><a:pathLst><a:path w=\"100\" h=\"100\" fill=\"none\">" +
                          "<a:moveTo><a:pt x=\"0\" y=\"0\"/></a:moveTo><a:lnTo><a:pt x=\"50\" y=\"100\"/></a:lnTo><a:lnTo><a:pt x=\"100\" y=\"0\"/></a:lnTo></a:path></a:pathLst></a:custGeom>");
+        // Closed round a single line: no inside, left out.
         var closed = Shape("<a:custGeom><a:pathLst><a:path w=\"100\" h=\"100\"><a:moveTo><a:pt x=\"0\" y=\"0\"/></a:moveTo><a:lnTo><a:pt x=\"100\" y=\"0\"/></a:lnTo><a:close/></a:path></a:pathLst></a:custGeom>");
         var builder = new DocxBuilder();
         builder.Paragraph(P(
@@ -227,10 +231,17 @@ public class ConnectorTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var shapes = Shapes(DocxReader.Read(path, Path.Combine(Path.GetDirectoryName(path)!, "media")));
 
-        // The closed free-form is left out; the others are open paths in a 14400 × 7200 box.
+        // The line closed on itself is left out; the others are open paths in a 14400 × 7200 box.
         Assert.Equal(5, shapes.Count);
         Assert.All(shapes, s => Assert.Equal(HShapeKind.Path, s.Kind));
         Assert.All(shapes, s => Assert.Null(s.Transform));
+        Assert.All(shapes, s => Assert.False(s.Geometry!.Path!.Closed));
+        // The presets are kept with their adjust values and flips; the free-form has none.
+        var preset = shapes[0].Geometry!.Connector!;
+        Assert.Equal(("bentConnector3", true, false), (preset.Preset, preset.FlipHorizontal, preset.FlipVertical));
+        Assert.Equal([new HAdjustValue("adj1", 25000)], preset.Adjust);
+        Assert.Null(shapes[3].Geometry!.Connector);
+        Assert.Equal(("bentConnector3", true, 25000L), (shapes[4].Geometry!.Connector!.Preset, shapes[4].Geometry!.Connector!.FlipHorizontal, shapes[4].Geometry!.Connector!.Adjust[0].Value));
         // bentConnector3 at a quarter, mirrored: from the top right, the bend a quarter in from it.
         AssertPoints(shapes[0], (14400, 0), (10800, 0), (10800, 7200), (0, 7200));
         Assert.Equal(new HArrow(HArrowKind.Oval), shapes[0].Head);
@@ -261,7 +272,7 @@ public class ConnectorTests(EngineFixture fx) : IClassFixture<EngineFixture>
                    "<draw:connector draw:style-name=\"gr1\" text:anchor-type=\"paragraph\" svg:x1=\"5cm\" svg:y1=\"7cm\" svg:x2=\"1cm\" svg:y2=\"9cm\"/>" +
                    "<draw:polyline draw:style-name=\"gr1\" text:anchor-type=\"paragraph\" svg:x=\"1cm\" svg:y=\"10cm\" svg:width=\"4cm\" svg:height=\"2cm\" svg:viewBox=\"0 0 4000 2000\" draw:points=\"0,0 2000,2000 4000,0\"/>" +
                    "<draw:path draw:style-name=\"gr1\" text:anchor-type=\"paragraph\" svg:x=\"1cm\" svg:y=\"13cm\" svg:width=\"4cm\" svg:height=\"2cm\" svg:viewBox=\"0 0 4000 2000\" svg:d=\"M0 2000 C1000 0 3000 0 4000 2000\"/>" +
-                   // A closed path has an inside the model doesn't fill: left out.
+                   // Closed: a filled shape without markers.
                    "<draw:path draw:style-name=\"gr1\" text:anchor-type=\"paragraph\" svg:x=\"1cm\" svg:y=\"16cm\" svg:width=\"4cm\" svg:height=\"2cm\" svg:viewBox=\"0 0 4000 2000\" svg:d=\"M0 0 L4000 0 L4000 2000 Z\"/>" +
                    "text</text:p>",
         };
@@ -269,9 +280,11 @@ public class ConnectorTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var shapes = Shapes(OdtReader.Read(path, Path.Combine(Path.GetDirectoryName(path)!, "media")));
 
-        Assert.Equal(5, shapes.Count);
+        Assert.Equal(6, shapes.Count);
         Assert.All(shapes, s => Assert.Equal(HShapeKind.Path, s.Kind));
-        Assert.All(shapes, s => Assert.Equal(HArrowKind.Triangle, s.Tail?.Kind));
+        Assert.All(shapes[..5], s => Assert.Equal(HArrowKind.Triangle, s.Tail?.Kind));
+        Assert.True(shapes[5].Geometry!.Path!.Closed);
+        Assert.Null(shapes[5].Tail);
         const int Cm = 2835; // 1 cm in model units, rounded
         AssertNear(shapes[0], (0, 0), (2 * Cm, 0), (2 * Cm, 2 * Cm), (4 * Cm, 2 * Cm));
         Assert.InRange(shapes[0].Anchor!.HorizontalOffset, Cm - 2, Cm + 2);
@@ -282,6 +295,7 @@ public class ConnectorTests(EngineFixture fx) : IClassFixture<EngineFixture>
         AssertNear(shapes[3], (0, 0), (2 * Cm, 2 * Cm), (4 * Cm, 0));
         Assert.InRange(shapes[3].Anchor!.VerticalOffset, 10 * Cm - 4, 10 * Cm + 4);
         AssertNear(shapes[4], (0, 2 * Cm), (Cm, 0), (3 * Cm, 0), (4 * Cm, 2 * Cm));
+        AssertNear(shapes[5], (0, 0), (4 * Cm, 0), (4 * Cm, 2 * Cm));
 
         static void AssertNear(HShape shape, params (int X, int Y)[] expected)
         {
@@ -320,7 +334,10 @@ public class ConnectorTests(EngineFixture fx) : IClassFixture<EngineFixture>
             var bent = Connector("STROKE_ONEWAY", "<hp:point x=\"0\" y=\"0\" type=\"3\"/><hp:point x=\"10000\" y=\"0\" type=\"2\"/>" +
                                                   "<hp:point x=\"10000\" y=\"8000\" type=\"2\"/><hp:point x=\"20000\" y=\"8000\" type=\"26\"/>");
             var curved = Connector("ARC_ONEWAY", "<hp:point x=\"10000\" y=\"0\" type=\"2\"/><hp:point x=\"10000\" y=\"8000\" type=\"2\"/>");
-            var changed = xml.Replace(line, bent + curved, StringComparison.Ordinal);
+            // The ends among the points under other type numbers: still the ends, not points between.
+            var numbered = Connector("ARC_ONEWAY", "<hp:point x=\"0\" y=\"0\" type=\"1\"/><hp:point x=\"10000\" y=\"0\" type=\"2\"/>" +
+                                                   "<hp:point x=\"10000\" y=\"8000\" type=\"2\"/><hp:point x=\"20000\" y=\"8000\" type=\"0\"/>");
+            var changed = xml.Replace(line, bent + curved + numbered, StringComparison.Ordinal);
             Assert.NotEqual(xml, changed);
             entry.Delete();
             using var writer = new StreamWriter(zip.CreateEntry("Contents/section0.xml").Open(), new UTF8Encoding(false));
@@ -329,12 +346,14 @@ public class ConnectorTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var shapes = Shapes(HwpxReader.Read(path, Path.Combine(folder, "media")));
 
-        Assert.Equal(2, shapes.Count);
+        Assert.Equal(3, shapes.Count);
         Assert.All(shapes, s => Assert.Equal(new HArrow(HArrowKind.Triangle), s.Tail));
         AssertPoints(shapes[0], (0, 0), (10000, 0), (10000, 8000), (20000, 8000));
         Assert.Equal("LLL", Measured(shapes[0]).Pieces);
         AssertPoints(shapes[1], (0, 0), (10000, 0), (10000, 8000), (20000, 8000));
         Assert.Equal("C", Measured(shapes[1]).Pieces);
+        AssertPoints(shapes[2], (0, 0), (10000, 0), (10000, 8000), (20000, 8000));
+        Assert.Equal("C", Measured(shapes[2]).Pieces);
     }
 
     [Fact]
@@ -349,15 +368,20 @@ public class ConnectorTests(EngineFixture fx) : IClassFixture<EngineFixture>
                   Shape(Property("shapeType", "38")) +
                   Shape(Property("shapeType", "0") + Property("geoRight", "100") + Property("geoBottom", "100") +
                         Property("pVerticies", "8;3;(0,0);(50,100);(100,0)") + Property("pSegmentInfo", "2;4;0x4000;0x0002;0x8000;0x8000")) +
-                  // Closed: not drawn by the model (read from its copy, as before).
-                  Shape(Property("shapeType", "0") + Property("pVerticies", "8;3;(0,0);(50,100);(100,0)") + Property("pSegmentInfo", "2;4;16384;2;24577;32768")) +
+                  // Closed: a filled shape (Word's white by default).
+                  Shape(Property("shapeType", "0") + Property("geoRight", "100") + Property("geoBottom", "100") +
+                        Property("pVerticies", "8;3;(0,0);(50,100);(100,0)") + Property("pSegmentInfo", "2;4;16384;2;24577;32768")) +
                   "after\\par}";
 
         var paragraph = RtfReader.Read(Encoding.ASCII.GetBytes(rtf), fx.NewFolder(), DocumentLimits.Default).Sections[0].Blocks.OfType<HParagraph>().First();
 
         var shapes = paragraph.Inlines.OfType<HShape>().ToList();
-        Assert.Equal(3, shapes.Count);
+        Assert.Equal(4, shapes.Count);
         Assert.All(shapes, s => Assert.Equal(HShapeKind.Path, s.Kind));
+        Assert.Equal(("bentConnector3", true), (shapes[0].Geometry!.Connector!.Preset, shapes[0].Geometry!.Connector!.FlipHorizontal));
+        Assert.True(shapes[3].Geometry!.Path!.Closed);
+        Assert.Equal("#FFFFFF", shapes[3].Fill);
+        AssertPoints(shapes[3], (0, 0), (7200, 7200), (14400, 0));
         // 2880 × 1440 twips = 14400 × 7200 units; the bend a quarter in from the right after mirroring.
         AssertPoints(shapes[0], (14400, 0), (10800, 0), (10800, 7200), (0, 7200));
         Assert.Equal(new HArrow(HArrowKind.Triangle), shapes[0].Tail);
@@ -416,6 +440,234 @@ public class ConnectorTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("LLL", Measured(routed).Pieces);
     }
 
+    // ───────────────────────── Connector presets and closed paths ─────────────────────────
+
+    /// <summary>A triangle, closed.</summary>
+    private static readonly HPath Triangle = new(Pt(0, 8000), [new(Pt(10000, 0)), new(Pt(20000, 8000))], Closed: true);
+
+    /// <summary>Two cubics round and back to the start, closed.</summary>
+    private static readonly HPath Drop = new(Pt(10000, 0),
+        [new(Pt(10000, 8000), Pt(20000, 0), Pt(20000, 8000)), new(Pt(10000, 0), Pt(0, 8000), Pt(0, 0))], Closed: true);
+
+    private static HShape[] ClosedShapes()
+    {
+        var shapes = new[] { Open(Triangle, 20000, 8000, null, null), Open(Drop, 20000, 8000, null, null, offset: 10000) };
+        foreach (var shape in shapes)
+            shape.Fill = "#C00000";
+        return shapes;
+    }
+
+    private static void AssertClosed(HShape expected, HShape read, string? pieces = null)
+    {
+        Assert.True(read.Geometry?.Path?.Closed, "closed");
+        Assert.Equal(expected.Fill, read.Fill, StringComparer.OrdinalIgnoreCase);
+        Assert.Null(read.Head);
+        Assert.Null(read.Tail);
+        if (pieces is null)
+        {
+            AssertPath(expected, read);
+            return;
+        }
+        // Curves flattened: the pieces as given, the corners on the expected outline's corners where they are kept.
+        Assert.Equal(pieces, Measured(read).Pieces);
+    }
+
+    [Fact]
+    public void Closed_paths_go_through_every_writer_filled_and_come_back_closed()
+    {
+        var folder = fx.NewFolder();
+        var shapes = ClosedShapes();
+
+        var docx = Path.Combine(folder, "closed.docx");
+        DocxWriter.Write(Model(shapes), docx);
+        DocxAssert.ValidPackage(docx);
+        XNamespace a = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        Assert.Equal(2, DocxAssert.Body(docx).Descendants(a + "close").Count());
+        var fromDocx = Shapes(DocxAssert.ReadBack(docx));
+        Assert.Equal(2, fromDocx.Count);
+        AssertClosed(shapes[0], fromDocx[0]);
+        AssertClosed(shapes[1], fromDocx[1]);
+
+        var rtf = Path.Combine(folder, "closed.rtf");
+        RtfWriter.Write(Model(shapes), rtf, TestContext.Current.CancellationToken);
+        Assert.Contains("{\\sn pSegmentInfo}{\\sv 2;4;16384;2;24577;32768}", File.ReadAllText(rtf), StringComparison.Ordinal);
+        var fromRtf = Shapes(RtfReader.Read(File.ReadAllBytes(rtf), Path.Combine(folder, "media"), DocumentLimits.Default));
+        Assert.Equal(2, fromRtf.Count);
+        AssertClosed(shapes[0], fromRtf[0]);
+        AssertClosed(shapes[1], fromRtf[1]);
+
+        var odt = Path.Combine(folder, "closed.odt");
+        OdtWriter.Write(Model(shapes), odt, TestContext.Current.CancellationToken);
+        var fromOdt = Shapes(OdtReader.Read(odt, Path.Combine(folder, "media2")));
+        Assert.Equal(2, fromOdt.Count);
+        AssertClosed(shapes[0], fromOdt[0]);
+        AssertClosed(shapes[1], fromOdt[1]);
+
+        // 한글: a polygon, the curves flattened; HWP the same through its binary.
+        var hwpx = Path.Combine(folder, "closed.hwpx");
+        HwpxWriter.Write(Model(shapes), hwpx, cancellationToken: TestContext.Current.CancellationToken);
+        using (var zip = ZipFile.OpenRead(hwpx))
+        {
+            using var reader = new StreamReader(zip.GetEntry("Contents/section0.xml")!.Open());
+            Assert.Equal(2, System.Text.RegularExpressions.Regex.Count(reader.ReadToEnd(), "<hp:polygon "));
+        }
+        void Check(List<HShape> read)
+        {
+            Assert.Equal(2, read.Count);
+            AssertClosed(shapes[0], read[0]);
+            // Two cubics of 8 pieces each, the last corner the start again: 15 pieces and the close.
+            AssertClosed(shapes[1], read[1], new string('L', 2 * OpenPaths.FlattenSteps - 1));
+        }
+        Check(Shapes(HwpxReader.Read(hwpx, Path.Combine(folder, "a"))));
+        var hwp = Path.ChangeExtension(hwpx, ".hwp");
+        HwpxToHwp.Write(hwpx, hwp);
+        Check(Shapes(HwpReader.Read(hwp, Path.Combine(folder, "b"))));
+    }
+
+    [Fact]
+    public void Word_closed_free_forms_are_filled_paths()
+    {
+        const string Horizontal = "<wp:positionH relativeFrom=\"page\"><wp:posOffset>914400</wp:posOffset></wp:positionH>";
+        const string Vertical = "<wp:positionV relativeFrom=\"page\"><wp:posOffset>914400</wp:posOffset></wp:positionV>";
+        var triangle = "<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm flipV=\"1\"><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>" +
+                       "<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l=\"l\" t=\"t\" r=\"r\" b=\"b\"/><a:pathLst><a:path w=\"100\" h=\"100\">" +
+                       "<a:moveTo><a:pt x=\"0\" y=\"100\"/></a:moveTo><a:lnTo><a:pt x=\"50\" y=\"0\"/></a:lnTo><a:lnTo><a:pt x=\"100\" y=\"100\"/></a:lnTo><a:close/></a:path></a:pathLst></a:custGeom>" +
+                       "<a:solidFill><a:srgbClr val=\"2E75B6\"/></a:solidFill><a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill><a:tailEnd type=\"triangle\"/></a:ln></wps:spPr><wps:bodyPr/></wps:wsp>";
+        // Two contours (a ring): not one path, left out.
+        var ring = "<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"914400\" cy=\"914400\"/></a:xfrm>" +
+                   "<a:custGeom><a:pathLst><a:path w=\"100\" h=\"100\"><a:moveTo><a:pt x=\"0\" y=\"0\"/></a:moveTo><a:lnTo><a:pt x=\"100\" y=\"0\"/></a:lnTo><a:lnTo><a:pt x=\"100\" y=\"100\"/></a:lnTo><a:close/>" +
+                   "<a:moveTo><a:pt x=\"25\" y=\"25\"/></a:moveTo><a:lnTo><a:pt x=\"75\" y=\"25\"/></a:lnTo><a:lnTo><a:pt x=\"75\" y=\"75\"/></a:lnTo><a:close/></a:path></a:pathLst></a:custGeom>" +
+                   "<a:solidFill><a:srgbClr val=\"2E75B6\"/></a:solidFill></wps:spPr><wps:bodyPr/></wps:wsp>";
+        var builder = new DocxBuilder();
+        builder.Paragraph(P(Anchor(ShapeUri, triangle, 1828800, 914400, Horizontal, Vertical) + Anchor(ShapeUri, ring, 914400, 914400, Horizontal, Vertical) + R("text")));
+        var path = builder.Save(Path.Combine(fx.NewFolder(), "closed.docx"));
+
+        var shape = Assert.Single(Shapes(DocxReader.Read(path, Path.Combine(Path.GetDirectoryName(path)!, "media"))));
+
+        Assert.Equal(HShapeKind.Path, shape.Kind);
+        Assert.True(shape.Geometry!.Path!.Closed);
+        Assert.Equal("#2E75B6", shape.Fill, StringComparer.OrdinalIgnoreCase);
+        // A closed outline has no ends: the arrowhead is dropped. Upside down: the apex at the bottom.
+        Assert.Null(shape.Tail);
+        AssertPoints(shape, (0, 0), (7200, 7200), (14400, 0));
+    }
+
+    [Fact]
+    public void Connector_presets_from_docx_and_pptx_are_written_back_to_docx_as_presets()
+    {
+        const string Horizontal = "<wp:positionH relativeFrom=\"page\"><wp:posOffset>914400</wp:posOffset></wp:positionH>";
+        const string Vertical = "<wp:positionV relativeFrom=\"page\"><wp:posOffset>914400</wp:posOffset></wp:positionV>";
+        static string Shape(string geometry, string flip = "", string ends = "") =>
+            $"<wps:wsp><wps:cNvCnPr/><wps:spPr><a:xfrm{flip}><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>{geometry}" +
+            $"<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill>{ends}</a:ln></wps:spPr><wps:bodyPr/></wps:wsp>";
+        var bent = Shape("<a:prstGeom prst=\"bentConnector3\"><a:avLst><a:gd name=\"adj1\" fmla=\"val 25000\"/></a:avLst></a:prstGeom>", " flipH=\"1\"",
+            "<a:headEnd type=\"oval\"/><a:tailEnd type=\"triangle\" w=\"lg\"/>");
+        var curved = Shape("<a:prstGeom prst=\"curvedConnector4\"><a:avLst><a:gd name=\"adj1\" fmla=\"val 30000\"/><a:gd name=\"adj2\" fmla=\"val 70000\"/></a:avLst></a:prstGeom>",
+            " flipV=\"1\"", "<a:tailEnd type=\"stealth\"/>");
+        var builder = new DocxBuilder();
+        builder.Paragraph(P(
+            Anchor(ShapeUri, bent, 1828800, 914400, Horizontal, Vertical) + Anchor(ShapeUri, curved, 1828800, 914400, Horizontal, Vertical) +
+            "<w:r><w:pict><v:shape type=\"#_x0000_t34\" adj=\"5400\" style=\"position:absolute;margin-left:10pt;margin-top:10pt;width:144pt;height:72pt;flip:x\" o:connectortype=\"elbow\" " +
+            "xmlns:o=\"urn:schemas-microsoft-com:office:office\"><v:stroke endarrow=\"block\"/></v:shape></w:pict></w:r>" + R("text")));
+        var folder = fx.NewFolder();
+        var model = DocxReader.Read(builder.Save(Path.Combine(folder, "word.docx")), Path.Combine(folder, "media"));
+        var first = Shapes(model);
+        Assert.Equal(3, first.Count);
+
+        var again = Path.Combine(folder, "again.docx");
+        DocxWriter.Write(model, again);
+
+        DocxAssert.ValidPackage(again);
+        XNamespace a = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        XNamespace wps = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape";
+        var body = DocxAssert.Body(again);
+        Assert.Empty(body.Descendants(a + "custGeom"));
+        Assert.Equal(3, body.Descendants(wps + "cNvCnPr").Count());
+        var presets = body.Descendants(a + "prstGeom").Select(p =>
+            $"{(string?)p.Attribute("prst")} {string.Join(",", p.Descendants(a + "gd").Select(g => $"{(string?)g.Attribute("name")}={(string?)g.Attribute("fmla")}"))}").ToList();
+        // The VML connector's adj 5400 of 21600: a quarter, as DrawingML counts it.
+        Assert.Equal(["bentConnector3 adj1=val 25000", "curvedConnector4 adj1=val 30000,adj2=val 70000", "bentConnector3 adj1=val 25000"], presets);
+        var flips = body.Descendants(wps + "spPr").Select(p => p.Element(a + "xfrm")!).Select(x => ((string?)x.Attribute("flipH"), (string?)x.Attribute("flipV"))).ToList();
+        Assert.Equal([("1", null), (null, "1"), ("1", null)], flips);
+        var read = Shapes(DocxAssert.ReadBack(again));
+        Assert.Equal(3, read.Count);
+        for (var i = 0; i < 3; i++)
+        {
+            AssertPath(first[i], read[i]);
+            Assert.Equal(first[i].Geometry!.Connector!.Preset, read[i].Geometry!.Connector!.Preset);
+        }
+
+        // A slide's connectors (p:cxnSp, and p:sp with a connector preset) and line, with their arrowheads.
+        var pptx = new PptxBuilder();
+        pptx.Slide(
+            "<p:cxnSp><p:nvCxnSpPr><p:cNvPr id=\"5\" name=\"Elbow\"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr>" +
+            "<a:xfrm flipH=\"1\"><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>" +
+            "<a:prstGeom prst=\"bentConnector3\"><a:avLst><a:gd name=\"adj1\" fmla=\"val 25000\"/></a:avLst></a:prstGeom>" +
+            "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill><a:headEnd type=\"diamond\" w=\"sm\" len=\"sm\"/><a:tailEnd type=\"triangle\" w=\"lg\" len=\"lg\"/></a:ln></p:spPr></p:cxnSp>" +
+            "<p:sp><p:nvSpPr><p:cNvPr id=\"6\" name=\"Curve\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>" +
+            "<a:xfrm><a:off x=\"914400\" y=\"2743200\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm><a:prstGeom prst=\"curvedConnector3\"><a:avLst/></a:prstGeom>" +
+            "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill><a:tailEnd type=\"arrow\"/></a:ln></p:spPr></p:sp>" +
+            "<p:sp><p:nvSpPr><p:cNvPr id=\"7\" name=\"Line\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>" +
+            "<a:xfrm><a:off x=\"914400\" y=\"4572000\"/><a:ext cx=\"1828800\" cy=\"0\"/></a:xfrm><a:prstGeom prst=\"line\"><a:avLst/></a:prstGeom>" +
+            "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill><a:headEnd type=\"oval\"/><a:tailEnd type=\"stealth\"/></a:ln></p:spPr></p:sp>");
+        var slides = Filee.Engines.Hwp.Hwpx.Pptx.PptxReader.Read(pptx.Save(Path.Combine(folder, "deck.pptx")), Path.Combine(folder, "media3"));
+        var drawn = slides.Sections.SelectMany(s => s.Blocks).OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HShape>()
+            .Where(s => s.Kind is HShapeKind.Path or HShapeKind.Line).ToList();
+        Assert.Equal(3, drawn.Count);
+        Assert.Equal((new HArrow(HArrowKind.Diamond, HArrowSize.Small, HArrowSize.Small), new HArrow(HArrowKind.Triangle, HArrowSize.Large, HArrowSize.Large)),
+            (drawn[0].Head, drawn[0].Tail));
+        Assert.Equal(("curvedConnector3", null, new HArrow(HArrowKind.Open)), (drawn[1].Geometry?.Connector?.Preset, drawn[1].Head, drawn[1].Tail));
+        Assert.Equal((HShapeKind.Line, new HArrow(HArrowKind.Oval), new HArrow(HArrowKind.Stealth)), (drawn[2].Kind, drawn[2].Head, drawn[2].Tail));
+
+        var fromSlides = Path.Combine(folder, "slides.docx");
+        DocxWriter.Write(slides, fromSlides);
+        DocxAssert.ValidPackage(fromSlides);
+        var slideBody = DocxAssert.Body(fromSlides);
+        Assert.Equal(["bentConnector3", "curvedConnector3"], slideBody.Descendants(a + "prstGeom").Select(p => (string?)p.Attribute("prst"))
+            .Where(p => p is not null && p.Contains("Connector", StringComparison.Ordinal)).ToList());
+        Assert.Equal(3, slideBody.Descendants(a + "tailEnd").Count());
+    }
+
+    [Fact]
+    public void The_slide_reader_draws_odf_connectors_along_their_route()
+    {
+        // A drawing with three connectors 8 × 4 cm: along its svg:d (in 1/100 mm where it is), the standard route
+        // without one (right angles turning halfway), and a curve.
+        var builder = new OdpBuilder
+        {
+            Drawing = true,
+            ContentStyles = OdpBuilder.GraphicStyle("c", "draw:stroke=\"solid\" svg:stroke-color=\"#000000\" svg:stroke-width=\"0.1cm\" draw:fill=\"none\""),
+            Pages = OdpBuilder.Page(
+                "<draw:connector draw:style-name=\"c\" svg:x1=\"1cm\" svg:y1=\"1cm\" svg:x2=\"9cm\" svg:y2=\"5cm\" svg:d=\"M1000 1000h2000v4000h6000\"/>" +
+                "<draw:connector draw:style-name=\"c\" svg:x1=\"1cm\" svg:y1=\"7cm\" svg:x2=\"9cm\" svg:y2=\"11cm\"/>" +
+                "<draw:connector draw:style-name=\"c\" draw:type=\"curve\" svg:x1=\"1cm\" svg:y1=\"13cm\" svg:x2=\"9cm\" svg:y2=\"17cm\"/>" +
+                "<draw:connector draw:style-name=\"c\" draw:type=\"line\" svg:x1=\"1cm\" svg:y1=\"19cm\" svg:x2=\"9cm\" svg:y2=\"23cm\"/>"),
+        };
+        var path = builder.Save(Path.Combine(fx.NewFolder(), "connectors.odg"));
+
+        var deck = OdfDrawReader.Read(path, cancellationToken: TestContext.Current.CancellationToken);
+
+        var shapes = Assert.Single(deck.Slides).Elements.Cast<SlideShape>().ToList();
+        Assert.Equal(4, shapes.Count);
+        const float Cm = 72 / 2.54f;
+        Assert.All(shapes, s => Assert.InRange(s.Bounds.Width, 8 * Cm - 0.5f, 8 * Cm + 0.5f));
+        Assert.Equal(4, shapes[0].Paths[0].Path.PointCount);
+        Assert.Equal(4, shapes[1].Paths[0].Path.PointCount);
+        Assert.True(shapes[2].Paths[0].Path.SegmentMasks.HasFlag(SKPathSegmentMask.Cubic));
+        Assert.Equal(2, shapes[3].Paths[0].Path.PointCount);
+
+        using var picture = SlideOutput.ToBitmaps(deck, 72, [0], TestContext.Current.CancellationToken).Single();
+        bool Dark(float x, float y) => picture.GetPixel((int)Math.Round(x * Cm), (int)Math.Round(y * Cm)).Red < 128;
+        // svg:d: along the top to 3 cm, down, along the bottom; not the straight line from end to end.
+        Assert.True(Dark(2, 1) && Dark(3, 3) && Dark(6, 5));
+        Assert.False(Dark(5, 3));
+        // Standard: the bend halfway, at 5 cm.
+        Assert.True(Dark(3, 7) && Dark(5, 9) && Dark(7, 11));
+        Assert.False(Dark(3, 8));
+        // The straight one still is.
+        Assert.True(Dark(5, 21));
+    }
+
     // ───────────────────────── Drawing ─────────────────────────
 
     [Fact]
@@ -436,5 +688,22 @@ public class ConnectorTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.False(Dark(200, 140));
         // The arrowhead at the end (6 pt across: 3 × 2 pt), 1 pt from its back.
         Assert.True(Dark(295, 180 - 2.2f) && Dark(295, 180 + 2.2f));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void The_renderer_fills_a_closed_free_form_and_leaves_an_open_one_empty(bool closed)
+    {
+        // A triangle 200 × 80 pt from (100, 100) down to (200, 180), filled black: inside only when the path is closed.
+        var shape = Open(new HPath(Pt(0, 0), [new(Pt(10000, 8000)), new(Pt(20000, 0))], closed), 20000, 8000, null, null);
+        shape.Fill = "#000000";
+        const int Scale = 4;
+        using var page = SKBitmap.Decode(FileeRenderer.ToImages(Model(shape), 72 * Scale, cancellationToken: TestContext.Current.CancellationToken).First());
+        bool Dark(float x, float y) => page.GetPixel((int)(x * Scale), (int)(y * Scale)).Red < 128;
+
+        Assert.Equal(closed, Dark(200, 120));
+        // Outside the triangle either way.
+        Assert.False(Dark(130, 160));
     }
 }

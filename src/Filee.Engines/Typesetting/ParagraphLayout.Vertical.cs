@@ -3,7 +3,11 @@
 //
 // - Objects laid out like characters (pictures, shapes, text boxes) stand upright on the page, as Word and 한글 keep
 //   them: on the line their height runs along it and their width across it, and they are drawn turned back a quarter
-//   about their middle. Equations lie with the text.
+//   about their middle. Equations lie with the text. In East Asian vertical and stacked text they stand in the middle
+//   of the line, as its upright characters do (centred on the em box's middle of the line's largest text, the
+//   paragraph mark's on a line without text), so one wider than the em reaches out on both sides of the characters and
+//   the line grows on both sides to hold it, inside its cell or text box; in text turned as a whole (Word btLr) they
+//   stand on the baseline like the turned text. Not compared with a Word or 한글 PDF.
 // - Numbers set across (縦中横, see VerticalText): in East Asian vertical text two or three ASCII digits on their own,
 //   and in vertical text a run the document marks so (HCharLayout.Across), take one em along the line, their digits
 //   centred in it (VerticalText squeezes them to the em where they are wider). No auto-spacing goes between them and the
@@ -102,6 +106,31 @@ internal sealed partial class ParagraphLayouter
         }
         if (last >= 0)
             advances[last] += em - sum;
+    }
+
+    /// <summary>
+    /// In East Asian vertical and stacked text, the line's upright objects (not equations, not an equation's piece)
+    /// centred across the line on the em box's middle of its largest text (the paragraph mark's on a line without text):
+    /// their height above the baseline and depth below it, which may be less than 0, made so.
+    /// </summary>
+    private void CentreUpright(List<Part> parts, TextStyle mark, ParagraphText source)
+    {
+        if (TextFlow is not (HTextFlow.Vertical or HTextFlow.Stacked) || !parts.Any(p => p.Item.Kind == ItemKind.Object))
+            return;
+        var em = 0f;
+        foreach (var part in parts)
+        {
+            if (part.Item.Kind == ItemKind.Text)
+                em = Math.Max(em, part.Item.Style.Size);
+        }
+        var middle = VerticalText.EmBoxMiddle * (em > 0 ? em : mark.Size);
+        foreach (var part in parts)
+        {
+            if (part.Item.Kind != ItemKind.Object || part.Edge is not null || source.Objects.GetValueOrDefault(part.Start) is null or HEquation)
+                continue;
+            var across = part.Size.Height + part.Size.Depth;
+            part.Size = (part.Size.Width, middle + across / 2, across / 2 - middle);
+        }
     }
 
     /// <summary>

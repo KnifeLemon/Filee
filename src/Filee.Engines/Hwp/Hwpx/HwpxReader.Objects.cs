@@ -373,6 +373,25 @@ internal sealed partial class HwpxReader
                 foreach (var member in Group(element, placement))
                     yield return member;
                 break;
+            case "polygon" when !_forLayout && Child(element, "drawText") is null && PolygonPath(element) is { } polygon:
+                {
+                    // A polygon without text: a closed path through its corners, filled (read for layout it stays a polygon).
+                    var original = Child(element, "orgSz");
+                    var (fill, gradient) = FillBrush(Child(element, "fillBrush"));
+                    yield return new HShape(HShapeKind.Path)
+                    {
+                        Width = placement.Width,
+                        Height = placement.Height,
+                        Anchor = placement.Anchor,
+                        Geometry = new HGeometry(Int(original, "width", placement.Width), Int(original, "height", placement.Height), Path: polygon),
+                        Fill = fill,
+                        Gradient = gradient,
+                        Line = LineShape(Child(element, "lineShape")),
+                        Transform = Transform(element),
+                        ZOrder = ZOrder(element),
+                    };
+                    break;
+                }
             case "polygon" or "curve" or "arc" when _forLayout:
                 {
                     var kind = element.Name.LocalName switch
@@ -453,8 +472,10 @@ internal sealed partial class HwpxReader
     /// The path of a bent (type STROKE_*) or curved (ARC_*) hp:connectLine in its original size, from hp:startPt
     /// through hp:controlPoints to hp:endPt; null for a straight one or one without control points (read as a line).
     /// OWPML leaves the control points' type numbers undescribed; as other readers of 한글's files take them, 3 marks
-    /// the start, 26 the end and 2 a point between. A bent connector runs straight through its points; a curved one
-    /// takes its points between as Bézier controls (two per cubic, see OpenPaths.FromControls).
+    /// the start, 26 the end and 2 a point between (not checked against a file from 한글: none at hand has a
+    /// connector). A first or last point on hp:startPt / hp:endPt is taken as that end whatever its type, so other
+    /// numbers for the ends don't add a point. A bent connector runs straight through its points; a curved one takes
+    /// its points between as Bézier controls (two per cubic, see OpenPaths.FromControls).
     /// </summary>
     private static HPath? ConnectorPath(XElement element)
     {
@@ -466,12 +487,30 @@ internal sealed partial class HwpxReader
         var points = Children(Child(element, "controlPoints"), "point").Take(OpenPaths.MaxSegments * 2 + 2).ToList();
         if (points.Count == 0 || points.Count > OpenPaths.MaxSegments * 2)
             return null;
-        var start = points[0] is var first && Int(first, "type") == 3 ? Point(first) : Point(Child(element, "startPt"));
-        var end = points[^1] is var last && Int(last, "type") == 26 ? Point(last) : Point(Child(element, "endPt"));
-        var between = points.Where(p => Int(p, "type") is not (3 or 26)).Select(Point).ToList();
+        var (start, end) = (Point(Child(element, "startPt")), Point(Child(element, "endPt")));
+        var (from, to) = (0, points.Count);
+        if (Int(points[0], "type") == 3 || Point(points[0]) == start)
+            start = Point(points[from++]);
+        if (to > from && (Int(points[^1], "type") == 26 || Point(points[^1]) == end))
+            end = Point(points[--to]);
+        var between = points.Take(to).Skip(from).Where(p => Int(p, "type") is not (3 or 26)).Select(Point).ToList();
         return curved
             ? OpenPaths.FromControls(start, end, between)
             : new HPath(start, [.. between.Select(p => new HPathSegment(p)), new HPathSegment(end)]);
+    }
+
+    /// <summary>
+    /// A polygon's corners (hc:pt) as a closed path, its last corner dropped when it repeats the first (한글 writes a
+    /// closing polygon so); null for fewer than three corners or more than the model takes.
+    /// </summary>
+    private static HPath? PolygonPath(XElement element)
+    {
+        var corners = Children(element, "pt").Take(OpenPaths.MaxSegments + 2).Select(p => new HPoint(Int(p, "x"), Int(p, "y"))).ToList();
+        if (corners.Count > 3 && corners[^1] == corners[0])
+            corners.RemoveAt(corners.Count - 1);
+        return corners.Count is >= 3 and <= OpenPaths.MaxSegments + 1
+            ? new HPath(corners[0], [.. corners.Skip(1).Select(c => new HPathSegment(c))], Closed: true)
+            : null;
     }
 
     /// <summary>Outline of a polygon (hc:pt), curve (hp:seg) or arc (center, ax1, ax2) in its original size (hp:orgSz).</summary>

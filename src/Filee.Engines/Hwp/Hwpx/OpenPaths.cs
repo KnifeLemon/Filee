@@ -1,10 +1,12 @@
-// Open paths of the document model (HShapeKind.Path, HPath): bent and curved connectors and open free-form lines, as
-// the readers make them and the writers take them apart.
+// Paths of the document model (HShapeKind.Path, HPath): bent and curved connectors, open free-form lines and closed
+// free-form shapes, as the readers make them and the writers take them apart.
 //
 // - DrawingML's connector presets (ECMA-376 Part 1, presetShapeDefinitions: bentConnector2..5, curvedConnector2..5)
 //   are drawn by the slide renderer's preset definitions (Slides.PresetShapes) at the shape's size with its adjust
-//   values, and the outline read back from the path they give.
-// - A Skia path becomes an HPath when it is one open contour; quadratic pieces and conics (Skia's arcs) become cubics.
+//   values, and the outline read back from the path they give; the preset's name, adjust values and flips go with it
+//   (HConnector), so DOCX can write the connector back as itself.
+// - A Skia path becomes an HPath when it is one contour (open, or closed when the reader takes closed ones);
+//   quadratic pieces and conics (Skia's arcs) become cubics.
 // - Writers that only have polylines flatten the curves; 한글's curved connector stores two controls per cubic and
 //   takes the joint between two cubics halfway between their neighbouring controls (Smooth tells when a path is so).
 
@@ -25,6 +27,27 @@ internal static class OpenPaths
     public static bool IsConnectorPreset(string? name) =>
         name is "bentConnector2" or "bentConnector3" or "bentConnector4" or "bentConnector5"
             or "curvedConnector2" or "curvedConnector3" or "curvedConnector4" or "curvedConnector5";
+
+    /// <summary>
+    /// The geometry of connector preset <paramref name="name"/> in a box <paramref name="width"/> × <paramref name="height"/>
+    /// with its adjust values, mirrored by the flips, and the preset itself (<see cref="HGeometry.Connector"/>); null for
+    /// another preset.
+    /// </summary>
+    public static HGeometry? PresetGeometry(string? name, int width, int height, IReadOnlyDictionary<string, string>? adjust, bool flipHorizontal, bool flipVertical)
+    {
+        if (Preset(name, width, height, adjust) is not { } path)
+            return null;
+        // The adjust values written back: the preset's own (adj1 .. adj3), as plain numbers.
+        var kept = new List<HAdjustValue>();
+        foreach (var guide in (string[])["adj1", "adj2", "adj3"])
+        {
+            if (adjust?.GetValueOrDefault(guide)?.Split(' ', StringSplitOptions.RemoveEmptyEntries) is ["val", var number]
+                && long.TryParse(number, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var value))
+                kept.Add(new HAdjustValue(guide, Math.Clamp(value, -10_000_000, 10_000_000)));
+        }
+        return new HGeometry(width, height, Path: Mirrored(path, width, height, flipHorizontal, flipVertical),
+            Connector: new HConnector(name!, kept, flipHorizontal, flipVertical));
+    }
 
     /// <summary>
     /// The outline of connector preset <paramref name="name"/> in a box <paramref name="width"/> × <paramref name="height"/>
@@ -48,10 +71,10 @@ internal static class OpenPaths
 
     /// <summary>
     /// The one open contour of <paramref name="path"/>, each point through <paramref name="map"/> (rounded to model
-    /// units without it); null when the path is empty, closed, has more than one contour or more than
-    /// <see cref="MaxSegments"/> pieces.
+    /// units without it); null when the path is empty, has more than one contour or more than
+    /// <see cref="MaxSegments"/> pieces, or is closed unless <paramref name="closed"/> takes closed ones too.
     /// </summary>
-    public static HPath? FromSkia(SKPath path, Func<SKPoint, HPoint>? map = null)
+    public static HPath? FromSkia(SKPath path, Func<SKPoint, HPoint>? map = null, bool closed = false)
     {
         map ??= p => new HPoint(Round(p.X), Round(p.Y));
         using var iterator = path.CreateRawIterator();
@@ -65,9 +88,13 @@ internal static class OpenPaths
             current = end;
         }
         SKPathVerb verb;
+        var shut = false;
         while ((verb = iterator.Next(points)) != SKPathVerb.Done)
         {
             if (segments.Count > MaxSegments)
+                return null;
+            // Something after the close: a second contour.
+            if (shut && verb != SKPathVerb.Close)
                 return null;
             switch (verb)
             {
@@ -96,10 +123,18 @@ internal static class OpenPaths
                     Cubic(points[1], points[2], points[3]);
                     break;
                 case SKPathVerb.Close:
-                    return null;
+                    if (!closed)
+                        return null;
+                    shut = true;
+                    break;
             }
         }
-        return start is { } first && segments.Count is > 0 and <= MaxSegments ? new HPath(first, segments) : null;
+        if (shut && segments.Count > 1 && start is { } from && segments[^1] is { Curved: false } last && last.End == from)
+            segments.RemoveAt(segments.Count - 1); // the straight piece back to the start: the close draws it
+        // A closed path of one straight piece has no inside: a line drawn there and back.
+        if (shut && segments is [{ Curved: false }])
+            return null;
+        return start is { } first && segments.Count is > 0 and <= MaxSegments ? new HPath(first, segments, shut) : null;
     }
 
     /// <summary>The path as a Skia path, each point through <paramref name="map"/>.</summary>
@@ -114,6 +149,8 @@ internal static class OpenPaths
             else
                 result.LineTo(map(segment.End));
         }
+        if (path.Closed)
+            result.Close();
         return result;
     }
 
@@ -124,7 +161,7 @@ internal static class OpenPaths
             return path;
         HPoint Flip(HPoint p) => new(horizontal ? width - p.X : p.X, vertical ? height - p.Y : p.Y);
         HPoint? FlipOptional(HPoint? p) => p is { } point ? Flip(point) : null;
-        return new HPath(Flip(path.Start), [.. path.Segments.Select(s => new HPathSegment(Flip(s.End), FlipOptional(s.Control1), FlipOptional(s.Control2)))]);
+        return new HPath(Flip(path.Start), [.. path.Segments.Select(s => new HPathSegment(Flip(s.End), FlipOptional(s.Control1), FlipOptional(s.Control2)))], path.Closed);
     }
 
     /// <summary>The path moved by (<paramref name="dx"/>, <paramref name="dy"/>).</summary>
@@ -134,7 +171,7 @@ internal static class OpenPaths
             return path;
         HPoint Move(HPoint p) => new(p.X + dx, p.Y + dy);
         HPoint? MoveOptional(HPoint? p) => p is { } point ? Move(point) : null;
-        return new HPath(Move(path.Start), [.. path.Segments.Select(s => new HPathSegment(Move(s.End), MoveOptional(s.Control1), MoveOptional(s.Control2)))]);
+        return new HPath(Move(path.Start), [.. path.Segments.Select(s => new HPathSegment(Move(s.End), MoveOptional(s.Control1), MoveOptional(s.Control2)))], path.Closed);
     }
 
     /// <summary>The smallest box around the path's points and controls (a Bézier stays inside its controls' hull).</summary>

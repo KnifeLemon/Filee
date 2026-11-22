@@ -326,7 +326,7 @@ internal sealed partial class OdtReader
                 if (Frame(element, text, groupAnchor) is { } frame)
                     result.Add(frame);
                 break;
-            case "rect" or "ellipse" or "circle" or "custom-shape" or "line" or "connector" or "path" or "polyline":
+            case "rect" or "ellipse" or "circle" or "custom-shape" or "line" or "connector" or "path" or "polyline" or "polygon":
                 if (Shape(element, groupAnchor) is { } shape)
                     result.Add(shape);
                 break;
@@ -603,23 +603,25 @@ internal sealed partial class OdtReader
                 Tail = Marker(props, "end"),
             };
         }
-        if (element.Name.LocalName is "connector" or "path" or "polyline")
+        if (element.Name.LocalName is "connector" or "path" or "polyline" or "polygon")
         {
-            if (OpenPath(element) is not var (open, left, top))
+            if (PathOf(element) is not var (drawn, left, top))
                 return null;
-            var (minX, minY, maxX, maxY) = OpenPaths.Bounds(open);
-            var (openWidth, openHeight) = (Size(maxX - minX), Size(maxY - minY));
+            var (minX, minY, maxX, maxY) = OpenPaths.Bounds(drawn);
+            var (pathWidth, pathHeight) = (Size(maxX - minX), Size(maxY - minY));
             return new HShape(HShapeKind.Path)
             {
-                Width = openWidth,
-                Height = openHeight,
+                Width = pathWidth,
+                Height = pathHeight,
                 Anchor = Anchor(anchorType, props, left + minX, top + minY),
                 ZOrder = zOrder,
                 OuterMargin = Margins(props),
-                Geometry = new HGeometry(openWidth, openHeight, Path: OpenPaths.Moved(open, -minX, -minY)),
+                Geometry = new HGeometry(pathWidth, pathHeight, Path: OpenPaths.Moved(drawn, -minX, -minY)),
+                // A closed path (draw:polygon, draw:path ending in Z) is filled; an open one has ends for markers.
+                Fill = drawn.Closed ? Fill(props, shape: true) : null,
                 Line = Stroke(props),
-                Head = Marker(props, "start"),
-                Tail = Marker(props, "end"),
+                Head = drawn.Closed ? null : Marker(props, "start"),
+                Tail = drawn.Closed ? null : Marker(props, "end"),
             };
         }
 
@@ -676,23 +678,24 @@ internal sealed partial class OdtReader
     }
 
     /// <summary>
-    /// The open path of a bent or curved draw:connector, a draw:path that doesn't close or a draw:polyline, in model
-    /// units from (<c>Left</c>, <c>Top</c>), where the element's own coordinates start; null when it isn't one open line.
+    /// The path of a bent or curved draw:connector (OdfConnectors), a draw:path or a draw:polyline (open) or draw:polygon
+    /// (closed), in model units from (<c>Left</c>, <c>Top</c>), where the element's own coordinates start; null when it
+    /// isn't one contour.
     /// </summary>
-    private static (HPath Path, int Left, int Top)? OpenPath(XElement element)
+    private static (HPath Path, int Left, int Top)? PathOf(XElement element)
     {
         const int maxNumbers = OpenPaths.MaxSegments * 6;
         if (element.Name.LocalName == "connector")
         {
-            var start = new HPoint(Length(Attr(element, Svg + "x1")) ?? 0, Length(Attr(element, Svg + "y1")) ?? 0);
-            var end = new HPoint(Length(Attr(element, Svg + "x2")) ?? 0, Length(Attr(element, Svg + "y2")) ?? 0);
-            if (Attr(element, Svg + "d") is { Length: > 0 and <= MaxPathChars } d)
+            var start = new SKPoint(Length(Attr(element, Svg + "x1")) ?? 0, Length(Attr(element, Svg + "y1")) ?? 0);
+            var end = new SKPoint(Length(Attr(element, Svg + "x2")) ?? 0, Length(Attr(element, Svg + "y2")) ?? 0);
+            using (var drawn = OdfConnectors.PathData(Attr(element, Svg + "d"), start, end, HwpxUnits.PerMm / 100, maxNumbers, out _))
             {
-                using var drawn = OdfPathData.Parse(d, (x, y) => new SKPoint((float)x, (float)y), 1, 1, maxNumbers, out _);
-                if (drawn.PointCount >= 2 && ConnectorMap(drawn.Points[0], drawn.LastPoint, start, end) is { } map && OpenPaths.FromSkia(drawn, map) is { } read)
-                    return (read, 0, 0);
+                if (drawn is not null && OpenPaths.FromSkia(drawn) is { } along)
+                    return (along, 0, 0);
             }
-            return (ConnectorRoute(Attr(element, Draw + "type") ?? "standard", start, end), 0, 0);
+            using var route = OdfConnectors.Route(Attr(element, Draw + "type"), start, end);
+            return OpenPaths.FromSkia(route) is { } routed ? (routed, 0, 0) : null;
         }
 
         // draw:path and draw:polyline: their svg:viewBox stretched over svg:x / svg:y / svg:width / svg:height.
@@ -708,57 +711,21 @@ internal sealed partial class OdtReader
             : (0, 0, width / HwpxUnits.PerMm * 100, height / HwpxUnits.PerMm * 100);
         var (sx, sy) = (vw > 0 ? width / vw : 0, vh > 0 ? height / vh : 0);
         HPoint Map(double x, double y) => new(OpenPaths.Round((x - vx) * sx), OpenPaths.Round((y - vy) * sy));
-        if (element.Name.LocalName == "polyline")
+        if (element.Name.LocalName is "polyline" or "polygon")
         {
+            var closed = element.Name.LocalName == "polygon";
             var points = OdfPathData.Points(Attr(element, Draw + "points"), OpenPaths.MaxSegments + 2);
-            if (points.Count < 2 || points.Count > OpenPaths.MaxSegments + 1)
+            // A polygon's last point back at its first: the close draws that side.
+            if (closed && points.Count > 3 && points[^1] == points[0])
+                points.RemoveAt(points.Count - 1);
+            if (points.Count < (closed ? 3 : 2) || points.Count > OpenPaths.MaxSegments + 1)
                 return null;
-            return (new HPath(Map(points[0].X, points[0].Y), [.. points.Skip(1).Select(p => new HPathSegment(Map(p.X, p.Y)))]), left, top);
+            return (new HPath(Map(points[0].X, points[0].Y), [.. points.Skip(1).Select(p => new HPathSegment(Map(p.X, p.Y)))], closed), left, top);
         }
-        if (Attr(element, Svg + "d") is not { Length: > 0 and <= MaxPathChars } data || data.Contains('z') || data.Contains('Z'))
+        if (Attr(element, Svg + "d") is not { Length: > 0 and <= OdfConnectors.MaxPathChars } data)
             return null;
         using var path = OdfPathData.Parse(data, (x, y) => new SKPoint((float)x, (float)y), 1, 1, maxNumbers, out _);
-        return OpenPaths.FromSkia(path, p => Map(p.X, p.Y)) is { } open ? (open, left, top) : null;
-    }
-
-    /// <summary>Path characters a connector or path is read up to (a damaged file can have megabytes of them).</summary>
-    private const int MaxPathChars = 65536;
-
-    /// <summary>
-    /// How a connector's svg:d maps into the document: scaled alike in both directions and moved so its first point is
-    /// the connector's start (svg:x1, svg:y1) and its last the end. LibreOffice writes the path in 1/100 mm, the scale
-    /// taken when the ends coincide; null for a path whose ends can't be matched.
-    /// </summary>
-    private static Func<SKPoint, HPoint>? ConnectorMap(SKPoint first, SKPoint last, HPoint start, HPoint end)
-    {
-        var pathLength = Math.Sqrt(Math.Pow(last.X - first.X, 2) + Math.Pow(last.Y - first.Y, 2));
-        var length = Math.Sqrt(Math.Pow(end.X - (double)start.X, 2) + Math.Pow(end.Y - (double)start.Y, 2));
-        var scale = pathLength > 0 && length > 0 ? length / pathLength : HwpxUnits.PerMm / 100;
-        if (!double.IsFinite(scale) || scale <= 0 || scale > 1e6)
-            return null;
-        return p => new HPoint(OpenPaths.Round(start.X + (p.X - first.X) * scale), OpenPaths.Round(start.Y + (p.Y - first.Y) * scale));
-    }
-
-    /// <summary>
-    /// A connector's path when the file gives none (ODF leaves it to the application): "curve" an S-curve leaving and
-    /// reaching its ends along the longer direction, "lines" a slanted middle between short straight ends, "standard"
-    /// right angles turning halfway (horizontal-vertical-horizontal, or the other way round when it is taller than
-    /// wide). Glue point directions and draw:line-skew are not followed.
-    /// </summary>
-    private static HPath ConnectorRoute(string type, HPoint start, HPoint end)
-    {
-        var across = Math.Abs(end.X - (long)start.X) >= Math.Abs(end.Y - (long)start.Y);
-        static int Between(int a, int b, double t) => OpenPaths.Round(a + (b - (double)a) * t);
-        HPoint At(double tx, double ty) => new(Between(start.X, end.X, tx), Between(start.Y, end.Y, ty));
-        return (type, across) switch
-        {
-            ("curve", true) => new HPath(start, [new HPathSegment(end, At(0.5, 0), At(0.5, 1))]),
-            ("curve", false) => new HPath(start, [new HPathSegment(end, At(0, 0.5), At(1, 0.5))]),
-            ("lines", true) => new HPath(start, [new HPathSegment(At(0.25, 0)), new HPathSegment(At(0.75, 1)), new HPathSegment(end)]),
-            ("lines", false) => new HPath(start, [new HPathSegment(At(0, 0.25)), new HPathSegment(At(1, 0.75)), new HPathSegment(end)]),
-            (_, true) => new HPath(start, [new HPathSegment(At(0.5, 0)), new HPathSegment(At(0.5, 1)), new HPathSegment(end)]),
-            _ => new HPath(start, [new HPathSegment(At(0, 0.5)), new HPathSegment(At(1, 0.5)), new HPathSegment(end)]),
-        };
+        return OpenPaths.FromSkia(path, p => Map(p.X, p.Y), closed: true) is { } read ? (read, left, top) : null;
     }
 
     /// <summary>The translation of a draw:transform ("rotate (0.5) translate (2cm 3cm)"), where shapes without svg:x / svg:y keep their place.</summary>

@@ -266,32 +266,9 @@ internal sealed class Type1Program
     /// <exception cref="InvalidDataException">The program is damaged or laid out in a way this can't rewrite.</exception>
     internal static Rewritten AddEmptyGlyphs(byte[] data, IReadOnlyList<(string Name, double Width)> glyphs, int length1 = 0, int length2 = 0)
     {
-        data = StripPfbHeaders(data);
-        var eexec = IndexOf(data, "eexec"u8);
-        if (eexec < 0)
-            throw new InvalidDataException("The Type 1 font has no encrypted part.");
-        var at = eexec + 5;
-        while (at < data.Length && data[at] is 13 or 10 or 9 or 32)
-            at++;
-        if (at == eexec + 5)
-            throw new InvalidDataException("The Type 1 font's encrypted part doesn't start on a line of its own.");
-        var rest = data.AsSpan(at);
-        var hex = rest.Length >= 4 && IsHex(rest[0]) && IsHex(rest[1]) && IsHex(rest[2]) && IsHex(rest[3]);
-        var cipher = hex ? HexDecode(rest)
-            : length1 == at && length2 > 0 && length2 <= rest.Length ? rest[..length2].ToArray()
-            : rest.ToArray();
-        var plain = Decrypt(cipher, 55665, 0);
-        var text = System.Text.Encoding.Latin1.GetString(plain);
-        // The encrypted part ends with "closefile"; what follows it (the zeros of the trailer) isn't part of it.
-        var close = text.LastIndexOf("closefile", StringComparison.Ordinal);
-        if (close < 0)
-            throw new InvalidDataException("The Type 1 font's encrypted part has no end.");
-        text = text[..(close + "closefile".Length)] + "\n";
-
-        var lenIV = 4;
-        var lenMatch = System.Text.RegularExpressions.Regex.Match(text, @"/lenIV\s+(-?\d+)");
-        if (lenMatch.Success && int.TryParse(lenMatch.Groups[1].Value, out var l))
-            lenIV = l;
+        var opened = OpenPrivate(data, length1, length2);
+        var text = opened.Text;
+        var lenIV = opened.LenIV;
         var dictionary = System.Text.RegularExpressions.Regex.Match(text, @"/CharStrings\s+(\d+)\s+dict\s+(?:dup\s+)?begin");
         if (!dictionary.Success)
             throw new InvalidDataException("The Type 1 font's CharStrings can't be found.");
@@ -319,11 +296,161 @@ internal sealed class Type1Program
         var rewritten = text[..dictionary.Groups[1].Index] + count.ToString(CultureInfo.InvariantCulture)
             + text[(dictionary.Groups[1].Index + dictionary.Groups[1].Length)..(dictionary.Index + dictionary.Length)]
             + added + text[(dictionary.Index + dictionary.Length)..];
-        var encrypted = Encrypt(System.Text.Encoding.Latin1.GetBytes(rewritten), 55665, 0);
-        if (hex)
+        return ClosePrivate(opened, rewritten);
+    }
+
+    /// <summary>
+    /// The font program <paramref name="data"/> with the advances of <paramref name="widths"/> (glyph name → width in
+    /// glyph space) written into their charstrings' hsbw (or sbw), encrypted as they were. Glyphs whose charstring
+    /// doesn't start with hsbw / sbw of plain numbers are left as they are. Null when nothing changed.
+    /// </summary>
+    /// <exception cref="InvalidDataException">The program is damaged or laid out in a way this can't rewrite.</exception>
+    internal static Rewritten? SetWidths(byte[] data, IReadOnlyDictionary<string, double> widths, int length1 = 0, int length2 = 0)
+    {
+        var opened = OpenPrivate(data, length1, length2);
+        var text = opened.Text;
+        var dictionary = System.Text.RegularExpressions.Regex.Match(text, @"/CharStrings\s+\d+\s+dict\s+(?:dup\s+)?begin");
+        if (!dictionary.Success)
+            throw new InvalidDataException("The Type 1 font's CharStrings can't be found.");
+        var output = new StringBuilder(text.Length + 64);
+        var at = dictionary.Index + dictionary.Length;
+        var copied = 0;
+        var changed = false;
+        for (var entries = 0; entries < MaxGlyphs; entries++)
+        {
+            // "/name length RD <length bytes> ND"
+            var p = at;
+            while (p < text.Length && char.IsWhiteSpace(text[p]))
+                p++;
+            if (p >= text.Length || text[p] != '/')
+                break;
+            var nameStart = p + 1;
+            while (p < text.Length && !char.IsWhiteSpace(text[p]))
+                p++;
+            var name = text[nameStart..p];
+            while (p < text.Length && char.IsWhiteSpace(text[p]))
+                p++;
+            var lengthStart = p;
+            while (p < text.Length && char.IsAsciiDigit(text[p]))
+                p++;
+            if (!int.TryParse(text.AsSpan(lengthStart, p - lengthStart), NumberStyles.None, CultureInfo.InvariantCulture, out var length))
+                break;
+            while (p < text.Length && char.IsWhiteSpace(text[p]))
+                p++;
+            var rdStart = p;
+            while (p < text.Length && !char.IsWhiteSpace(text[p]))
+                p++;
+            var rd = text[rdStart..p];
+            var binaryStart = p + 1;
+            if (binaryStart + length > text.Length)
+                throw new InvalidDataException("A Type 1 charstring runs past the font.");
+            at = binaryStart + length;
+            // The ND procedure after the bytes.
+            while (at < text.Length && char.IsWhiteSpace(text[at]))
+                at++;
+            while (at < text.Length && !char.IsWhiteSpace(text[at]))
+                at++;
+            if (!widths.TryGetValue(name, out var width))
+                continue;
+            var cipher = System.Text.Encoding.Latin1.GetBytes(text.Substring(binaryStart, length));
+            var plain = opened.LenIV < 0 ? cipher : Decrypt(cipher, 4330, opened.LenIV);
+            if (WithWidth(plain, width) is not { } replaced)
+                continue;
+            var bytes = opened.LenIV < 0 ? replaced : Encrypt(replaced, 4330, opened.LenIV);
+            output.Append(text, copied, lengthStart - copied).Append(bytes.Length.ToString(CultureInfo.InvariantCulture)).Append(' ').Append(rd).Append(' ')
+                .Append(System.Text.Encoding.Latin1.GetString(bytes));
+            copied = binaryStart + length;
+            changed = true;
+        }
+        if (!changed)
+            return null;
+        output.Append(text, copied, text.Length - copied);
+        return ClosePrivate(opened, output.ToString());
+    }
+
+    /// <summary>A charstring that starts "sbx wx hsbw" or "sbx sby wx wy sbw" with wx set to <paramref name="width"/>; null otherwise.</summary>
+    private static byte[]? WithWidth(byte[] plain, double width)
+    {
+        var numbers = new List<int>(4);
+        var at = 0;
+        while (at < plain.Length && numbers.Count <= 4)
+        {
+            int b = plain[at];
+            if (b is >= 32 and <= 246)
+            {
+                numbers.Add(b - 139);
+                at++;
+            }
+            else if (b is >= 247 and <= 250 && at + 1 < plain.Length)
+            {
+                numbers.Add((b - 247) * 256 + plain[at + 1] + 108);
+                at += 2;
+            }
+            else if (b is >= 251 and <= 254 && at + 1 < plain.Length)
+            {
+                numbers.Add(-(b - 251) * 256 - plain[at + 1] - 108);
+                at += 2;
+            }
+            else if (b == 255 && at + 4 < plain.Length)
+            {
+                numbers.Add(plain[at + 1] << 24 | plain[at + 2] << 16 | plain[at + 3] << 8 | plain[at + 4]);
+                at += 5;
+            }
+            else
+            {
+                var w = (int)Math.Round(width);
+                if (b == 13 && numbers.Count == 2)
+                    return [.. Type1Number(numbers[0]), .. Type1Number(w), 13, .. plain.AsSpan(at + 1)];
+                if (b == 12 && at + 1 < plain.Length && plain[at + 1] == 7 && numbers.Count == 4)
+                    return [.. Type1Number(numbers[0]), .. Type1Number(numbers[1]), .. Type1Number(w), .. Type1Number(numbers[3]), 12, 7, .. plain.AsSpan(at + 2)];
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>A program's encrypted part decrypted to text up to its "closefile", and what putting it back needs.</summary>
+    private sealed record OpenedPrivate(byte[] Data, int At, bool Hex, string Text, int LenIV);
+
+    private static OpenedPrivate OpenPrivate(byte[] data, int length1, int length2)
+    {
+        data = StripPfbHeaders(data);
+        var eexec = IndexOf(data, "eexec"u8);
+        if (eexec < 0)
+            throw new InvalidDataException("The Type 1 font has no encrypted part.");
+        var at = eexec + 5;
+        while (at < data.Length && data[at] is 13 or 10 or 9 or 32)
+            at++;
+        if (at == eexec + 5)
+            throw new InvalidDataException("The Type 1 font's encrypted part doesn't start on a line of its own.");
+        var rest = data.AsSpan(at);
+        var hex = rest.Length >= 4 && IsHex(rest[0]) && IsHex(rest[1]) && IsHex(rest[2]) && IsHex(rest[3]);
+        var cipher = hex ? HexDecode(rest)
+            : length1 == at && length2 > 0 && length2 <= rest.Length ? rest[..length2].ToArray()
+            : rest.ToArray();
+        var plain = Decrypt(cipher, 55665, 0);
+        var text = System.Text.Encoding.Latin1.GetString(plain);
+        // The encrypted part ends with "closefile"; what follows it (the zeros of the trailer) isn't part of it.
+        var close = text.LastIndexOf("closefile", StringComparison.Ordinal);
+        if (close < 0)
+            throw new InvalidDataException("The Type 1 font's encrypted part has no end.");
+        text = text[..(close + "closefile".Length)] + "\n";
+
+        var lenIV = 4;
+        var lenMatch = System.Text.RegularExpressions.Regex.Match(text, @"/lenIV\s+(-?\d+)");
+        if (lenMatch.Success && int.TryParse(lenMatch.Groups[1].Value, out var l))
+            lenIV = l;
+        return new OpenedPrivate(data, at, hex, text, lenIV);
+    }
+
+    /// <summary>The program with its encrypted part replaced by <paramref name="text"/>, encrypted in the part's form, with a fresh trailer.</summary>
+    private static Rewritten ClosePrivate(OpenedPrivate opened, string text)
+    {
+        var encrypted = Encrypt(System.Text.Encoding.Latin1.GetBytes(text), 55665, 0);
+        if (opened.Hex)
             encrypted = System.Text.Encoding.ASCII.GetBytes(string.Join("\n", Convert.ToHexString(encrypted).Chunk(64).Select(c => new string(c))) + "\n");
         var trailer = System.Text.Encoding.ASCII.GetBytes("\n" + string.Concat(Enumerable.Repeat(new string('0', 64) + "\n", 8)) + "cleartomark\n");
-        return new Rewritten([.. data.AsSpan(0, at), .. encrypted, .. trailer], at, encrypted.Length, trailer.Length);
+        return new Rewritten([.. opened.Data.AsSpan(0, opened.At), .. encrypted, .. trailer], opened.At, encrypted.Length, trailer.Length);
     }
 
     /// <summary>A Type 1 charstring integer.</summary>

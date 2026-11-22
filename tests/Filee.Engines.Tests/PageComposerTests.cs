@@ -718,6 +718,28 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         Assert.Equal(10f, runs["wide"].Positions[0].X, 0.5f);
     }
 
+    [Fact]
+    public void A_heading_balancing_moves_takes_its_bookmark_with_it()
+    {
+        // a0..a4, a4 a heading: filled, it is the fifth line of the first column; balanced, it is the second line of the
+        // second column, and the PDF's bookmark points there, not where it was filled.
+        var blocks = Enumerable.Range(0, 5).Select(i => Paragraph($"a{i}")).ToList();
+        blocks[0].HeadingLevel = 1;
+        blocks[4].HeadingLevel = 1;
+        var wide = Paragraph("wide");
+        wide.ColumnsChange = HColumns.Single;
+        blocks.Add(wide);
+        var section = Section(Small, [.. blocks]);
+        section.Columns = Two;
+
+        var composed = Compose(section);
+
+        var runs = Runs(Assert.Single(composed.Pages)).ToDictionary(r => r.Text);
+        Assert.Equal(runs["a3"].Positions[0].Y + 16, runs["a4"].Positions[0].Y, 0.01f);
+        Assert.Equal(2, composed.Outline.Count);
+        Assert.Equal(runs["a4"].Positions[0].Y - runs["a0"].Positions[0].Y, composed.Outline[1].Top - composed.Outline[0].Top, 0.01f);
+    }
+
     // ───────────────────────── Notes ─────────────────────────
 
     [Fact]

@@ -845,6 +845,26 @@ public sealed class ReportedCasesTests(EngineFixture fx) : IClassFixture<EngineF
     }
 
     [Fact]
+    public async Task Issue1194_a_floating_table_that_fits_a_page_but_not_the_rest_of_this_one_splits()
+    {
+        // 20 rows after 40 lines: the table would fit on a page of its own, but Word splits it where the page ends as it
+        // splits one in the flow (the rows that fit stay, the rest goes on at the next page's top, the header repeated);
+        // Filee moved it to the next page whole.
+        var before = string.Concat(Enumerable.Range(0, 40).Select(i => P(R($"Line {i}"))));
+        var after = string.Concat(Enumerable.Range(0, 10).Select(i => P(R($"After {i}"))));
+        var pages = await DocxAsync(Docx(before + LongFloatingTable(20) + P(R("Beside")) + after));
+
+        var rows = pages.Select(p => Runs(p).Where(r => r.Text.StartsWith("Row ", StringComparison.Ordinal)).Select(r => r.Text).ToList()).ToList();
+        Assert.Equal(Enumerable.Range(0, 20).Select(i => $"Row {i}"), rows.SelectMany(r => r));
+        Assert.Contains("Row 0", rows[0]);
+        Assert.Contains("Row 19", rows[1]);
+        Assert.All(pages.Take(2), p => Assert.Contains(Runs(p), r => r.Text == "Head"));
+        Assert.InRange(Where(pages[1], "Head").Y, 72, 72 + 20);
+        // The first part stays above the bottom margin.
+        Assert.All(Runs(pages[0]).Where(r => r.Text.StartsWith("Row ", StringComparison.Ordinal)), r => Assert.True(r.Positions[0].Y < 16838 / 20f - 72));
+    }
+
+    [Fact]
     public async Task Issue1194_a_floating_table_that_must_not_overlap_goes_below_the_other()
     {
         // Two floating tables at one place on the page: with w:tblOverlap never the second goes below the first.

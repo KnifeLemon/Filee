@@ -36,14 +36,48 @@ internal sealed record GlyphRun(PageFont Font, float Size, ushort[] Glyphs, SKPo
     /// </summary>
     public SKMatrix? Transform { get; init; }
 
-    /// <summary>Only what lies inside this rectangle of the page (before <see cref="Transform"/>) is drawn; null = all.</summary>
+    /// <summary>
+    /// Only what lies inside this rectangle is drawn; null = all. It is in page coordinates (not mapped by
+    /// <see cref="Transform"/>), or in the frame <see cref="ClipTransform"/> maps onto the page.
+    /// </summary>
     public SKRect? Clip { get; init; }
+
+    /// <summary>
+    /// Maps <see cref="Clip"/> onto the page: a clip set on a layer that was then turned or moved into place
+    /// (<see cref="PageContent.Add(PageContent, SKMatrix)"/>: vertical text, a turned text box); null = page coordinates.
+    /// </summary>
+    public SKMatrix? ClipTransform { get; init; }
 
     /// <summary>
     /// In vertical text the run is set across in one character's room (縦中横: Word w:eastAsianLayout w:vert); the
     /// layout only marks it, VerticalText sets it.
     /// </summary>
     public bool Across { get; init; }
+
+    /// <summary>
+    /// Sets <paramref name="canvas"/> up to draw the run's positions: clipped to <see cref="Clip"/> (in its own frame),
+    /// then through <see cref="Transform"/>. The caller saves and restores the canvas around it.
+    /// </summary>
+    public void Prepare(SKCanvas canvas)
+    {
+        if (Clip is { } clip)
+        {
+            if (ClipTransform is { } frame)
+            {
+                // The clip stays where it is set when the matrix goes back.
+                var outer = canvas.TotalMatrix;
+                canvas.Concat(in frame);
+                canvas.ClipRect(clip, antialias: true);
+                canvas.SetMatrix(in outer);
+            }
+            else
+            {
+                canvas.ClipRect(clip);
+            }
+        }
+        if (Transform is { } transform)
+            canvas.Concat(in transform);
+    }
 
     /// <summary>Throws when the arrays don't describe the same glyphs or a cluster points outside the text.</summary>
     public void Validate()
@@ -126,7 +160,11 @@ internal sealed class PageContent(float width, float height)
         {
             _items.Add(item switch
             {
-                GlyphItem glyphs => new GlyphItem(glyphs.Run with { Transform = glyphs.Run.Transform is { } inner ? transform.PreConcat(inner) : transform }),
+                GlyphItem glyphs => new GlyphItem(glyphs.Run with
+                {
+                    Transform = glyphs.Run.Transform is { } inner ? transform.PreConcat(inner) : transform,
+                    ClipTransform = glyphs.Run.Clip is null ? null : glyphs.Run.ClipTransform is { } frame ? transform.PreConcat(frame) : transform,
+                }),
                 DrawingItem drawing => new DrawingItem(canvas =>
                 {
                     canvas.Concat(in transform);
@@ -135,6 +173,29 @@ internal sealed class PageContent(float width, float height)
                 UrlLinkItem link => new UrlLinkItem(transform.MapRect(link.Area), link.Url),
                 DestinationLinkItem link => new DestinationLinkItem(transform.MapRect(link.Area), link.Name),
                 DestinationItem destination => new DestinationItem(transform.MapPoint(destination.Point), destination.Name),
+                _ => item,
+            });
+        }
+    }
+
+    /// <summary>
+    /// Adds what <paramref name="layer"/> holds over everything so far, only what lies inside <paramref name="clip"/>
+    /// (this page's coordinates) drawn: a glyph run clipped there already keeps the part inside both, one clipped in
+    /// another frame keeps its own clip. Links stay whole.
+    /// </summary>
+    public void Add(PageContent layer, SKRect clip)
+    {
+        foreach (var item in layer._items)
+        {
+            _items.Add(item switch
+            {
+                GlyphItem { Run: { Clip: null } run } => new GlyphItem(run with { Clip = clip }),
+                GlyphItem { Run: { Clip: { } own, ClipTransform: null } run } => new GlyphItem(run with { Clip = SKRect.Intersect(own, clip) }),
+                DrawingItem drawing => new DrawingItem(canvas =>
+                {
+                    canvas.ClipRect(clip, antialias: true);
+                    drawing.Drawing(canvas);
+                }),
                 _ => item,
             });
         }
@@ -234,10 +295,7 @@ internal sealed class PageContent(float width, float height)
             return;
         }
         canvas.Save();
-        if (run.Clip is { } clip)
-            canvas.ClipRect(clip);
-        if (run.Transform is { } transform)
-            canvas.Concat(in transform);
+        run.Prepare(canvas);
         canvas.DrawText(blob, 0, 0, paint);
         canvas.Restore();
     }

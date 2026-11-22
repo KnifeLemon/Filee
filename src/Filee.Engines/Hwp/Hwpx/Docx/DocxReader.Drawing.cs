@@ -335,37 +335,40 @@ internal sealed partial class DocxReader
     }
 
     /// <summary>
-    /// A bent or curved connector (prstGeom bentConnector2..5 / curvedConnector2..5 with its adjust values) or an open
-    /// free-form line (custGeom of one open path) as an open path with its arrowheads, mirrored by the flips; null for
-    /// other geometry.
+    /// A bent or curved connector (prstGeom bentConnector2..5 / curvedConnector2..5 with its adjust values, the preset
+    /// kept with it) or a free-form (custGeom of one path: an open line, or a closed shape with its fill) as a path with
+    /// its arrowheads, mirrored by the flips; null for other geometry.
     /// </summary>
     private HShape? OpenPath(XElement? spPr, XElement? style, int width, int height, HAnchor? anchor)
     {
         var preset = spPr?.Element(A + "prstGeom");
-        HPath? path;
+        var xfrm = spPr?.Element(A + "xfrm");
+        var transform = Transform(xfrm);
+        var (flipH, flipV) = (transform?.FlipHorizontal == true, transform?.FlipVertical == true);
+        HGeometry? geometry;
         if (preset is not null)
-            path = OpenPaths.Preset(Attr(preset, "prst"), width, height, Adjust(preset.Element(A + "avLst")));
-        else if (spPr?.Element(A + "custGeom") is { } custom)
-            path = CustomOpenPath(custom, width, height);
+            geometry = OpenPaths.PresetGeometry(Attr(preset, "prst"), width, height, Adjust(preset.Element(A + "avLst")), flipH, flipV);
+        else if (spPr?.Element(A + "custGeom") is { } custom && CustomPath(custom, width, height) is { } drawn)
+            geometry = new HGeometry(width, height, Path: OpenPaths.Mirrored(drawn, width, height, flipH, flipV));
         else
             return null;
-        if (path is null)
+        if (geometry?.Path is not { } path)
             return null;
-        var xfrm = spPr?.Element(A + "xfrm");
         var ln = spPr?.Element(A + "ln");
-        var transform = Transform(xfrm);
-        path = OpenPaths.Mirrored(path, width, height, transform?.FlipHorizontal == true, transform?.FlipVertical == true);
+        var (fill, gradient) = path.Closed ? FillOf(spPr, style) : (null, null);
         return new HShape(HShapeKind.Path)
         {
             Width = width,
             Height = height,
             Anchor = anchor,
-            Geometry = new HGeometry(width, height, Path: path),
+            Geometry = geometry,
+            Fill = fill,
+            Gradient = gradient,
             Line = Line(ln, style),
             // The flips are in the path.
             Transform = transform is null || transform.Rotation == 0 ? null : new HTransform(transform.Rotation),
-            Head = LineEnd(ln?.Element(A + "headEnd")),
-            Tail = LineEnd(ln?.Element(A + "tailEnd")),
+            Head = path.Closed ? null : LineEnd(ln?.Element(A + "headEnd")),
+            Tail = path.Closed ? null : LineEnd(ln?.Element(A + "tailEnd")),
         };
     }
 
@@ -384,14 +387,17 @@ internal sealed partial class DocxReader
     }
 
     /// <summary>
-    /// Custom geometry with one stroked path that doesn't close (a:moveTo first, then a:lnTo / a:cubicBezTo /
-    /// a:quadBezTo / a:arcTo), in its own a:path w / h space, as an open path in the shape's box; null for anything else.
+    /// Custom geometry with one path (a:moveTo first, then a:lnTo / a:cubicBezTo / a:quadBezTo / a:arcTo, and a:close
+    /// last for a closed shape), in its own a:path w / h space, as a path in the shape's box; null for anything else
+    /// (several paths or contours, an open one that isn't stroked, a closed one neither filled nor stroked).
     /// </summary>
-    private static HPath? CustomOpenPath(XElement custom, int width, int height)
+    private static HPath? CustomPath(XElement custom, int width, int height)
     {
         var paths = custom.Element(A + "pathLst")?.Elements(A + "path").Take(2).ToList() ?? [];
-        if (paths.Count != 1 || Attr(paths[0], "stroke") is "0" or "false")
+        if (paths.Count != 1)
             return null;
+        var stroked = Attr(paths[0], "stroke") is not ("0" or "false");
+        var filled = Attr(paths[0], "fill") != "none";
         var definition = new Slides.GeometryDefinition();
         foreach (var (list, target) in new[] { ("avLst", definition.Adjust), ("gdLst", definition.Guides) })
         {
@@ -422,23 +428,34 @@ internal sealed partial class DocxReader
                     commands.Add(new Slides.GeometryCommand('A', [Attr(command, "wR") ?? "0", Attr(command, "hR") ?? "0",
                         Attr(command, "stAng") ?? "0", Attr(command, "swAng") ?? "0"]));
                     break;
+                case "close":
+                    commands.Add(new Slides.GeometryCommand('Z', []));
+                    break;
                 default:
-                    return null; // close: a closed outline the model has no fill for
+                    return null;
             }
         }
         var w = (double?)Long(paths[0], "w") ?? 0;
         var h = (double?)Long(paths[0], "h") ?? 0;
         definition.Paths.Add(new Slides.GeometryPathDefinition(w, h, Slides.PathFill.None, true, commands));
         var result = Slides.ShapeGeometry.Evaluate(definition, Math.Max(0, width), Math.Max(0, height), null, 1);
-        using var drawn = result.Paths.FirstOrDefault()?.Path;
-        return drawn is null ? null : OpenPaths.FromSkia(drawn);
+        try
+        {
+            var path = result.Paths.FirstOrDefault()?.Path is { } drawn ? OpenPaths.FromSkia(drawn, closed: true) : null;
+            return path is null ? null : (path.Closed ? filled || stroked : stroked) ? path : null;
+        }
+        finally
+        {
+            foreach (var drawnPath in result.Paths)
+                drawnPath.Path.Dispose();
+        }
     }
 
     /// <summary>
     /// An arrowhead from a:headEnd / a:tailEnd: type (triangle, stealth, diamond, oval, arrow; none), w and len (sm,
     /// med, lg; med when left out). Null for none.
     /// </summary>
-    private static HArrow? LineEnd(XElement? end)
+    internal static HArrow? LineEnd(XElement? end)
     {
         HArrowKind? kind = Attr(end, "type") switch
         {
@@ -890,7 +907,7 @@ internal sealed partial class DocxReader
                     yield return box;
                 }
             }
-            else if (VmlConnector(shape, width, height) is { } connector)
+            else if (VmlConnector(shape, width, height, transform) is { } connector)
             {
                 var stroke = shape.Element(V + "stroke");
                 yield return new HShape(HShapeKind.Path)
@@ -898,8 +915,7 @@ internal sealed partial class DocxReader
                     Width = width,
                     Height = height,
                     Anchor = anchor,
-                    Geometry = new HGeometry(width, height, Path: OpenPaths.Mirrored(connector, width, height,
-                        transform?.FlipHorizontal == true, transform?.FlipVertical == true)),
+                    Geometry = connector,
                     Line = VmlLine(shape),
                     Transform = transform is { Rotation: not 0 } turned ? new HTransform(turned.Rotation) : null,
                     ZOrder = zOrder,
@@ -1022,11 +1038,12 @@ internal sealed partial class DocxReader
     }
 
     /// <summary>
-    /// A VML bent or curved connector (types 33 to 36 bentConnector2..5, 37 to 40 curvedConnector2..5) as an open path:
-    /// the DrawingML preset of the same number with the shape's adj values (or its v:shapetype's), which count in
-    /// 1/21600 of the box where DrawingML counts in 1/100000. Null for other shapes.
+    /// A VML bent or curved connector (types 33 to 36 bentConnector2..5, 37 to 40 curvedConnector2..5) as an open path
+    /// mirrored by <paramref name="transform"/>'s flips: the DrawingML preset of the same number with the shape's adj
+    /// values (or its v:shapetype's), which count in 1/21600 of the box where DrawingML counts in 1/100000. Null for
+    /// other shapes.
     /// </summary>
-    private HPath? VmlConnector(XElement shape, int width, int height)
+    private HGeometry? VmlConnector(XElement shape, int width, int height, HTransform? transform)
     {
         if (!int.TryParse(VmlShapeType(shape), NumberStyles.Integer, CultureInfo.InvariantCulture, out var type) || type is < 33 or > 40)
             return null;
@@ -1038,7 +1055,7 @@ internal sealed partial class DocxReader
             if (long.TryParse(values[i].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
                 adjust[$"adj{i + 1}"] = $"val {Math.Clamp(value * 100000 / 21600, -10_000_000, 10_000_000).ToString(CultureInfo.InvariantCulture)}";
         }
-        return OpenPaths.Preset(name, width, height, adjust);
+        return OpenPaths.PresetGeometry(name, width, height, adjust, transform?.FlipHorizontal == true, transform?.FlipVertical == true);
     }
 
     /// <summary>The v:shapetype a VML shape's type ("#id") names, from anywhere in its part; null when there is none.</summary>

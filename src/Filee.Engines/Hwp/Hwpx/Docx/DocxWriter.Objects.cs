@@ -199,14 +199,30 @@ internal sealed partial class DocxWriter
         };
         if (shape.Kind == HShapeKind.Path)
         {
-            // An open path (bent or curved connector, free-form line): custom geometry, flips already in its points.
             if (shape.Geometry?.Path is not { } path)
                 return "";
-            var custom = CustomGeometry(path, shape.Geometry, w, h);
-            var open = "<wps:wsp><wps:cNvSpPr/>" +
-                       ShapeProperties(w, h, "line", 0, null, null, shape.Line, false, false, shape.Head, shape.Tail, custom) +
-                       "<wps:bodyPr/></wps:wsp>";
-            return DrawingRun(shape.Anchor, w, h, "Shape", open);
+            string drawn;
+            if (shape.Geometry.Connector is { } connector && !path.Closed && OpenPaths.IsConnectorPreset(connector.Preset))
+            {
+                // A connector read from a DrawingML preset: the preset again with its adjust values and flips, as Word
+                // writes a connector (wps:cNvCnPr), so it stays one.
+                drawn = "<wps:wsp><wps:cNvCnPr/>" +
+                        ShapeProperties(w, h, "line", 0, null, null, shape.Line, connector.FlipHorizontal, connector.FlipVertical, shape.Head, shape.Tail,
+                            PresetGeometry(connector)) +
+                        "<wps:bodyPr/></wps:wsp>";
+            }
+            else
+            {
+                // A free-form line or shape (or a connector from elsewhere): custom geometry, flips already in its points;
+                // a closed one filled.
+                var custom = CustomGeometry(path, shape.Geometry, w, h);
+                drawn = "<wps:wsp><wps:cNvSpPr/>" +
+                        (path.Closed
+                            ? ShapeProperties(w, h, "rect", 0, shape.Fill, shape.Gradient, shape.Line, false, false, custom: custom)
+                            : ShapeProperties(w, h, "line", 0, null, null, shape.Line, false, false, shape.Head, shape.Tail, custom)) +
+                        "<wps:bodyPr/></wps:wsp>";
+            }
+            return DrawingRun(shape.Anchor, w, h, "Shape", drawn);
         }
         var line = shape.Kind == HShapeKind.Line;
         var xml =
@@ -217,14 +233,26 @@ internal sealed partial class DocxWriter
         return DrawingRun(shape.Anchor, w, h, "Shape", xml);
     }
 
-    /// <summary>a:custGeom of an open path: one stroked, unfilled a:path in the shape's EMU box (points may lie outside it).</summary>
+    /// <summary>a:prstGeom of a connector preset with its adjust values (a:gd "val").</summary>
+    private static string PresetGeometry(HConnector connector)
+    {
+        var sb = new StringBuilder($"<a:prstGeom prst=\"{connector.Preset}\"><a:avLst>");
+        foreach (var value in connector.Adjust.Where(a => a.Name is "adj1" or "adj2" or "adj3"))
+            sb.Append($"<a:gd name=\"{value.Name}\" fmla=\"val {Number(value.Value)}\"/>");
+        return sb.Append("</a:avLst></a:prstGeom>").ToString();
+    }
+
+    /// <summary>
+    /// a:custGeom of a path: one stroked a:path in the shape's EMU box (points may lie outside it), unfilled when open,
+    /// closed (a:close) and filled with the shape's fill when closed.
+    /// </summary>
     private static string CustomGeometry(HPath path, HGeometry geometry, int width, int height)
     {
         var (sx, sy) = (geometry.Width > 0 ? width / (double)geometry.Width : 1, geometry.Height > 0 ? height / (double)geometry.Height : 1);
         string Point(HPoint p) =>
             $"<a:pt x=\"{Number((long)Math.Round(p.X * sx * 127))}\" y=\"{Number((long)Math.Round(p.Y * sy * 127))}\"/>";
         var sb = new StringBuilder("<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l=\"l\" t=\"t\" r=\"r\" b=\"b\"/><a:pathLst>");
-        sb.Append($"<a:path w=\"{Number(Emu(width))}\" h=\"{Number(Emu(height))}\" fill=\"none\"><a:moveTo>{Point(path.Start)}</a:moveTo>");
+        sb.Append($"<a:path w=\"{Number(Emu(width))}\" h=\"{Number(Emu(height))}\"{(path.Closed ? "" : " fill=\"none\"")}><a:moveTo>{Point(path.Start)}</a:moveTo>");
         foreach (var segment in path.Segments)
         {
             if (segment is { Control1: { } c1, Control2: { } c2 })
@@ -232,6 +260,8 @@ internal sealed partial class DocxWriter
             else
                 sb.Append($"<a:lnTo>{Point(segment.End)}</a:lnTo>");
         }
+        if (path.Closed)
+            sb.Append("<a:close/>");
         return sb.Append("</a:path></a:pathLst></a:custGeom>").ToString();
     }
 

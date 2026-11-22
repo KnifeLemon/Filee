@@ -504,11 +504,14 @@ internal sealed class MatchFinder
         var leftSlot = (stored & mask) << 1; // where the next candidate smaller than pos goes
         var rightSlot = leftSlot + 1;        // where the next candidate larger than pos goes
         int leftLength = 0, rightLength = 0; // bytes known to match the bounds on either side
+        var best = found.Best; // kept here: an offer only counts when it beats it
         for (var depth = _depth; ; depth--)
         {
-            var gap = stored - candidate;
+            // Within the reach behind pos (gap 1 … reach − 1) and inside the buffer; an empty slot (0) lies before
+            // the buffer's start, as does every position the window slid past.
             var at = candidate - offset;
-            if (candidate <= 0 || gap <= 0 || gap >= reach || depth == 0 || (uint)at > (uint)pos)
+            var gap = pos - at;
+            if ((uint)(gap - 1) >= (uint)(reach - 1) || at < 0 || depth == 0)
             {
                 Unsafe.Add(ref links, leftSlot) = 0;
                 Unsafe.Add(ref links, rightSlot) = 0;
@@ -527,7 +530,11 @@ internal sealed class MatchFinder
                 length++;
                 if (length < limit)
                     length += Common(buffer, pos + length, at + length, limit - length);
-                found.Offer(length, gap);
+                if (length > best)
+                {
+                    found.Offer(length, gap);
+                    best = found.Best;
+                }
             }
             if (length == limit)
             {

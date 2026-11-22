@@ -56,7 +56,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | WeasyPrint | **optional download** (Windows only for now; ~32 MB, 65 MB on disk) | **HTML, Markdown, EML, MSG, MHTML → PDF** laid out as a browser prints them (headings, tables, bold, Arabic and Indic shaping), instead of the built-in route; nothing changes without it (see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 | ExifTool | **optional download** (~11 MB on Windows, ~8 MB elsewhere; 30 MB on disk) | **the Metadata tool**: reads every metadata field of pictures, PDFs, video and sound, and writes changes into a copy in the file's own format without re-encoding it (JPG, PNG, TIFF, WEBP, HEIC, AVIF, JPEG XL, GIF, PSD, camera RAW, PDF, MP4, MOV, M4A, 3GP, …; not MP3, FLAC, WAV, MKV, AVI or BMP, which it shows read-only). Without it the Metadata tool shows nothing and offers it |
-| 7-Zip | **optional download** (~2 MB; ~2.5 MB on disk on Windows, ~6.5 MB elsewhere; not suggested) | **rare archive variants** the archive engine's own readers leave out: 7Z with PPMd and other uncommon methods, Quantum CABs and cabinet sets, LHA methods other than -lh0-/-lz4-/-lh4- to -lh7-, multi-volume ARJ, NTFS, exFAT, APFS, HFSX and ext volumes in disk images, damaged archives it can read past (see [Archives](#archives)). Without it these are refused with "Install 7-Zip in Settings → Engines"; every common archive works without it |
+| 7-Zip | **optional download** (~2 MB; ~2.5 MB on disk on Windows, ~6.5 MB elsewhere; not suggested) | **rare archive variants** the archive engine's own readers leave out: 7Z with PPMd and other uncommon methods, Quantum CABs and cabinet sets, LHA methods other than -lh0-/-lz4-/-lh4- to -lh7-, multi-volume ARJ, NTFS, APFS and HFSX volumes in disk images, damaged archives it can read past (see [Archives](#archives)). Without it these are refused with "Install 7-Zip in Settings → Engines"; every common archive works without it |
 
 DOCX, DOC, ODT, XLSX, XLS, ODS, PPTX, PPT and ODP → PDF need neither Microsoft Office nor LibreOffice: they are read
 in-process (and VSDX and ODG drawings → PDF, SVG and PNG, see [Drawings](#drawings-visio-odg)).
@@ -2605,10 +2605,20 @@ each paragraph keeps its place on the page instead of joining a document's flow.
   group's box too), which pictures take into their own alpha. Multiply / Darken over text put the shape under that
   text; other blend modes, blended pictures and Multiply / Darken over pictures are drawn over their backdrop: the
   page's colour, and the pictures, text and graphics painted before them there, drawn into the same picture (the text
-  stays a text box under it). Backdrops have JBIG2 pictures (Filee's decoder) and JPEG behind other filters, Type 3
-  glyphs drawn from their procedures and every letter of a ligature; a page's blends share a budget (50,000 earlier
-  paints, 64 pages of area) instead of a count, so a page of 3,000 blends still gets them (about 2 s). JPEG 2000
-  pictures are still missing from a backdrop.
+  stays a text box under it). Backdrops have JBIG2 pictures (Filee's decoder), JPEG 2000 pictures (Filee's own
+  JPEG 2000 decoder, see below) and JPEG behind other filters, Type 3 glyphs drawn from their procedures (the text a
+  procedure shows included, 20,000 glyphs a page) and every letter of a ligature; a page's blends share a budget
+  (50,000 earlier paints, 64 pages of area) instead of a count, so a page of 3,000 blends still gets them (about 2 s).
+- **JPEG 2000** (`Jpeg2000/`, PDF's `/JPXDecode`, for the backdrops above and the PostScript writer): Filee's own
+  decoder of T.800 Part 1 — JP2 boxes (colour, palette, channel definitions) or a bare codestream, tiles, every
+  progression order and progression order changes, precincts, packed packet headers (PPM, PPT), SOP / EPH, every
+  code-block style, scalar quantization and max-shift ROI, the 5/3 and 9/7 wavelets, RCT / ICT. Checked against
+  OpenJPEG: its lossless files decode to the same pixels, lossy ones within one level. Left out: Part 2 and HTJ2K
+  (Part 15) coding, more than 30 bit-planes a coefficient. Limits (`Jpeg2000Limits`): pixels and samples
+  (`error.document_too_large`), components, tiles, layers, code-blocks, packets and visits of the progression
+  (`error.document_too_complex`); in a PDF at most `MaxGraphicsPixels` (25 million) pixels a picture. Code-blocks
+  and wavelet lines are decoded on all cores; a 2400 × 1800 RGB picture takes 2–5 s (lossy or lossless, measured on
+  a machine busy with other builds), slower than OpenJPEG.
 - **Not rebuilt yet**: form fields and annotations, text inside pattern cells, vertical CJK writing. PDF → DOCX stays the route for a document that
   should flow.
 
@@ -2700,7 +2710,8 @@ higher, at most 600 and 40 megapixels; Flate, or JPEG when that is less than hal
 file's result says so (`notice.ps_pages_as_pictures`; the app's log names the page and the reason). That is a page
 with transparency (constant alpha below 1, a soft mask in the graphics state, a blend mode other than Normal, a soft
 mask on a picture with partial transparency, a transparent annotation), text used as a clipping path (render modes 4–7),
-pictures PostScript can't decode (JBIG2 with features Filee's decoder leaves out, JPEG 2000, Lab and DeviceN pictures), fonts the writer can't place
+pictures PostScript can't decode (JBIG2 and JPEG 2000 with features Filee's decoders leave out, Lab and DeviceN pictures; JPEG 2000 is
+decoded by Filee into plain samples, its opacity a soft mask), fonts the writer can't place
 (vertical writing, predefined CMaps, CID fonts that aren't embedded), a damaged content stream, and a page past the
 limits below. A PDF PDFsharp can't open at all has every page drawn as a picture, when PDFium can draw it.
 
@@ -2912,14 +2923,17 @@ next.
     as glyph IDs for a TrueType CIDFont found by its own name). A CID font with a predefined Unicode CMap
     (`Uni*-UCS2-*`, `Uni*-UTF16-*`) becomes Identity-H / -V with its codes as CIDs, from an installed CJK font of its
     script, every code keeping the PDF's width and vertical metrics (W, W2) by the CID Adobe's CMap file gives it
-    (the files PdfPig carries; without one, only DW everywhere and printable ASCII). A font listed but never drawn is
-    left as it is;
+    (the files PdfPig carries, found by name among its resources and checked by a test, so a PdfPig that moves them
+    fails there; without one, only DW everywhere and printable ASCII). A font listed but never drawn is left as it is;
   - **TrueType fonts the PDF embedded itself are repaired** (`PdfAFontRepair`): widths that differ from the program
     go into the program's advances (the text keeps its places), encodings PDF/A forbids become a symbolic font with a
     (3,0) cmap of the glyphs the codes drew, codes and CIDs drawn that the program has no glyph for get an empty glyph
     of their width (not .notdef, 6.2.11.4.1 / 6.2.11.8), and fonts without ToUnicode get one (encoding names or the
-    font's cmap). Type 1 (FontFile), CFF (Type1C) and CID-keyed CFF (CIDFontType0C) programs get empty glyphs for the
-    codes and CIDs they lack too (a code with no glyph name gets one through Differences);
+    font's cmap). Type 1 (FontFile), CFF (Type1C), CID-keyed CFF (CIDFontType0C) and OpenType (FontFile3 /OpenType,
+    TrueType or CFF outlines) programs get empty glyphs for the codes and CIDs they lack too (a code with no glyph name
+    gets one through Differences), and their advances (hsbw / sbw, the CFF width, an OpenType program's hmtx) are set
+    to the dictionary's widths where they differ (a glyph two codes draw with different widths keeps the first, the
+    dictionary takes it for the other; a CFF width a subroutine gives is left as it is);
   - JavaScript, launch and the other forbidden actions (also in `/Next` chains, open actions, outlines), every `AA`,
     the actions of fields and widgets, XFA, `NeedAppearances`, embedded files, alternate presentations, `PresSteps`,
     `Requirements`, `Collection`, other `Perms` than UR3/DocMDP, XMP of pages and pictures; optional-content
@@ -2941,8 +2955,7 @@ next.
   content tokens than `PdfFontUses` reads (`error.document_too_complex`), and more content bytes than it reads
   (`error.document_too_large`).
 
-  **Not checked**: the widths of embedded CFF and Type 1 programs against the dictionary, glyphs lacking in OpenType
-  (FontFile3 /OpenType) programs, the document's own ICC-based colour spaces, JPEG 2000
+  **Not checked**: the document's own ICC-based colour spaces, JPEG 2000
   specifics, halftone details beyond dropping `HT`, the implementation limits (string, name and number sizes, `q`
   nesting), and content stream operators outside ISO 32000-1. Conformance is tested by an in-test checker of the
   PDF/A-2b clauses (`tests/Filee.Engines.Tests/PdfA2bChecks.cs`, numbered as veraPDF's published rule list): the file
@@ -4223,7 +4236,7 @@ Filee's download in `engines/7zip` (`7z.exe` on Windows, `7zz` elsewhere), never
 (`EngineEnvironment.UsesSystemCopy`: its version and switches are unknown, and the Engines page doesn't show it). Filee's download is the official x64 MSI unpacked with `msiexec /a` down to `7z.exe`,
 `7z.dll`, the licence and the readme on Windows, and 7-Zip's own `tar.xz` builds on Linux and macOS, pinned in
 `engines.json`. When it is there, 7-Zip is asked again when an in-process reader meets something it lacks (an
-unknown 7z or RAR method, a GNU sparse file, an interleaved ISO file, a Quantum CAB, an LHA method or ARJ volume
+unknown 7z or RAR method, a GNU sparse file, a Quantum CAB, an LHA method or ARJ volume
 Filee doesn't read, an NTFS or APFS volume) or damage it can't get past, and 7z archives with a method Filee doesn't
 decode (PPMd, RISC-V, …; see below) go to it first. Without it, such an archive is refused with
 `error.archive_needs_7zip` ("Install 7-Zip in Settings → Engines", with the missing feature as the detail; the
@@ -4259,7 +4272,7 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
 | GMA (Garry's Mod addon) | Filee: versions 1–3, CRCs checked, an `addon.json` written beside the files | Filee, as gmad does (see below) |
 | BSP (Source engine map), its packed files | Filee copies the pakfile lump (a ZIP) out and unpacks it like any ZIP | — |
 | VPK (Valve pak) | Filee: versions 1 and 2, `_dir.vpk` with its `_000.vpk` … parts, CRCs checked; a PS Vita `.vpk` (a ZIP) like any ZIP | — |
-| IMG (raw disk images) | Filee (`DiskImageReader`): GPT, Apple partition map or MBR with extended partitions (`DiskImagePartitions`), a folder `<number> <label>` per volume when there are several; FAT12/16/32 by Filee's own reader (`DiskImageFat`: long names and the lowercase flags), UDF and HFS+ by DiscUtils; a CD or DVD image named .img goes to the disc readers; NTFS, exFAT, APFS, HFSX, classic HFS and ext2/3/4 volumes send the image to 7-Zip; BitLocker and LUKS volumes are refused as encrypted | — |
+| IMG (raw disk images) | Filee (`DiskImageReader`): GPT, Apple partition map or MBR with extended partitions (`DiskImagePartitions`), a folder `<number> <label>` per volume when there are several; FAT12/16/32 by Filee's own reader (`DiskImageFat`: long names and the lowercase flags), exFAT by Filee's own reader (`DiskImageExFat`), ext2/3/4 by Filee's own reader (`DiskImageExt`: extent trees, block maps, holes and unwritten extents, inline data, hashed folders; the journal is not replayed), UDF and HFS+ by DiscUtils; a CD or DVD image named .img goes to the disc readers; NTFS, APFS, HFSX and classic HFS volumes and ext volumes with features Filee doesn't read (compression) send the image to 7-Zip; BitLocker and LUKS volumes are refused as encrypted | — |
 | DMG | Filee: `UdifDisk` reads the UDIF blocks (raw, zero fill and ignore, ADC, zlib, bzip2, LZFSE, LZMA as .xz) once `UdifCheck` has checked the trailer and block tables, then the disk inside as for IMG (HFS+ by DiscUtils.HfsPlus); APFS volumes by 7-Zip; encrypted DMGs are refused | — |
 
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
@@ -4361,10 +4374,10 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
   7-Zip"), pull requests into builtin-engines included; the other legs fetch 7-Zip for the interop tests.
 - **Not supported**: encrypted archives, split (multi-volume) ALZ and EGG, solid EGG, EGG entries compressed with
   ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG. Without
-  7-Zip installed also (refused with the "install 7-Zip" error): NTFS, exFAT, APFS, HFSX, HFS and ext volumes in disk images, DMGs with only a resource fork (no XML block list), UDF discs
+  7-Zip installed also (refused with the "install 7-Zip" error): NTFS, APFS, HFSX and HFS volumes in disk images, DMGs with only a resource fork (no XML block list), UDF discs
   that use what DiscUtils.Udf lacks (virtual and sparable partitions, extended allocation descriptors), Quantum CABs
   and cabinet sets, LHA methods other than -lh0-, -lz4- and -lh4- to
-  -lh7-, multi-volume ARJ, GNU sparse files in TARs, interleaved ISO files, the El Torito boot image of an ISO (7-Zip
+  -lh7-, multi-volume ARJ, GNU sparse files in TARs, the El Torito boot image of an ISO (7-Zip
   shows it as `[BOOT]`; Filee's ISO reader leaves it out).
 - The ALZ and EGG readers are Filee's own code, written from the format descriptions of unalz (zlib licence), the
   `unalz` Rust crate, EggDotNet and unegg (MIT). ALZip's bzip2 has no `BZh` header, starts every block with `DLZ\x01`
@@ -4375,11 +4388,11 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
   added when it is there), `ArchiveInProcessTests.cs` (every in-process format built in
   code by `ArchiveFormatBuilders.cs` — 7z, xz, RAR 4 / 5 with stored entries, ISO, cpio, ar, RPM, .Z — and the hostile
   inputs: traversal, links, passwords, bombs with lowered limits, entry floods, ISO loops, damaged data),
-  `DiskImageTests.cs` (FAT, UDF, partition tables and DMGs built in code by `DiskImageBuilders.cs` and DiscUtils.Fat,
-  compared with 7-Zip; UDF discs written by Windows' IMAPI2 and HFS+ DMGs by macOS' hdiutil where those exist; loops,
+  `DiskImageTests.cs` (FAT, exFAT, ext2/3/4, UDF, partition tables and DMGs built in code by `DiskImageBuilders.cs` and
+  DiscUtils.Fat, compared with 7-Zip (not exFAT); UDF discs written by Windows' IMAPI2 and HFS+ DMGs by macOS' hdiutil (zlib, bzip2, LZFSE, LZMA and raw) where those exist; loops,
   bombs, damaged tables, encrypted volumes), `LzfseTests.cs` (LZFSE streams of every block kind written by
   `LzfseBuilders.cs`, damaged ones, ADC chunks), `ArchiveFuzzTests.cs` (`Category=Fuzz`: mutated ar, cpio, RPM, ISO, .Z,
-  lzip, ALZ, EGG, 7z, xz, LZMA, LZFSE, CAB, LHA, ARJ, FAT / MBR / GPT images, UDF discs and DMGs must unpack or be refused
+  lzip, ALZ, EGG, 7z, xz, LZMA, LZFSE, CAB, LHA, ARJ, FAT / exFAT / ext / MBR / GPT images, UDF discs and DMGs must unpack or be refused
   with `InvalidDataException`) and `ArchiveSpeedTests.cs` (`Category=Benchmark`, only with
   `FILEE_ARCHIVE_BENCHMARK=1`: the in-process readers next to 7-Zip).
 

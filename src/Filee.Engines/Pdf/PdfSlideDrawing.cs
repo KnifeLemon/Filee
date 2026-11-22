@@ -7,13 +7,14 @@
 //   (a colour with the constant alpha ca / CA, a shading, or the picture of a tiling pattern's cell), line width,
 //   dashes, caps and joins as drawn under the transformation, and the blend mode (BM) they are painted with;
 // - pictures with the matrix that maps their unit square onto the page, stencil masks (image masks) with the colour
-//   they paint in, and for pictures PdfPig can't decode (JBIG2, JPEG behind other filters) how Filee's own decoders
+//   they paint in, and for pictures PdfPig can't decode (JBIG2, JPEG 2000, JPEG behind other filters) how Filee's own decoders
 //   read them (PdfOwnPicture);
 // - shadings painted with "sh" over the clipping area;
 // - where each glyph starts and when it is drawn, so text boxes take their place among the rest, and the glyphs as
 //   painted (font, code, matrix, colour, advance: Letters, at most MaxLetters), drawn only as the backdrop of a blend;
 //   a Type 3 glyph's procedure is drawn once for each colour it is shown in (in text space, at most MaxType3Glyphs a
-//   page, the font's resources), so its glyphs are drawn as the PDF draws them, not from their text;
+//   page, the font's resources), so its glyphs are drawn as the PDF draws them, not from their text; the text a
+//   procedure shows is among its paints (at most MaxType3Letters glyphs a page), procedures in it MaxDepth deep;
 // - the clipping path everything is painted through (an intersection of the page's W / W* paths and the boxes of
 //   form XObjects), and the soft mask: a group that paints one colour is a constant alpha, one that paints one shading
 //   an alpha gradient (from its luminosity); any other group, or one with a transfer function (TR) or a backdrop (BC)
@@ -137,8 +138,8 @@ internal sealed record PdfPaintedImage(int Order, PdfClip? Clip, PdfMask? Mask, 
 
 /// <summary>
 /// A picture PdfPig doesn't decode, read by Filee's own decoders when it is first drawn (a backdrop): JBIG2 through
-/// Jbig2Decoder with the stream's JBIG2Globals, and JPEG data behind other filters (Flate, ASCII85 ...). JPEG 2000 has
-/// no decoder in Filee and stays left out.
+/// Jbig2Decoder with the stream's JBIG2Globals, JPEG 2000 through Jpeg2000Decoder (PdfJpxPictures), and JPEG data
+/// behind other filters (Flate, ASCII85 ...).
 /// </summary>
 internal sealed class PdfOwnPicture(bool isMask, Func<SKColor, SKBitmap?> decode)
 {
@@ -217,6 +218,11 @@ internal sealed class PdfDrawingBudget
 
     public int Triangles { get; set; }
     public long Samples { get; set; }
+
+    /// <summary>Type 3 glyph procedures drawn (PdfSlideDrawingProcessor.MaxType3Glyphs), and the glyphs their text shows.</summary>
+    public int Type3Glyphs { get; set; }
+
+    public int Type3Letters { get; set; }
 }
 
 /// <summary>A page's paints in order; owns their outlines, clipping paths and tile pictures.</summary>
@@ -295,6 +301,9 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
     private readonly PdfSlideDrawing _drawing = new();
     private readonly SKMatrix _toSlide;
     private readonly int _depth;
+
+    /// <summary>The drawing is a Type 3 glyph's procedure: the text it shows is drawn among its paints.</summary>
+    private readonly bool _glyphProcedure;
     private readonly PdfDrawingBudget _budget;
     private readonly CropBox _cropBox;
     private readonly UserSpaceUnit _userSpaceUnit;
@@ -334,9 +343,11 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
 
     public PdfSlideDrawingProcessor(int pageNumber, IResourceStore resourceStore, IPdfTokenScanner pdfScanner, IPageContentParser pageContentParser,
         ILookupFilterProvider filterProvider, CropBox cropBox, UserSpaceUnit userSpaceUnit, PageRotationDegrees rotation,
-        TransformationMatrix initialMatrix, ParsingOptions parsingOptions, SKMatrix toSlide, int depth, PdfDrawingBudget budget, SKRect area)
+        TransformationMatrix initialMatrix, ParsingOptions parsingOptions, SKMatrix toSlide, int depth, PdfDrawingBudget budget, SKRect area,
+        bool glyphProcedure = false)
         : base(pageNumber, resourceStore, pdfScanner, pageContentParser, filterProvider, cropBox, userSpaceUnit, rotation, in initialMatrix, parsingOptions)
     {
+        _glyphProcedure = glyphProcedure;
         _area = area;
         _toSlide = toSlide;
         _depth = depth;
@@ -767,10 +778,10 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
     /// draws them; <paramref name="setup"/> sets up the graphics state they start from.
     /// </summary>
     private PdfSlideDrawing Nested(IReadOnlyList<IGraphicsStateOperation> operations, DictionaryToken? resources, TransformationMatrix initial, SKMatrix toSlide,
-        SKRect area, Action<CurrentGraphicsState>? setup = null)
+        SKRect area, Action<CurrentGraphicsState>? setup = null, bool glyphProcedure = false)
     {
         var nested = new PdfSlideDrawingProcessor(PageNumber, ResourceStore, PdfScanner, PageContentParser, FilterProvider, _cropBox, _userSpaceUnit,
-            _rotation, initial, ParsingOptions, toSlide, _depth + 1, _budget, area);
+            _rotation, initial, ParsingOptions, toSlide, _depth + 1, _budget, area, glyphProcedure);
         setup?.Invoke(nested.GetCurrentState());
         if (resources is not null)
             ResourceStore.LoadResourceDictionary(resources);
@@ -971,15 +982,17 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
     }
 
     /// <summary>
-    /// The picture as Filee's own decoders read it where PdfPig can't (see <see cref="PdfOwnPicture"/>): JBIG2, and
-    /// JPEG behind other filters; null for any other picture.
+    /// The picture as Filee's own decoders read it where PdfPig can't (see <see cref="PdfOwnPicture"/>): JBIG2, JPEG
+    /// 2000, and JPEG behind other filters; null for any other picture.
     /// </summary>
     private PdfOwnPicture? Own(StreamToken stream, IPdfImage? image)
     {
         var dictionary = stream.StreamDictionary;
         var names = FilterNames(dictionary);
-        if (names.Count == 0 || names[^1] is not ("JBIG2Decode" or "DCTDecode" or "DCT"))
+        if (names.Count == 0 || names[^1] is not ("JBIG2Decode" or "DCTDecode" or "DCT" or "JPXDecode"))
             return null;
+        if (names[^1] == "JPXDecode")
+            return Jpx(stream, image, names.Count);
         var jbig2 = names[^1] == "JBIG2Decode";
         if (!jbig2 && names.Count == 1 && image is not null)
             return null; // a JPEG file as it is: Skia reads it (PdfRasterCache.Read)
@@ -1011,6 +1024,41 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
                 globals = shared.Decode(filters, scanner).ToArray();
             var page = Djvu.Jbig2Decoder.Decode(data.ToArray(), globals, new Djvu.Jbig2Limits { MaxBitmapPixels = (long)PdfDocumentReader.MaxGraphicsPixels });
             return Jbig2Bitmap(page, width, height, mask, inverted, color);
+        });
+    }
+
+    /// <summary>
+    /// A JPEG 2000 picture (/JPXDecode last, after any other filters) through Filee's own decoder (PdfJpxPictures),
+    /// in the image dictionary's colour space when it has one.
+    /// </summary>
+    private PdfOwnPicture Jpx(StreamToken stream, IPdfImage? image, int filters)
+    {
+        var dictionary = stream.StreamDictionary;
+        var mask = image?.IsImageMask ?? (dictionary.TryGet(NameToken.ImageMask, PdfScanner, out BooleanToken? flag) && flag.Data);
+        var alphaInData = dictionary.TryGet(NameToken.Create("SMaskInData"), PdfScanner, out NumericToken? inData) && inData.Int != 0;
+        var space = dictionary.ContainsKey(NameToken.ColorSpace) || dictionary.ContainsKey(NameToken.Create("CS")) ? image?.ColorSpaceDetails : null;
+        var (scanner, provider) = (PdfScanner, FilterProvider);
+        return new PdfOwnPicture(mask, color =>
+        {
+            var chain = provider.GetFilters(dictionary, scanner);
+            if (chain.Count != filters)
+                return null;
+            var data = stream.Data;
+            for (var i = 0; i < chain.Count - 1; i++)
+            {
+                if (!chain[i].IsSupported)
+                    return null;
+                data = chain[i].Decode(data, dictionary, provider, i);
+            }
+            var picture = PdfJpxPictures.Decode(data.ToArray());
+            var rgba = PdfJpxPictures.Rgba(picture, mask ? null : space, alphaInData);
+            if (mask)
+            {
+                // A JPEG 2000 image mask (rare): dark samples paint.
+                for (var i = 0; i < rgba.Length; i += 4)
+                    (rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]) = (color.Red, color.Green, color.Blue, rgba[i] < 128 ? color.Alpha : (byte)0);
+            }
+            return PdfJpxPictures.Bitmap(rgba, picture.Width, picture.Height);
         });
     }
 
@@ -1091,6 +1139,14 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
                 && Letter(font, currentState, code, unicode, renderingMatrix, textMatrix, transformationMatrix, characterBoundingBox) is { } letter)
                 _drawing.Letters.Add(letter);
         }
+        else if (_glyphProcedure && _budget.Type3Letters < MaxType3Letters && _budget.Paints < MaxPaints
+                 && Letter(font, currentState, code, unicode, renderingMatrix, textMatrix, transformationMatrix, characterBoundingBox) is { } letter)
+        {
+            // Text a Type 3 glyph's procedure shows: one of its paints, in the glyph's text space.
+            _budget.Type3Letters++;
+            _budget.Paints++;
+            _drawing.Paints.Add(letter);
+        }
         _order++;
     }
 
@@ -1127,8 +1183,11 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
         };
     }
 
-    /// <summary>Type 3 glyph procedures drawn on one page at most (each once for each colour it is shown in).</summary>
+    /// <summary>Type 3 glyph procedures drawn on one page at most (each once for each colour it is shown in), procedures in procedures included.</summary>
     internal const int MaxType3Glyphs = 1024;
+
+    /// <summary>Glyphs the text of Type 3 glyph procedures shows on one page at most; past that their text is left out.</summary>
+    internal const int MaxType3Letters = 20_000;
 
     private readonly Dictionary<(IFont Font, int Code, SKColor Fill, SKColor Stroke), PdfType3Glyph?> _type3 = new(new Type3Keys());
 
@@ -1163,14 +1222,16 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
         {
             // A broken font: drawn from its Unicode with an installed font instead.
         }
-        if (_type3.Count < MaxType3Glyphs && charProc is not null && Operations(charProc) is { } operations)
+        // Procedures inside procedures go MaxDepth deep; deeper glyphs are drawn from their text.
+        if (_budget.Type3Glyphs < MaxType3Glyphs && _depth < MaxDepth && charProc is not null && Operations(charProc) is { } operations)
         {
+            _budget.Type3Glyphs++;
             var inked = operations.OfType<UglyToad.PdfPig.Graphics.Operations.TextState.Type3SetGlyphWidthAndBoundingBox>().Any();
             var drawing = Nested(operations, font.Type3Resources, font.GetFontMatrix(), SKMatrix.Identity, new SKRect(-2, -2, 3, 3), start =>
             {
                 start.CurrentNonStrokingColor = fill;
                 start.CurrentStrokingColor = stroke;
-            });
+            }, glyphProcedure: true);
             _drawing.Owned.Add(drawing);
             if (drawing.Paints.Count > 0)
                 glyph = new PdfType3Glyph(drawing.Paints, inked);
@@ -1344,7 +1405,8 @@ internal static class PdfSlideRaster
                     Picture(canvas, ink is not null && image.IsMask ? image with { MaskColor = ink.Color } : image, cache);
                     break;
                 case PdfPaintedGlyph glyph:
-                    Glyph(canvas, glyph, uncolored, cache, cancellationToken);
+                    // Text inside a "d1" Type 3 glyph is inked too.
+                    Glyph(canvas, ink is not null ? glyph with { Color = ink } : glyph, uncolored, cache, cancellationToken);
                     break;
                 case PdfPaintedPath path:
                     if (path.Fill is { } fill)
@@ -1576,7 +1638,7 @@ internal static class PdfSlideRaster
 
     /// <summary>
     /// A picture at its place (in a soft mask group, a backdrop, or with a blend mode); a stencil mask in its colour.
-    /// One neither PdfPig nor Filee's own decoders read (JPEG 2000) is left out.
+    /// One neither PdfPig nor Filee's own decoders read (damaged, or a JBIG2 or JPEG 2000 feature Filee doesn't read) is left out.
     /// </summary>
     private static void Picture(SKCanvas canvas, PdfPaintedImage image, PdfRasterCache? cache)
     {

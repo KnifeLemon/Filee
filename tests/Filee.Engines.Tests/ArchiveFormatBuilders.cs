@@ -382,9 +382,11 @@ internal static class ArchiveFormatBuilders
     /// <summary>
     /// An ISO 9660 image of <paramref name="entries"/> (folders implied by the file paths are added). With
     /// <paramref name="loop"/> a folder "loop" points back at the root; <paramref name="symlink"/> adds a Rock Ridge
-    /// symbolic link named "link" pointing there.
+    /// symbolic link named "link" pointing there. With <paramref name="interleave"/> the files are recorded a unit of
+    /// sectors at a time with a gap between (filled with 0xEE, which no reader should return).
     /// </summary>
-    public static byte[] Iso(IReadOnlyList<TestEntry> entries, IsoNames names, bool loop = false, string? symlink = null, int multiExtent = 0)
+    public static byte[] Iso(IReadOnlyList<TestEntry> entries, IsoNames names, bool loop = false, string? symlink = null, int multiExtent = 0,
+        (int Unit, int Gap) interleave = default)
     {
         // The tree: path → children.
         var folders = new SortedDictionary<string, List<(string Name, TestEntry? File)>>(StringComparer.Ordinal) { [""] = [] };
@@ -424,7 +426,8 @@ internal static class ArchiveFormatBuilders
         foreach (var entry in entries.Where(e => !e.IsFolder))
         {
             fileSector[entry] = next;
-            next += Math.Max(1, (entry.Data!.Length + 2047) / 2048);
+            var sectors = Math.Max(1, (entry.Data!.Length + 2047) / 2048);
+            next += interleave.Unit == 0 ? sectors : (sectors + interleave.Unit - 1) / interleave.Unit * (interleave.Unit + interleave.Gap);
         }
         var image = new byte[next * 2048L];
 
@@ -445,6 +448,11 @@ internal static class ArchiveFormatBuilders
             r[22] = (byte)t.Minute;
             r[23] = (byte)t.Second;
             r[25] = flags;
+            if ((flags & 2) == 0)
+            {
+                r[26] = (byte)interleave.Unit;
+                r[27] = (byte)interleave.Gap;
+            }
             r[28] = 1;
             r[31] = 1;
             r[32] = (byte)name.Length;
@@ -567,7 +575,20 @@ internal static class ArchiveFormatBuilders
             Descriptor(17, 2, jolietSector, joliet: true);
         Descriptor(16 + descriptorCount - 1, 255, folderSector, joliet: false);
         foreach (var (entry, sector) in fileSector)
-            entry.Data!.CopyTo(image, sector * 2048L);
+        {
+            if (interleave.Unit == 0)
+            {
+                entry.Data!.CopyTo(image, sector * 2048L);
+                continue;
+            }
+            var unitBytes = interleave.Unit * 2048;
+            for (var u = 0; u * unitBytes < entry.Data!.Length; u++)
+            {
+                var at = (sector + u * (interleave.Unit + interleave.Gap)) * 2048L;
+                entry.Data.AsSpan(u * unitBytes, Math.Min(unitBytes, entry.Data.Length - u * unitBytes)).CopyTo(image.AsSpan((int)at));
+                image.AsSpan((int)(at + unitBytes), interleave.Gap * 2048).Fill(0xEE);
+            }
+        }
         return image;
     }
 

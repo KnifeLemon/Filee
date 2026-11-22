@@ -456,15 +456,22 @@ internal readonly record struct HPoint(int X, int Y);
 /// <param name="Points">Polygon corners in order (한글 hc:pt).</param>
 /// <param name="Segments">Curve segments as 한글 stores them (hp:seg): each a straight or curved piece from start to end.</param>
 /// <param name="Arc">Arc of an ellipse (한글 hp:arc).</param>
-/// <param name="Path">An open path of straight and Bézier pieces (<see cref="HShapeKind.Path"/>).</param>
+/// <param name="Path">A path of straight and Bézier pieces (<see cref="HShapeKind.Path"/>).</param>
+/// <param name="Connector">
+/// The DrawingML connector preset <c>Path</c> was drawn from, for writers that can name it again; null for others.
+/// </param>
 internal sealed record HGeometry(int Width, int Height, IReadOnlyList<HPoint>? Points = null, IReadOnlyList<HCurveSegment>? Segments = null, HArc? Arc = null,
-    HPath? Path = null);
+    HPath? Path = null, HConnector? Connector = null);
 
 /// <summary>
-/// An open path from <c>Start</c> through its segments, mirroring already applied: what a bent or curved connector or
-/// an open free-form line draws. Its points may lie outside the box (a connector's bend can).
+/// A path from <c>Start</c> through its segments, mirroring already applied: what a bent or curved connector or a
+/// free-form line or shape draws. Its points may lie outside the box (a connector's bend can).
 /// </summary>
-internal sealed record HPath(HPoint Start, IReadOnlyList<HPathSegment> Segments)
+/// <param name="Closed">
+/// The path goes back to its start and is filled with the shape's fill (a closed free-form); else it is an open line
+/// with ends for arrowheads.
+/// </param>
+internal sealed record HPath(HPoint Start, IReadOnlyList<HPathSegment> Segments, bool Closed = false)
 {
     /// <summary>The point the path ends at.</summary>
     public HPoint End => Segments.Count > 0 ? Segments[^1].End : Start;
@@ -478,6 +485,16 @@ internal readonly record struct HPathSegment(HPoint End, HPoint? Control1 = null
 {
     public bool Curved => Control1 is not null && Control2 is not null;
 }
+
+/// <summary>
+/// A DrawingML connector preset (bentConnector2..5, curvedConnector2..5, ECMA-376 Part 1 §20.1.10.56) with its adjust
+/// values (a:avLst "val" guides, 1/100000 of the box) and the mirroring the path was drawn with (a:xfrm flipH /
+/// flipV): what DOCX writes back as a:prstGeom so the shape stays a connector.
+/// </summary>
+internal sealed record HConnector(string Preset, IReadOnlyList<HAdjustValue> Adjust, bool FlipHorizontal, bool FlipVertical);
+
+/// <summary>An adjust value of a preset shape: a:gd name (adj1 ...) and its "val" number.</summary>
+internal readonly record struct HAdjustValue(string Name, long Value);
 
 /// <summary>A piece of a 한글 curve; <c>Curve</c> is false for a straight piece (seg type LINE).</summary>
 internal readonly record struct HCurveSegment(bool Curve, HPoint Start, HPoint End);

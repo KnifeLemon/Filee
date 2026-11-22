@@ -1,9 +1,11 @@
-// Disk images unpacked in-process (DiskImageReader): FAT12/16/32 volumes with long names, MBR / GPT / Apple partition
-// maps with a folder per volume, UDF discs (plain and behind an ISO 9660 bridge) and DMG files with every run type
-// UdifDisk decodes (raw, zero, ADC, zlib, bzip2, LZFSE, LZMA). Images are built in code (DiskImageBuilders, and DiscUtils.Fat as an independent FAT writer);
-// 7-Zip, where present, reads the same images, and the tools of the PC write real ones where there are
-// any: Windows' IMAPI2 (UDF 1.02 / 2.01 / 2.50 with an ISO 9660 bridge) and macOS' hdiutil (HFS+ DMGs). Then the
-// hostile and damaged inputs, and what is left to 7-Zip.
+// Disk images unpacked in-process (DiskImageReader): FAT12/16/32 volumes with long names, exFAT and ext2/3/4 volumes
+// (extent trees, block maps, holes, inline data, hashed folders), MBR / GPT / Apple partition maps with a folder per
+// volume, UDF discs (plain and behind an ISO 9660 bridge) and DMG files with every run type UdifDisk decodes (raw,
+// zero, ADC, zlib, bzip2, LZFSE, LZMA). Images are built in code (DiskImageBuilders, and DiscUtils.Fat as an
+// independent FAT writer); 7-Zip, where present, reads the same images (not exFAT, which it doesn't open), and the
+// tools of the PC write real ones where there are any: Windows' IMAPI2 (UDF 1.02 / 2.01 / 2.50 with an ISO 9660
+// bridge) and macOS' hdiutil (HFS+ DMGs, on the CI's macOS jobs). Then the hostile and damaged inputs, and what is
+// left to 7-Zip.
 
 using System.Buffers.Binary;
 using System.Diagnostics;
@@ -119,6 +121,235 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
             new("EMPTY/", null),
         ];
         await AssertUnpacksAsync(Write("floppy.img", DiscUtilsFat(entries)), "img", entries);
+    }
+
+    // ───────── ext2/3/4 ─────────
+
+    /// <summary>The ext variants the tests write: block sizes, ext4 extents (64-bit, fragmented into trees), ext2 block maps, inline data, hashed folders, many groups.</summary>
+    public static TheoryData<string> ExtVariants() => [.. ExtOptionsByName.Keys];
+
+    private static readonly Dictionary<string, ExtOptions> ExtOptionsByName = new()
+    {
+        ["ext4 1K"] = new ExtOptions(),
+        ["ext4 4K 64-bit"] = new ExtOptions(BlockSize: 4096, SixtyFourBit: true),
+        ["ext4 2K trees"] = new ExtOptions(BlockSize: 2048, Fragment: true),
+        ["ext4 1K deep trees"] = new ExtOptions(Fragment: true),
+        ["ext2 1K"] = new ExtOptions(Extents: false),
+        ["ext2 4K"] = new ExtOptions(BlockSize: 4096, Extents: false),
+        ["ext4 inline"] = new ExtOptions(Inline: true),
+        ["ext4 htree"] = new ExtOptions(BlockSize: 4096, Htree: true),
+        ["ext4 many groups"] = new ExtOptions(BlocksPerGroup: 512, InodesPerGroup: 8),
+    };
+
+    /// <summary><see cref="Entries"/> and a file large enough for two levels of indirect blocks (1 KB blocks) or a tree.</summary>
+    private static List<TestEntry> ExtEntries(bool ascii = false) =>
+    [
+        .. Entries(ascii),
+        new("large.bin", [.. Words(260_000), .. Noise(140_000, 9)]),
+        new("tiny.txt", "small enough for its inode"u8.ToArray(), OtherTime),
+    ];
+
+    [Theory]
+    [MemberData(nameof(ExtVariants))]
+    public async Task Ext_volumes_unpack_in_process(string variant)
+    {
+        var entries = ExtEntries();
+        await AssertUnpacksAsync(Write("linux.img", Ext(entries, ExtOptionsByName[variant])), "img", entries);
+    }
+
+    [Fact]
+    public async Task Ext_holes_and_unwritten_blocks_read_as_zeros()
+    {
+        byte[] gappy = [.. Noise(3_000, 4), .. new byte[20_000], .. Noise(2_500, 5), .. new byte[9_000]];
+        List<TestEntry> entries = [new("gappy.bin", gappy), new("zeros.bin", new byte[50_000]), new("dir/after.txt", Words(4_000))];
+        foreach (var options in new[]
+                 {
+                     new ExtOptions(Sparse: true),
+                     new ExtOptions(Sparse: true, Extents: false),
+                     new ExtOptions(Unwritten: true),
+                     new ExtOptions(Sparse: true, Fragment: true, BlockSize: 2048),
+                 })
+            await AssertUnpacksAsync(Write("sparse.img", Ext(entries, options)), "img", entries);
+    }
+
+    [Fact]
+    public async Task Ext_symbolic_links_are_left_out_and_partitions_get_their_folders()
+    {
+        var entries = ExtEntries();
+        var folder = await UnpackAsync(Write("link.img", Ext(entries, new ExtOptions(SymbolicLink: true))), "img");
+        Assert.Equal(Expected(entries), Snapshot(folder));
+        Assert.False(File.Exists(Path.Combine(folder, "link")));
+
+        // A card as a Raspberry Pi writes it: a FAT boot partition and an ext4 root.
+        List<TestEntry> boot = [new("config.txt", "arm_64bit=1\n"u8.ToArray()), new("overlays/README", Words(2_000))];
+        var card = await UnpackAsync(Write("card.img", Mbr((0x0C, Fat(boot, 32, "BOOT")), (0x83, Ext(entries, new ExtOptions(BlockSize: 4096, Label: "rootfs"))))), "img");
+        Assert.Equal(Merge(Expected(boot, "1 BOOT/"), Expected(entries, "2 rootfs/")), Snapshot(card));
+    }
+
+    [Fact]
+    public async Task Hostile_ext_volumes_are_refused()
+    {
+        var entries = ExtEntries(ascii: true);
+
+        // A folder that is the root again (its inode a copy of the root's): the same folder met twice.
+        var loop = Ext(entries, patch: (image, layout) =>
+            image.AsSpan((int)layout.Inodes["/"], 256).CopyTo(image.AsSpan((int)layout.Inodes["empty/"])));
+        Assert.Contains("loop", await RefusedAsync(Write("loop.img", loop), "img"));
+
+        // An extent tree whose leaf claims to be an index of the same depth again (it would point back at itself).
+        var tree = Ext(entries, new ExtOptions(Fragment: true), (image, layout) =>
+        {
+            var map = (int)layout.Inodes["large.bin"] + 0x28;
+            Assert.True(BinaryPrimitives.ReadUInt16LittleEndian(image.AsSpan(map + 6)) > 0, "large.bin has an extent tree");
+            var child = BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan(map + 12 + 4));
+            var depth = BinaryPrimitives.ReadUInt16LittleEndian(image.AsSpan(map + 6));
+            BinaryPrimitives.WriteUInt16LittleEndian(image.AsSpan((int)child * layout.BlockSize + 6), depth);
+        });
+        Assert.Contains("extent tree", await RefusedAsync(Write("tree.img", tree), "img"));
+
+        // An extent beyond the end of the volume; a block map pointer beyond it.
+        var far = Ext(entries, patch: (image, layout) =>
+            BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan((int)layout.Inodes["NOISE.BIN"] + 0x28 + 12 + 8), 0x7FFFFFFF));
+        Assert.Contains("outside the volume", await RefusedAsync(Write("far.img", far), "img"));
+        var pointer = Ext(entries, new ExtOptions(Extents: false), (image, layout) =>
+            BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan((int)layout.Inodes["NOISE.BIN"] + 0x28 + 4), 0x7FFFFFFF));
+        Assert.Contains("outside the volume", await RefusedAsync(Write("pointer.img", pointer), "img"));
+
+        // Folder entries naming an inode the volume doesn't have, or with a record length of 0.
+        var root = RootFolderBlock(Ext(entries), out var bs);
+        var inode = Ext(entries, patch: (image, _) => BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(root * bs + 24), 0x7FFFFFF0));
+        Assert.Contains("inode number", await RefusedAsync(Write("inode.img", inode), "img"));
+        var record = Ext(entries, patch: (image, _) => BinaryPrimitives.WriteUInt16LittleEndian(image.AsSpan(root * bs + 24 + 4), 0));
+        Assert.Contains("folder entry", await RefusedAsync(Write("record.img", record), "img"));
+
+        // A file whose size says a terabyte (its map has no more blocks: the rest would be holes): a bomb.
+        var huge = Ext(entries, patch: (image, layout) =>
+            BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan((int)layout.Inodes["NOISE.BIN"] + 0x6C), 256));
+        Assert.Contains("decompression bomb", await RefusedAsync(Write("huge.img", huge), "img"));
+
+        // An encrypted file (fscrypt): names and data are ciphertext.
+        var locked = Ext(entries, patch: (image, layout) => image[(int)layout.Inodes["readme.txt"] + 0x20 + 1] |= 0x08);
+        Assert.Contains("password", await RefusedAsync(Write("locked.img", locked), "img"));
+
+        // A volume whose superblock makes no sense.
+        var superblock = Ext(entries, patch: (image, _) => BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(1024 + 0x18), 30));
+        Assert.Contains("superblock", await RefusedAsync(Write("superblock.img", superblock), "img"));
+    }
+
+    [Fact]
+    public async Task Ext_features_filee_does_not_read_are_left_to_7zip()
+    {
+        // ext2's compression, which the kernel never shipped but the feature bit exists for.
+        var compressed = Ext(ExtEntries(), patch: (image, _) => image[1024 + 0x60] |= 0x01);
+        Assert.Contains("ext", await NeedsSevenZipAsync(Write("compressed.img", compressed), "img"));
+    }
+
+    /// <summary>The first block of the root folder of an <see cref="Ext"/> image with extents (its first extent's start).</summary>
+    private static int RootFolderBlock(byte[] image, out int blockSize)
+    {
+        blockSize = 1024 << (int)BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan(1024 + 0x18));
+        var firstData = (int)BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan(1024 + 0x14));
+        var table = (int)BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan((firstData + 1) * blockSize + 8));
+        var rootInode = table * blockSize + 256; // inode 2
+        return (int)BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan(rootInode + 0x28 + 12 + 8));
+    }
+
+    // ───────── exFAT ─────────
+
+    public static TheoryData<string> ExFatVariants() => [.. ExFatOptionsByName.Keys];
+
+    private static readonly Dictionary<string, ExFatOptions> ExFatOptionsByName = new()
+    {
+        ["contiguous 4K"] = new ExFatOptions(),
+        ["chains 512"] = new ExFatOptions(ClusterSize: 512, Contiguous: false),
+        ["fragmented chains"] = new ExFatOptions(ClusterSize: 1024, Contiguous: false, Fragment: true),
+        ["second FAT"] = new ExFatOptions(Contiguous: false, SecondFat: true),
+        ["32K clusters"] = new ExFatOptions(ClusterSize: 32768),
+    };
+
+    [Theory]
+    [MemberData(nameof(ExFatVariants))]
+    public async Task ExFat_volumes_unpack_in_process(string variant)
+    {
+        List<TestEntry> entries = [.. ExtEntries(), new("a name longer than fifteen characters, in parts.txt", Words(3_000))];
+        await AssertUnpacksAsync(Write("card.img", ExFat(entries, ExFatOptionsByName[variant])), "img", entries);
+    }
+
+    [Fact]
+    public async Task ExFat_data_past_the_valid_length_reads_as_zeros_and_partitions_get_their_folders()
+    {
+        List<TestEntry> entries = [new("tail.bin", [.. Noise(5_000, 3), .. new byte[12_000]]), new("dir/zeros.bin", new byte[9_000]), new("x.txt", Words(500))];
+        await AssertUnpacksAsync(Write("vdl.img", ExFat(entries, new ExFatOptions(Unwritten: true))), "img", entries);
+        await AssertUnpacksAsync(Write("vdl-chains.img", ExFat(entries, new ExFatOptions(Unwritten: true, Contiguous: false, Fragment: true))), "img", entries);
+
+        // A camera card: one exFAT partition (MBR type 7) behind a GPT disk's FAT partition.
+        var card = await UnpackAsync(Write("sd.img", Gpt(("boot", Fat(entries, 16, "BOOT")), ("data", ExFat(ExtEntries(), new ExFatOptions(Label: "SDXC"))))), "img");
+        Assert.Equal(Merge(Expected(entries, "1 BOOT/"), Expected(ExtEntries(), "2 SDXC/")), Snapshot(card));
+    }
+
+    [Fact]
+    public async Task Hostile_exfat_volumes_are_refused()
+    {
+        var entries = ExtEntries(ascii: true);
+
+        // A folder that is the root again.
+        var loop = ExFat(entries, patch: (image, sets) =>
+        {
+            var root = BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan(96));
+            var set = sets["empty/"];
+            BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(set + 32 + 20), root);
+            Resum(image, set);
+        });
+        Assert.Contains("loop", await RefusedAsync(Write("loop.img", loop), "img"));
+
+        // A set whose checksum doesn't match; a file whose clusters lie beyond the volume; a chain that breaks.
+        var sum = ExFat(entries, patch: (image, sets) => image[sets["readme.txt"] + 64 + 2] ^= 0x20);
+        Assert.Contains("checksum", await RefusedAsync(Write("sum.img", sum), "img"));
+        var far = ExFat(entries, patch: (image, sets) =>
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(sets["NOISE.BIN"] + 32 + 20), 0x0FFFFFF0);
+            Resum(image, sets["NOISE.BIN"]);
+        });
+        Assert.Contains("outside the volume", await RefusedAsync(Write("far.img", far), "img"));
+        var chain = ExFat(entries, new ExFatOptions(Contiguous: false), (image, sets) =>
+        {
+            var first = BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan(sets["NOISE.BIN"] + 32 + 20));
+            var fat = (int)BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan(80)) * 512;
+            BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(fat + (int)first * 4), 1);
+        });
+        Assert.Contains("chain", await RefusedAsync(Write("chain.img", chain), "img"));
+
+        // A file that says a terabyte: in a row of clusters that runs past the volume (damage), or along a chain
+        // (only read as far as it goes): a bomb.
+        var row = ExFat(entries, patch: (image, sets) =>
+        {
+            BinaryPrimitives.WriteUInt64LittleEndian(image.AsSpan(sets["NOISE.BIN"] + 32 + 24), 1UL << 40);
+            Resum(image, sets["NOISE.BIN"]);
+        });
+        Assert.Contains("outside the volume", await RefusedAsync(Write("row.img", row), "img"));
+        var huge = ExFat(entries, new ExFatOptions(Contiguous: false), (image, sets) =>
+        {
+            BinaryPrimitives.WriteUInt64LittleEndian(image.AsSpan(sets["NOISE.BIN"] + 32 + 24), 1UL << 40);
+            Resum(image, sets["NOISE.BIN"]);
+        });
+        Assert.Contains("decompression bomb", await RefusedAsync(Write("huge.img", huge), "img"));
+
+        // A boot sector whose sizes make no sense.
+        var boot = ExFat(entries, patch: (image, _) => image[109] = 30);
+        Assert.Contains("boot sector", await RefusedAsync(Write("boot.img", boot), "img"));
+    }
+
+    /// <summary>Sets the checksum of the exFAT entry set at <paramref name="at"/> again after a change.</summary>
+    private static void Resum(byte[] image, int at)
+    {
+        var length = (image[at + 1] + 1) * 32;
+        ushort sum = 0;
+        for (var i = 0; i < length; i++)
+        {
+            if (i is not (2 or 3))
+                sum = (ushort)(((sum & 1) != 0 ? 0x8000 : 0) + (sum >> 1) + image[at + i]);
+        }
+        BinaryPrimitives.WriteUInt16LittleEndian(image.AsSpan(at + 2), sum);
     }
 
     // ───────── Partitions ─────────
@@ -284,6 +515,12 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
                      ("fat32.img", Fat(entries, 32)),
                      ("udf102.iso", Udf(entries, 0x0102)),
                      ("udf201.iso", Udf(entries, 0x0201, bridge: true)),
+                     ("ext4-1k.img", Ext(entries)),
+                     ("ext4-4k-64.img", Ext(entries, new ExtOptions(BlockSize: 4096, SixtyFourBit: true))),
+                     ("ext4-trees.img", Ext(entries, new ExtOptions(BlockSize: 2048, Fragment: true))),
+                     ("ext2.img", Ext(entries, new ExtOptions(Extents: false))),
+                     ("ext4-htree.img", Ext(entries, new ExtOptions(BlockSize: 4096, Htree: true))),
+                     ("ext4-groups.img", Ext(entries, new ExtOptions(BlocksPerGroup: 512, InodesPerGroup: 8))),
                  })
         {
             var image = Write(name, bytes);
@@ -291,6 +528,22 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
             await Run7zAsync("x", "-y", "-o" + target, image);
             Assert.True(Expected(entries).SequenceEqual(Snapshot(target)), $"7-Zip unpacks {name} differently: {string.Join(", ", Snapshot(target).Keys)}");
             Assert.Equal(Expected(entries), Snapshot(await UnpackAsync(image, Path.GetExtension(name)[1..])));
+        }
+        // ext holes and unwritten extents read as zeros (7-Zip doesn't open volumes with inline data).
+        byte[] gappy = [.. Noise(3_000, 4), .. new byte[20_000], .. Noise(2_500, 5), .. new byte[9_000]];
+        List<TestEntry> sparse = [new("gappy.bin", gappy), new("dir/after.txt", Words(4_000))];
+        foreach (var (name, options) in new[]
+                 {
+                     ("sparse.img", new ExtOptions(Sparse: true)),
+                     ("sparse-ext2.img", new ExtOptions(Sparse: true, Extents: false)),
+                     ("unwritten.img", new ExtOptions(Unwritten: true)),
+                 })
+        {
+            var image = Write(name, Ext(sparse, options));
+            var target = fx.NewFolder();
+            await Run7zAsync("x", "-y", "-o" + target, image);
+            Assert.True(Expected(sparse).SequenceEqual(Snapshot(target)), $"7-Zip unpacks {name} differently: {string.Join(", ", Snapshot(target).Keys)}");
+            Assert.Equal(Expected(sparse), Snapshot(await UnpackAsync(image, "img")));
         }
         // DMGs around the FAT12 volume, a run type at a time (raw runs between): 7-Zip decodes the chunks and reads
         // the volume inside.
@@ -373,10 +626,15 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
     }
 
-    /// <summary>HFS+ DMGs made by macOS' hdiutil, zlib, bzip2 and uncompressed, with a symbolic link left out.</summary>
+    /// <summary>
+    /// HFS+ DMGs made by macOS' hdiutil: zlib, bzip2, LZFSE (ULFO, macOS 10.11 on), LZMA (ULMO, macOS 10.15 on) and
+    /// uncompressed, with a symbolic link left out. Only on macOS (the CI's macOS jobs); skipped elsewhere.
+    /// </summary>
     [Theory]
     [InlineData("UDZO")]
     [InlineData("UDBZ")]
+    [InlineData("ULFO")]
+    [InlineData("ULMO")]
     [InlineData("UDRO")]
     public async Task Hfs_plus_dmgs_made_by_hdiutil_read_back_byte_for_byte(string format)
     {
@@ -438,10 +696,8 @@ public class DiskImageTests(EngineFixture fx) : IClassFixture<EngineFixture>
         foreach (var (kind, patch) in new (string, Action<byte[]>)[]
                  {
                      ("NTFS", v => { v[0] = 0xEB; "NTFS    "u8.CopyTo(v.AsSpan(3)); v[510] = 0x55; v[511] = 0xAA; }),
-                     ("exFAT", v => { v[0] = 0xEB; "EXFAT   "u8.CopyTo(v.AsSpan(3)); v[510] = 0x55; v[511] = 0xAA; }),
                      ("APFS", v => "NXSB"u8.CopyTo(v.AsSpan(32))),
                      ("HFSX", v => "HX"u8.CopyTo(v.AsSpan(1024))),
-                     ("ext2/3/4", v => { v[1080] = 0x53; v[1081] = 0xEF; }),
                  })
         {
             var copy = (byte[])volume.Clone();
