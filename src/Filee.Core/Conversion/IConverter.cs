@@ -157,7 +157,11 @@ public sealed record ConversionStep(
     Action<IReadOnlyList<string>>? MissingFonts = null,
     string? OriginalSourcePath = null,
     bool Caption = false,
-    bool Translate = false);
+    bool Translate = false)
+{
+    /// <summary>The converter that will consume this step's output, if the route continues.</summary>
+    public string? NextConverterId { get; init; }
+}
 
 /// <summary>
 /// A conversion engine (ImageMagick, LibreOffice, rhwp, ...).

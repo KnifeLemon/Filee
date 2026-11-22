@@ -745,6 +745,56 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Music_that_loops_is_read_again_and_again_until_the_clip_ends()
+    {
+        // #1432: a 5 s song from 2.5 s into the 17 s clip plays for the 14.5 s left, read over and over.
+        var edit = Parts();
+        edit.Music = new ClipMusic { Path = "song.mp3", Offset = 2.5, From = 3, Length = 5, Volume = 0.5, Loop = true };
+        var graph = MediaEncoding.ClipGraphOf("in.mp4", edit, audio: true, 1920, 1080, "30");
+
+        Assert.Equal(["-ss", "10.000000", "-i", "in.mp4", "-stream_loop", "-1", "-i", "song.mp3"], graph.Inputs);
+        // The first pass starts 3 s into the song (each later one at its start), and it fades out with the clip.
+        Assert.Contains("[1:a:0]atrim=start=3:duration=14.5,asetpts=PTS-STARTPTS,volume=0.5,afade=t=in:st=0:d=1,afade=t=out:st=13.5:d=1,adelay=2500:all=1,", graph.Filter);
+
+        // Off, the song plays once: 2 s of it are left from 3 s on.
+        edit.Music.Loop = false;
+        var once = MediaEncoding.ClipGraphOf("in.mp4", edit, audio: true, 1920, 1080, "30");
+        Assert.Equal(["-ss", "10.000000", "-i", "in.mp4", "-ss", "3.000000", "-i", "song.mp3"], once.Inputs);
+        Assert.Contains("[1:a:0]atrim=duration=2,", once.Filter);
+    }
+
+    [Fact]
+    public async Task Music_that_loops_sounds_to_the_end_of_a_longer_clip()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var source = await MakeVideoAsync(folder, "silent.mp4", "-c:v", "libx264", "-g", "25", "-pix_fmt", "yuv420p", "-an");
+        var song = Path.Combine(folder, "song.wav");
+        var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-ac", "2", song],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+        var tool = BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip");
+
+        async Task<float[]> LoudnessAsync(bool loop)
+        {
+            var edit = ClipEdit.Of(new ClipRange(1, 7));
+            edit.Music = new ClipMusic { Path = song, Length = 2, Volume = 1, Fade = false, Loop = loop };
+            var job = await fx.ConvertAsync([source], ClipTool.ConversionOf(tool, "mp4", edit));
+            Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+            var output = Assert.Single(job.Outputs);
+            Assert.InRange((await ProbeAsync(output)).Duration, 5.9, 6.15);
+            return await ClipPreview.ReadLoudnessAsync(output, 6, 12, folder, CancellationToken.None);
+        }
+
+        // 6 s of a silent video: the 2 s song sounds in every half second when it loops, and only in the first 2 s once.
+        var looped = await LoudnessAsync(loop: true);
+        Assert.True(looped.All(l => l > 0.5f), string.Join(", ", looped));
+        var once = await LoudnessAsync(loop: false);
+        Assert.True(once[1] > 0.5f && once[^2] < 0.05f, string.Join(", ", once));
+    }
+
+    [Fact]
     public async Task Music_plays_under_a_clip_with_a_part_muted()
     {
         SkipUnlessInstalled();

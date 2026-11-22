@@ -52,7 +52,9 @@ public sealed class HwpxConverter : IConverter
         var output = step.Output.Allocate("hwpx");
         if (output is null)
             return [];
-        HwpxWriter.Write(document, output);
+        var rhwpPdf = step.NextConverterId == "rhwp" && step.Preset.TargetFormat == "pdf"
+            && step.From is "docx" or "docm" or "dotx" or "dotm";
+        HwpxWriter.Write(document, output, rhwpPdf: rhwpPdf);
         progress?.Report(1);
         return [output];
     }
