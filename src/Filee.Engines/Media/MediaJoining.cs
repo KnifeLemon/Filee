@@ -101,15 +101,15 @@ internal static class MediaJoining
         foreach (var path in paths)
         {
             if (path.IndexOfAny(ForbiddenConcatCharacters) >= 0)
-                    throw new ArgumentException("Concat manifest paths cannot contain line breaks or null characters.", nameof(paths));
-                var resolved = MediaInput.IsUrl(path) ? path : Path.GetFullPath(path);
-                if (resolved.IndexOfAny(ForbiddenConcatCharacters) >= 0)
-                    throw new ArgumentException("Concat manifest paths cannot contain line breaks or null characters.", nameof(paths));
-                lines.Add("file '" + resolved.Replace("'", @"'\''", StringComparison.Ordinal) + "'\n");
+                throw new ArgumentException("Concat manifest paths cannot contain line breaks or null characters.", nameof(paths));
+            var resolved = MediaInput.IsUrl(path) ? path : Path.GetFullPath(path);
+            if (resolved.IndexOfAny(ForbiddenConcatCharacters) >= 0)
+                throw new ArgumentException("Concat manifest paths cannot contain line breaks or null characters.", nameof(paths));
+            lines.Add("file '" + resolved.Replace("'", @"'\''", StringComparison.Ordinal) + "'\n");
         }
         return string.Concat(lines);
     }
-                                       
+
     /// <summary>
     /// Clips that share codecs and size, copied one after the other into one MP4 (<see cref="CanCopyVideos"/>). With
     /// <paramref name="music"/>, the pictures are still copied; the sound is mixed with the music and encoded.
