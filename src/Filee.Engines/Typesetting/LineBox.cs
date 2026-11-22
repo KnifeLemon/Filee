@@ -113,6 +113,16 @@ internal sealed class LineBox
     /// <summary>The line spacing below the text: the part of <see cref="Height"/> after it.</summary>
     public float Below { get; init; }
 
+    /// <summary>
+    /// Where what reaches higher is cut off, down from the line's top (its top, below room a border added above), or
+    /// null: a Word line of exact height too small for its text and objects (ECMA-376 17.3.1.33: the text at the
+    /// line's bottom, "clipped from the top down").
+    /// </summary>
+    public float? ClipTop { get; init; }
+
+    /// <summary>How far a clip of <see cref="ClipTop"/> reaches left, right and down (it cuts only the top).</summary>
+    private const float ClipReach = 10000;
+
     /// <summary>Left edge of the line's content from the column edge.</summary>
     public required float Left { get; init; }
 
@@ -182,6 +192,7 @@ internal sealed class LineBox
         Baseline = Baseline + above,
         TextHeight = TextHeight,
         Below = below > 0 ? 0 : Below,
+        ClipTop = ClipTop + above,
         Left = Left,
         Width = Width,
         Runs = Runs,
@@ -200,20 +211,28 @@ internal sealed class LineBox
     public void Draw(PageContent page, float x, float top)
     {
         var baseline = top + Baseline;
+        SKRect? clip = ClipTop is { } cutAt ? new SKRect(x - ClipReach, top + cutAt, x + ClipReach, top + cutAt + ClipReach) : null;
         var fills = Decorations.Where(d => d.Kind == DecorationKind.Fill).ToList();
         if (fills.Count > 0)
-            page.Draw(canvas => DrawDecorations(canvas, fills, x, baseline));
+            page.Draw(canvas => DrawDecorations(canvas, fills, x, baseline, clip));
         foreach (var item in Objects)
         {
             var area = item.Area;
             area.Offset(x, baseline);
-            item.Draw(page, area);
+            if (clip is not { } cut)
+            {
+                item.Draw(page, area);
+                continue;
+            }
+            var layer = new PageContent(page.Width, page.Height);
+            item.Draw(layer, area);
+            page.Add(layer, cut);
         }
         foreach (var run in Runs)
-            page.DrawGlyphs(run.At(x, baseline));
+            page.DrawGlyphs(run.At(x, baseline) with { Clip = clip });
         var lines = Decorations.Where(d => d.Kind != DecorationKind.Fill).ToList();
         if (lines.Count > 0)
-            page.Draw(canvas => DrawDecorations(canvas, lines, x, baseline));
+            page.Draw(canvas => DrawDecorations(canvas, lines, x, baseline, clip));
         foreach (var link in Links)
         {
             var area = new SKRect(x + link.Left, top, x + link.Right, top + Height);
@@ -226,8 +245,10 @@ internal sealed class LineBox
             page.Destination(new SKPoint(x + position, top), name);
     }
 
-    private static void DrawDecorations(SKCanvas canvas, List<Decoration> decorations, float x, float y)
+    private static void DrawDecorations(SKCanvas canvas, List<Decoration> decorations, float x, float y, SKRect? clip)
     {
+        if (clip is { } cut)
+            canvas.ClipRect(cut);
         using var paint = new SKPaint { IsAntialias = true };
         foreach (var d in decorations)
         {

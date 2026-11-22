@@ -267,6 +267,49 @@ public sealed class WordLineHeightLayoutTests(EngineFixture fx) : IClassFixture<
     }
 
     [Fact]
+    public async Task An_exact_line_too_small_for_its_text_cuts_off_the_glyph_tops_at_its_top()
+    {
+        // ECMA-376 17.3.1.33: a line too small for its text holds it at its bottom, "clipped from the top down". An exact
+        // 8 pt line of 10 pt text clips its runs at its top; an exact 20 pt line, which holds its text, clips nothing.
+        NeedFonts(RepositoryFonts.Latin);
+        async Task<PageContent> Lines(int twips, string section = DefaultPage)
+        {
+            var spacing = $"<w:spacing w:line=\"{twips}\" w:lineRule=\"exact\"/>";
+            var docx = new DocxBuilder { Styles = Styles, SectionProperties = section };
+            return await LayoutAsync(docx.Paragraph(P(R("HHHH one"), spacing) + P(R("HHHH two"), spacing)));
+        }
+        static GlyphRun Run(PageContent page, string text) =>
+            page.Items.OfType<GlyphItem>().Select(i => i.Run).First(r => r.Text.Contains(text, StringComparison.Ordinal));
+
+        var small = await Lines(160);
+        var descent = WinHeight(RepositoryFonts.Latin, 10) - WinAscent(RepositoryFonts.Latin, 10);
+        var (one, two) = (Run(small, "one"), Run(small, "two"));
+        Assert.Equal(72, one.Clip?.Top ?? float.NaN, 0.05f);
+        Assert.Equal(80, two.Clip?.Top ?? float.NaN, 0.05f);
+        Assert.Equal(two.Clip!.Value.Top + 8 - descent, two.Positions[0].Y, 0.05f);
+        Assert.Null(Run(await Lines(400), "one").Clip);
+
+        // Written vertically (tbRl) the clip turns with the text: the first line's top is the body's right edge, and no
+        // ink of the sideways glyphs reaches past it (without the clip their tops did, by 3 pt).
+        var vertical = await Lines(160, DefaultPage + "<w:textDirection w:val=\"tbRl\"/>");
+        Assert.NotNull(Run(vertical, "one").ClipTransform);
+        using var bitmap = vertical.Render(288);
+        const float Scale = 4, Edge = 595.3f - 72;
+        int Ink(float from, float to)
+        {
+            var count = 0;
+            for (var x = (int)(from * Scale); x < (int)(to * Scale); x++)
+            {
+                for (var y = (int)(72 * Scale); y < (int)(300 * Scale); y++)
+                    count += bitmap.GetPixel(x, y).Red < 128 ? 1 : 0;
+            }
+            return count;
+        }
+        Assert.True(Ink(Edge - 6, Edge) > 0, "no ink in the first line");
+        Assert.Equal(0, Ink(Edge + 0.5f, Edge + 6));
+    }
+
+    [Fact]
     public async Task Headers_footers_and_notes_do_not_snap_to_the_grid()
     {
         // The grid sets the body's lines per page; headers, footers and notes keep their font's lines.
