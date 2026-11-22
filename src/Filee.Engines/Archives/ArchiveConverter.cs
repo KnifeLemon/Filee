@@ -19,7 +19,7 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
     private static readonly string[] ArchiveTargets = ["zip", "7z", "tar", "tgz", "tbz2", "txz", "gma", .. GamePacks.Formats];
 
     /// <summary>Compressed single files (no names or folders inside); they convert among each other.</summary>
-    private static readonly string[] SingleFileSources = ["gz", "bz2", "xz", "lzma", "z", "lz"];
+    private static readonly string[] SingleFileSources = ["gz", "bz2", "xz", "lzma", "z", "lz", "zst"];
 
     private SevenZip? _sevenZip;
 

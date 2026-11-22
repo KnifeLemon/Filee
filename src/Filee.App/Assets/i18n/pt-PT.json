@@ -438,6 +438,8 @@
   "clip.music_hint": "Colocar música de um ficheiro por baixo do excerto (A2): arrasta-a para a mover e arrasta a linha para ajustar o volume",
   "clip.music_pick": "Música para o excerto",
   "clip.music_files": "Ficheiros de som e vídeo",
+  "clip.loop_music": "Repetir música",
+  "clip.loop_music_hint": "Volta a tocar a música desde o início até o clipe terminar e depois esbate-a. Desligado: a música para quando termina.",
   "clip.no_music": "Este ficheiro não tem som que possa ser usado como música",
   "clip.preparing": "A preparar…",
   "clip.finding_silence": "A procurar silêncio…",

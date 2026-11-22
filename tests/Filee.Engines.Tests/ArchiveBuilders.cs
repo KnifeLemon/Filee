@@ -103,6 +103,18 @@ internal static class ArchiveBuilders
         return archive[32..(32 + packedSize)];
     }
 
+    /// <summary>
+    /// A standard Zstandard frame of <paramref name="data"/>, as the <c>zstd</c> tool writes it (7-Zip reads zstd but
+    /// doesn't write it, so the managed encoder that unpacks conda packages makes it).
+    /// </summary>
+    public static byte[] Zstd(byte[] data)
+    {
+        using var ms = new MemoryStream();
+        using (var zstd = new SharpCompress.Compressors.ZStandard.CompressionStream(ms, 3))
+            zstd.Write(data);
+        return ms.ToArray();
+    }
+
     /// <summary>An lzip member of <paramref name="data"/> (see LzipReader).</summary>
     public static async Task<byte[]> LzipAsync(byte[] data, string workDir)
     {

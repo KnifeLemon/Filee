@@ -438,6 +438,8 @@
   "clip.music_hint": "파일의 음악을 클립 아래에 깔기 (A2): 끌어서 옮기고, 선을 끌어 음량 조절",
   "clip.music_pick": "클립에 넣을 음악",
   "clip.music_files": "소리 및 동영상 파일",
+  "clip.loop_music": "음악 반복",
+  "clip.loop_music_hint": "클립이 끝날 때까지 음악을 처음부터 다시 틀고, 끝에서 서서히 작아져요. 끄면 음악이 끝날 때 멈춰요.",
   "clip.no_music": "이 파일에는 음악으로 쓸 소리가 없어요",
   "clip.preparing": "준비 중…",
   "clip.finding_silence": "무음 찾는 중…",

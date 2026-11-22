@@ -463,7 +463,8 @@ hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
 - Anything else is one filter graph (`MediaEncoding.ClipGraphOf`): the video is read once, `split`/`trim` per piece,
   `setpts` and chained `atempo` for speed, `volume`, `color`/`anullsrc` for gaps, `concat`, the music as a second
   input (`atrim`, `volume`, `afade`, `adelay`, `amix`), then `fade`/`afade`. It is encoded with the preset's quality,
-  size and codec.
+  size and codec. Music with *Loop music* on (`ClipMusic.Loop`, #1432) is read with `-stream_loop -1` from the file's
+  start instead of `-ss`, its first pass cut with `atrim=start=`, and plays until the clip ends.
 - Pictures, clips, the preview and Live Photos start at the frame shown at the time chosen (#1205):
   `Engines/Media/KeyFrames` reads the packets before the time with ffprobe, without decoding, for the key frame to read
   from, since FFmpeg's own `-ss` lands between key frames in MPEG-TS and MPEG-PS and skips the leading pictures of an
