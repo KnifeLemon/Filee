@@ -242,6 +242,7 @@
   "notice.geo_gpx_lossy": "GPX ne contient que des points, des routes et des traces avec quelques champs : les autres attributs ont été omis et les polygones sont devenus des traces",
   "notice.geo_text_cut": "Certains textes dépassaient la taille d'un champ Shapefile (254 octets) et ont été tronqués",
   "notice.geo_columns_dropped": "Un Shapefile contient 255 colonnes au maximum : les autres ont été omises",
+  "notice.xls_limits": "Un classeur Excel 97–2003 contient au maximum 65 536 lignes, 256 colonnes et 32 767 caractères par cellule : le reste a été omis",
   "notice.geo_rows_without_location": "Certaines lignes sans emplacement exploitable ont été conservées sans forme",
   "notice.geo_field_names": "Les noms de champs Shapefile font 10 caractères au maximum : certains ont été raccourcis",
   "notice.geo_shapefile_split": "Un Shapefile ne contient qu'un type de forme : les points, lignes et polygones ont été enregistrés dans des fichiers distincts",

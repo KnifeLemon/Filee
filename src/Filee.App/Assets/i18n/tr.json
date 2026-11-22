@@ -236,6 +236,7 @@
   "notice.geo_gpx_lossy": "GPX yalnızca birkaç alan içeren noktaları, rotaları ve izleri tutar: diğer öznitelikler çıkarıldı, çokgenler izlere dönüştürüldü",
   "notice.geo_text_cut": "Bazı metinler Shapefile alan sınırını (254 bayt) aştığı için kesildi",
   "notice.geo_columns_dropped": "Shapefile en fazla 255 sütun tutabilir; kalanlar çıkarıldı",
+  "notice.xls_limits": "Excel 97–2003 çalışma kitabı en fazla 65.536 satır, 256 sütun ve hücre başına 32.767 karakter tutabilir; sığmayanlar çıkarıldı",
   "notice.geo_rows_without_location": "Bazı satırların kullanılabilir konumu yok; geometrisiz olarak korundular",
   "notice.geo_field_names": "Shapefile alan adları en fazla 10 karakter olabilir; bazıları kısaltıldı",
   "notice.geo_shapefile_split": "Shapefile tek bir geometri türü tutar; noktalar, çizgiler ve çokgenler ayrı dosyalara kaydedildi",

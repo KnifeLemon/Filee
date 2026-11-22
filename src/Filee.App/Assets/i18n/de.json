@@ -236,6 +236,7 @@
   "notice.geo_gpx_lossy": "GPX speichert nur Punkte, Routen und Tracks mit wenigen Feldern. Andere Attribute wurden weggelassen und Polygone in Tracks umgewandelt",
   "notice.geo_text_cut": "Einige Texte überschritten die Feldlänge von Shapefiles (254 Bytes) und wurden gekürzt",
   "notice.geo_columns_dropped": "Ein Shapefile kann höchstens 255 Spalten enthalten. Die übrigen wurden weggelassen",
+  "notice.xls_limits": "Eine Excel-97–2003-Arbeitsmappe fasst höchstens 65.536 Zeilen, 256 Spalten und 32.767 Zeichen pro Zelle. Was nicht passte, wurde weggelassen",
   "notice.geo_rows_without_location": "Einige Zeilen enthalten keine verwendbare Position und wurden ohne Geometrie beibehalten",
   "notice.geo_field_names": "Feldnamen in Shapefiles dürfen höchstens 10 Zeichen lang sein. Einige wurden gekürzt",
   "notice.geo_shapefile_split": "Ein Shapefile enthält nur einen Geometrietyp. Punkte, Linien und Polygone wurden deshalb in getrennten Dateien gespeichert",

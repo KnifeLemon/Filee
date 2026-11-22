@@ -2,7 +2,7 @@
 // and row heights with their "custom" flag (ROW), the cell formats (FONT, XF and PALETTE in the workbook globals and
 // each cell's XF index, blank cells included) and printing (SETUP, the margin records, HCENTER / VCENTER,
 // PRINTGRIDLINES / PRINTHEADERS, HEADER / FOOTER, page breaks, WSBOOL's fit to page, the Print_Area and Print_Titles
-// names, DEFCOLWIDTH / STANDARDWIDTH / DEFAULTROWHEIGHT, WINDOW2's right-to-left flag).
+// names, DEFCOLWIDTH / STANDARDWIDTH / DEFAULTROWHEIGHT, WINDOW2's right-to-left flag and frozen panes with PANE).
 // Fonts, formats, headers and names are read from BIFF8 (Excel 97–2003); older files get widths, heights and the page
 // setup. Encrypted workbooks and pre-Excel 5 files return null: the reader then falls back to ExcelDataReader's values.
 // Charts (BIFF8): an embedded chart's substream follows its OBJ record inside the worksheet's, placed by the
@@ -61,6 +61,9 @@ internal static class XlsLayout
         public double? DefaultColumnWidth { get; set; }
         public int? BaseColumnWidth { get; set; }
         public bool RightToLeft { get; set; }
+
+        /// <summary>Rows frozen at the top (WINDOW2 frozen panes, PANE's split row); 0 for none.</summary>
+        public int FrozenRows { get; set; }
 
         /// <summary>The sheet shows (BOUNDSHEET hsState visible).</summary>
         public bool Visible { get; set; } = true;
@@ -251,6 +254,8 @@ internal static class XlsLayout
         double? left = null, right = null, top = null, bottom = null, header = null, footer = null;
         bool hCenter = false, vCenter = false, grid = false, headings = false;
         string? headerText = null, footerText = null;
+        var frozen = false;
+        var splitRow = 0;
         foreach (var (id, data, start) in RecordsAt(stream, offset))
         {
             switch (id)
@@ -398,12 +403,17 @@ internal static class XlsLayout
                     break;
                 case 0x023E when data.Length >= 2: // WINDOW2
                     sheet.RightToLeft = (BinaryPrimitives.ReadUInt16LittleEndian(data) & 0x0040) != 0;
+                    frozen = (BinaryPrimitives.ReadUInt16LittleEndian(data) & 0x0008) != 0;
+                    break;
+                case 0x0041 when data.Length >= 4: // PANE: the split row of frozen panes
+                    splitRow = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(2));
                     break;
             }
         }
 
         if (chartObject is { Prints: true })
             sheet.FirstObject ??= "charts";
+        sheet.FrozenRows = frozen ? splitRow : 0;
 
         // Excel 97–2003's defaults: 0.75 in left and right, 1 in top and bottom, 0.5 in header and footer.
         var setup = SheetPageSetup.ForRegion();

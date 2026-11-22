@@ -113,6 +113,7 @@ internal static class XlsReader
             sheet.DefaultRowHeight = layout.DefaultRowHeight;
             sheet.BaseColumnWidth = layout.BaseColumnWidth;
             sheet.RightToLeft = layout.RightToLeft;
+            sheet.FrozenRows = layout.FrozenRows;
             if (layout.DefaultColumnWidth is { } standard and > 0)
             {
                 sheet.DefaultColumnWidth = standard;
@@ -158,10 +159,13 @@ internal static class XlsReader
             }
         }
 
+        // ExcelDataReader reads the merged rows as signed 16-bit numbers: rows past 32,767 come out negative.
+        static int Row(int row) => row < 0 ? row + 65_536 : row;
         foreach (var merge in reader.MergeCells ?? [])
         {
-            if (merge.ToRow > merge.FromRow || merge.ToColumn > merge.FromColumn)
-                sheet.Merges.Add(new CellRange(merge.FromRow, merge.FromColumn, merge.ToRow, merge.ToColumn));
+            var (top, bottom) = (Row(merge.FromRow), Row(merge.ToRow));
+            if (bottom > top || merge.ToColumn > merge.FromColumn)
+                sheet.Merges.Add(new CellRange(top, merge.FromColumn, bottom, merge.ToColumn));
         }
         return sheet;
     }
