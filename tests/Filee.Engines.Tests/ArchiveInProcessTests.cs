@@ -302,6 +302,25 @@ public class ArchiveInProcessTests(EngineFixture fx) : IClassFixture<EngineFixtu
         Assert.Equal(big, await File.ReadAllBytesAsync(Path.Combine(folder, "big.bin"), Ct));
     }
 
+    /// <summary>Interleaved files (a unit of sectors, then a gap): as CD-i and some video discs record them.</summary>
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(2, 3)]
+    [InlineData(4, 0)]
+    public async Task Iso_interleaved_files_unpack_in_process(int unit, int gap)
+    {
+        List<TestEntry> entries = [new("big.bin", Noise(20_000, 3)), new("dir/small.txt", Words(700)), new("exact.bin", Noise(4096, 5))];
+        foreach (var names in new[] { IsoNames.Plain, IsoNames.Joliet, IsoNames.RockRidge })
+        {
+            var folder = await UnpackAsync(Write("interleaved.iso", Iso(entries, names, interleave: (unit, gap))), "iso");
+            foreach (var entry in entries)
+                Assert.Equal(entry.Data, await File.ReadAllBytesAsync(Path.Combine(folder, names == IsoNames.Plain ? entry.Name.ToUpperInvariant() : entry.Name), Ct));
+        }
+        // Its last unit beyond the end of the image (the file is last: six sectors cut reach into its data).
+        var image = Iso([new("big.bin", Noise(20_000, 3))], IsoNames.Joliet, interleave: (unit, gap));
+        Assert.Contains("damaged", await RefusedAsync(Write("cut.iso", image[..(image.Length - 6 * 2048)]), "iso"));
+    }
+
     [Fact]
     public async Task Split_7z_zip_and_tar_volumes_unpack_in_process()
     {

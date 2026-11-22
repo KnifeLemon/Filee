@@ -56,7 +56,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | WeasyPrint | **optional download** (Windows only for now; ~32 MB, 65 MB on disk) | **HTML, Markdown, EML, MSG, MHTML → PDF** laid out as a browser prints them (headings, tables, bold, Arabic and Indic shaping), instead of the built-in route; nothing changes without it (see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 | ExifTool | **optional download** (~11 MB on Windows, ~8 MB elsewhere; 30 MB on disk) | **the Metadata tool**: reads every metadata field of pictures, PDFs, video and sound, and writes changes into a copy in the file's own format without re-encoding it (JPG, PNG, TIFF, WEBP, HEIC, AVIF, JPEG XL, GIF, PSD, camera RAW, PDF, MP4, MOV, M4A, 3GP, …; not MP3, FLAC, WAV, MKV, AVI or BMP, which it shows read-only). Without it the Metadata tool shows nothing and offers it |
-| 7-Zip | **optional download** (~2 MB; ~2.5 MB on disk on Windows, ~6.5 MB elsewhere; not suggested) | **rare archive variants** the archive engine's own readers leave out: 7Z with PPMd and other uncommon methods, Quantum CABs and cabinet sets, LHA methods other than -lh0-/-lz4-/-lh4- to -lh7-, multi-volume ARJ, NTFS, exFAT, APFS, HFSX and ext volumes in disk images, damaged archives it can read past (see [Archives](#archives)). Without it these are refused with "Install 7-Zip in Settings → Engines"; every common archive works without it |
+| 7-Zip | **optional download** (~2 MB; ~2.5 MB on disk on Windows, ~6.5 MB elsewhere; not suggested) | **rare archive variants** the archive engine's own readers leave out: 7Z with PPMd and other uncommon methods, Quantum CABs and cabinet sets, LHA methods other than -lh0-/-lz4-/-lh4- to -lh7-, multi-volume ARJ, NTFS, APFS and HFSX volumes in disk images, damaged archives it can read past (see [Archives](#archives)). Without it these are refused with "Install 7-Zip in Settings → Engines"; every common archive works without it |
 
 DOCX, DOC, ODT, XLSX, XLS, ODS, PPTX, PPT and ODP → PDF need neither Microsoft Office nor LibreOffice: they are read
 in-process (and VSDX and ODG drawings → PDF, SVG and PNG, see [Drawings](#drawings-visio-odg)).
@@ -4236,7 +4236,7 @@ Filee's download in `engines/7zip` (`7z.exe` on Windows, `7zz` elsewhere), never
 (`EngineEnvironment.UsesSystemCopy`: its version and switches are unknown, and the Engines page doesn't show it). Filee's download is the official x64 MSI unpacked with `msiexec /a` down to `7z.exe`,
 `7z.dll`, the licence and the readme on Windows, and 7-Zip's own `tar.xz` builds on Linux and macOS, pinned in
 `engines.json`. When it is there, 7-Zip is asked again when an in-process reader meets something it lacks (an
-unknown 7z or RAR method, a GNU sparse file, an interleaved ISO file, a Quantum CAB, an LHA method or ARJ volume
+unknown 7z or RAR method, a GNU sparse file, a Quantum CAB, an LHA method or ARJ volume
 Filee doesn't read, an NTFS or APFS volume) or damage it can't get past, and 7z archives with a method Filee doesn't
 decode (PPMd, RISC-V, …; see below) go to it first. Without it, such an archive is refused with
 `error.archive_needs_7zip` ("Install 7-Zip in Settings → Engines", with the missing feature as the detail; the
@@ -4272,7 +4272,7 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
 | GMA (Garry's Mod addon) | Filee: versions 1–3, CRCs checked, an `addon.json` written beside the files | Filee, as gmad does (see below) |
 | BSP (Source engine map), its packed files | Filee copies the pakfile lump (a ZIP) out and unpacks it like any ZIP | — |
 | VPK (Valve pak) | Filee: versions 1 and 2, `_dir.vpk` with its `_000.vpk` … parts, CRCs checked; a PS Vita `.vpk` (a ZIP) like any ZIP | — |
-| IMG (raw disk images) | Filee (`DiskImageReader`): GPT, Apple partition map or MBR with extended partitions (`DiskImagePartitions`), a folder `<number> <label>` per volume when there are several; FAT12/16/32 by Filee's own reader (`DiskImageFat`: long names and the lowercase flags), UDF and HFS+ by DiscUtils; a CD or DVD image named .img goes to the disc readers; NTFS, exFAT, APFS, HFSX, classic HFS and ext2/3/4 volumes send the image to 7-Zip; BitLocker and LUKS volumes are refused as encrypted | — |
+| IMG (raw disk images) | Filee (`DiskImageReader`): GPT, Apple partition map or MBR with extended partitions (`DiskImagePartitions`), a folder `<number> <label>` per volume when there are several; FAT12/16/32 by Filee's own reader (`DiskImageFat`: long names and the lowercase flags), exFAT by Filee's own reader (`DiskImageExFat`), ext2/3/4 by Filee's own reader (`DiskImageExt`: extent trees, block maps, holes and unwritten extents, inline data, hashed folders; the journal is not replayed), UDF and HFS+ by DiscUtils; a CD or DVD image named .img goes to the disc readers; NTFS, APFS, HFSX and classic HFS volumes and ext volumes with features Filee doesn't read (compression) send the image to 7-Zip; BitLocker and LUKS volumes are refused as encrypted | — |
 | DMG | Filee: `UdifDisk` reads the UDIF blocks (raw, zero fill and ignore, ADC, zlib, bzip2, LZFSE, LZMA as .xz) once `UdifCheck` has checked the trailer and block tables, then the disk inside as for IMG (HFS+ by DiscUtils.HfsPlus); APFS volumes by 7-Zip; encrypted DMGs are refused | — |
 
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
@@ -4374,10 +4374,10 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
   7-Zip"), pull requests into builtin-engines included; the other legs fetch 7-Zip for the interop tests.
 - **Not supported**: encrypted archives, split (multi-volume) ALZ and EGG, solid EGG, EGG entries compressed with
   ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG. Without
-  7-Zip installed also (refused with the "install 7-Zip" error): NTFS, exFAT, APFS, HFSX, HFS and ext volumes in disk images, DMGs with only a resource fork (no XML block list), UDF discs
+  7-Zip installed also (refused with the "install 7-Zip" error): NTFS, APFS, HFSX and HFS volumes in disk images, DMGs with only a resource fork (no XML block list), UDF discs
   that use what DiscUtils.Udf lacks (virtual and sparable partitions, extended allocation descriptors), Quantum CABs
   and cabinet sets, LHA methods other than -lh0-, -lz4- and -lh4- to
-  -lh7-, multi-volume ARJ, GNU sparse files in TARs, interleaved ISO files, the El Torito boot image of an ISO (7-Zip
+  -lh7-, multi-volume ARJ, GNU sparse files in TARs, the El Torito boot image of an ISO (7-Zip
   shows it as `[BOOT]`; Filee's ISO reader leaves it out).
 - The ALZ and EGG readers are Filee's own code, written from the format descriptions of unalz (zlib licence), the
   `unalz` Rust crate, EggDotNet and unegg (MIT). ALZip's bzip2 has no `BZh` header, starts every block with `DLZ\x01`
@@ -4388,11 +4388,11 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
   added when it is there), `ArchiveInProcessTests.cs` (every in-process format built in
   code by `ArchiveFormatBuilders.cs` — 7z, xz, RAR 4 / 5 with stored entries, ISO, cpio, ar, RPM, .Z — and the hostile
   inputs: traversal, links, passwords, bombs with lowered limits, entry floods, ISO loops, damaged data),
-  `DiskImageTests.cs` (FAT, UDF, partition tables and DMGs built in code by `DiskImageBuilders.cs` and DiscUtils.Fat,
-  compared with 7-Zip; UDF discs written by Windows' IMAPI2 and HFS+ DMGs by macOS' hdiutil where those exist; loops,
+  `DiskImageTests.cs` (FAT, exFAT, ext2/3/4, UDF, partition tables and DMGs built in code by `DiskImageBuilders.cs` and
+  DiscUtils.Fat, compared with 7-Zip (not exFAT); UDF discs written by Windows' IMAPI2 and HFS+ DMGs by macOS' hdiutil (zlib, bzip2, LZFSE, LZMA and raw) where those exist; loops,
   bombs, damaged tables, encrypted volumes), `LzfseTests.cs` (LZFSE streams of every block kind written by
   `LzfseBuilders.cs`, damaged ones, ADC chunks), `ArchiveFuzzTests.cs` (`Category=Fuzz`: mutated ar, cpio, RPM, ISO, .Z,
-  lzip, ALZ, EGG, 7z, xz, LZMA, LZFSE, CAB, LHA, ARJ, FAT / MBR / GPT images, UDF discs and DMGs must unpack or be refused
+  lzip, ALZ, EGG, 7z, xz, LZMA, LZFSE, CAB, LHA, ARJ, FAT / exFAT / ext / MBR / GPT images, UDF discs and DMGs must unpack or be refused
   with `InvalidDataException`) and `ArchiveSpeedTests.cs` (`Category=Benchmark`, only with
   `FILEE_ARCHIVE_BENCHMARK=1`: the in-process readers next to 7-Zip).
 

@@ -236,6 +236,22 @@ internal static class BitPrice
         return price;
     }
 
+    /// <summary>
+    /// <see cref="Tree"/> for every symbol at once, into <paramref name="prices"/> (2^<paramref name="bits"/> of
+    /// them): each node's price is its parent's plus its bit, so a node is priced once for all the symbols below it.
+    /// </summary>
+    public static void AllOfTree(ReadOnlySpan<ushort> probabilities, int bits, Span<int> prices)
+    {
+        Span<int> nodes = stackalloc int[2 << bits];
+        nodes[1] = 0;
+        for (var m = 1; m < 1 << bits; m++)
+        {
+            nodes[2 * m] = nodes[m] + Of(probabilities[m], 0);
+            nodes[2 * m + 1] = nodes[m] + Of(probabilities[m], 1);
+        }
+        nodes[(1 << bits)..].CopyTo(prices);
+    }
+
     public static int ReverseTree(ReadOnlySpan<ushort> probabilities, int bits, uint symbol)
     {
         var price = 0;

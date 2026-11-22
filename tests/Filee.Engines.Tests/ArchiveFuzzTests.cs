@@ -1,9 +1,9 @@
 // Mutation fuzzing of Filee's own archive readers (ar / DEB, cpio, RPM, ISO 9660, Unix compress, lzip, ALZ, EGG, 7z,
-// CAB, LHA, ARJ, disk images with FAT, UDF and DMG, the LZFSE decoder, and the LZMA / LZMA2 / .xz decoder) and of TAR
-// (System.Formats.Tar behind Filee's header walk): seeds are built in code, bytes are flipped, overwritten, cut and
-// repeated, and every input must unpack or be refused with InvalidDataException, in time. The loop is FuzzHarness's: a
-// short fixed run normally, FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat, FILEE_FUZZ_OUT to
-// keep failing inputs.
+// CAB, LHA, ARJ, disk images with FAT, exFAT, ext2/3/4, UDF and DMG, the LZFSE decoder, and the LZMA / LZMA2 / .xz
+// decoder) and of TAR (System.Formats.Tar behind Filee's header walk): seeds are built in code, bytes are flipped,
+// overwritten, cut and repeated, and every input must unpack or be refused with InvalidDataException, in time. The loop
+// is FuzzHarness's: a short fixed run normally, FILEE_FUZZ_SECONDS for a longer random one, FILEE_FUZZ_SEED to repeat,
+// FILEE_FUZZ_OUT to keep failing inputs.
 
 using System.Buffers.Binary;
 using System.Formats.Tar;
@@ -61,7 +61,8 @@ public class ArchiveFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     [Fact]
     public void Iso_reader_unpacks_or_refuses_every_mutated_image() =>
-        Fuzz("iso", [Iso(Seed(), IsoNames.Joliet), Iso(Seed(), IsoNames.RockRidge, symlink: "a"), Iso(Seed(), IsoNames.Plain)], mutateFrom: 16 * 2048);
+        Fuzz("iso", [Iso(Seed(), IsoNames.Joliet), Iso(Seed(), IsoNames.RockRidge, symlink: "a"), Iso(Seed(), IsoNames.Plain),
+            Iso(Seed(), IsoNames.Joliet, interleave: (1, 2))], mutateFrom: 16 * 2048);
 
     /// <summary>
     /// Disk images (DiskImageReader): FAT12 volumes alone and behind MBR and GPT tables, UDF discs (one behind an ISO
@@ -77,6 +78,35 @@ public class ArchiveFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Fuzz("dmg", [DiskImageBuilders.Dmg(fat, [DmgRun.Zlib, DmgRun.Raw], chunkSectors: 16),
             DiskImageBuilders.Dmg(DiskImageBuilders.Gpt([("a", fat)], 1), [DmgRun.Bzip2, DmgRun.Adc], chunkSectors: 64),
             DiskImageBuilders.Dmg(fat, [DmgRun.Lzfse, DmgRun.Lzma], chunkSectors: 32)]);
+    }
+
+    /// <summary>
+    /// ext2/3/4 volumes (DiskImageExt): extent trees (fragmented, so they have index levels), ext2 block maps with
+    /// holes, inline data and a hashed folder, in 128 KB groups so the mutations hit the superblock, descriptors,
+    /// inode tables and maps.
+    /// </summary>
+    [Fact]
+    public void Ext_reader_unpacks_or_refuses_every_mutated_volume()
+    {
+        List<TestEntry> entries = [.. Seed(), new("gaps.bin", [.. Words(1_500), .. new byte[3_000], .. Noise(1_000, 2)])];
+        DiskImageBuilders.ExtOptions Small(DiskImageBuilders.ExtOptions o) => o with { BlocksPerGroup = 128, InodesPerGroup = 16 };
+        Fuzz("img", [
+            DiskImageBuilders.Ext(entries, Small(new DiskImageBuilders.ExtOptions(Fragment: true))),
+            DiskImageBuilders.Ext(entries, Small(new DiskImageBuilders.ExtOptions(Extents: false, Sparse: true))),
+            DiskImageBuilders.Ext(entries, Small(new DiskImageBuilders.ExtOptions(Inline: true, Htree: true, SymbolicLink: true))),
+        ], mutateFrom: 1024);
+    }
+
+    /// <summary>exFAT volumes (DiskImageExFat): clusters in a row and along FAT chains, a second FAT, written lengths.</summary>
+    [Fact]
+    public void ExFat_reader_unpacks_or_refuses_every_mutated_volume()
+    {
+        List<TestEntry> entries = [.. Seed(), new("tail.bin", [.. Words(1_500), .. new byte[2_000]])];
+        Fuzz("img", [
+            DiskImageBuilders.ExFat(entries, new DiskImageBuilders.ExFatOptions(ClusterSize: 512, Small: true)),
+            DiskImageBuilders.ExFat(entries, new DiskImageBuilders.ExFatOptions(ClusterSize: 512, Contiguous: false, Fragment: true, Unwritten: true, Small: true)),
+            DiskImageBuilders.ExFat(entries, new DiskImageBuilders.ExFatOptions(ClusterSize: 1024, Contiguous: false, SecondFat: true, Small: true)),
+        ]);
     }
 
     /// <summary>LZFSE streams (LzfseDecoder, a DMG's LZFSE chunks) with every block kind, decoded into a fixed buffer.</summary>
