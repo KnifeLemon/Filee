@@ -12,9 +12,13 @@
 // its end afterwards, so nothing of a picture's data can ever be read as PostScript code. Data in a procedure run
 // later (a pattern cell, a Type 3 glyph) is a string of at most 64 KB.
 //
-// What PostScript can't draw this way (soft masks with partial transparency, JBIG2 features Filee doesn't decode, JPEG
-// 2000, 16-bit pictures in converted spaces, Lab and DeviceN pictures) makes the page untranslatable, and the page is
-// drawn as a picture.
+// JPEG 2000 pictures (PostScript has no JPX filter) are decoded by Filee's Jpeg2000Decoder (PdfJpxPictures) into 8-bit
+// samples, in the image's colour space or, without one, as RGB from the picture's own; its opacity (/SMaskInData)
+// becomes the soft mask.
+//
+// What PostScript can't draw this way (soft masks with partial transparency, JBIG2 and JPEG 2000 features Filee
+// doesn't decode, 16-bit pictures in converted spaces, Lab and DeviceN pictures) makes the page untranslatable, and
+// the page is drawn as a picture.
 
 using System.IO.Compression;
 using Filee.Engines.Djvu;
@@ -53,6 +57,8 @@ internal sealed class ImageSource
     public static ImageSource FromXObject(PdfDictionary image, PdfDictionary? resources, int depth = 0)
     {
         var isMask = PdfObjects.Boolean(image, "/ImageMask", false);
+        if (!isMask && PdfStreams.Filters(image) is [.., { Name: "JPXDecode" }] filters)
+            return Jpx(image, resources, depth, filters);
         var result = new ImageSource
         {
             Width = (int)PdfObjects.Number(image, "/Width", 0),
@@ -73,6 +79,73 @@ internal sealed class ImageSource
         if (PdfObjects.Number(image, "/SMaskInData", 0) != 0)
             throw new PsUntranslatableException("A JPEG 2000 picture has transparency.");
         return result;
+    }
+
+    /// <summary>
+    /// A JPEG 2000 picture decoded by Filee (PdfJpxPictures) into 8-bit samples: in the image dictionary's colour
+    /// space when it has one, else RGB as the JPEG 2000 data's own colour space says. /SMaskInData's opacity becomes
+    /// the soft mask. A picture Filee can't decode leaves the page to be drawn as a picture.
+    /// </summary>
+    private static ImageSource Jpx(PdfDictionary image, PdfDictionary? resources, int depth, List<PdfFilter> filters)
+    {
+        var (data, rest) = PdfStreams.DecodeGeneral(image.Stream?.Value ?? [], filters, DocumentLimits.Default.MaxPartBytes);
+        if (rest is not [{ Name: "JPXDecode" }])
+            throw new PsUntranslatableException("A JPEG 2000 picture's filters can't be read.");
+        Jpeg2000.Jpeg2000Image picture;
+        try
+        {
+            picture = PdfJpxPictures.Decode(data);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or Filee.Core.Conversion.ConversionRefusedException)
+        {
+            throw new PsUntranslatableException($"A JPEG 2000 picture can't be read ({ex.Message}).");
+        }
+        var alphaInData = PdfObjects.Number(image, "/SMaskInData", 0) != 0;
+        var pixels = (long)picture.Width * picture.Height;
+        PdfColorSpace space;
+        byte[] samples;
+        byte[]? alpha = null;
+        if (PdfObjects.Get(image, "/ColorSpace") is { } item)
+        {
+            space = PdfColorSpace.Read(item, resources);
+            var count = space.Components;
+            var planes = picture.Planes(usePalette: false, raw: space is PdfColorSpace.Indexed);
+            if (planes.Count < count)
+                throw new PsUntranslatableException("A JPEG 2000 picture has fewer channels than its colour space.");
+            samples = new byte[pixels * count];
+            for (long i = 0; i < pixels; i++)
+            {
+                for (var c = 0; c < count; c++)
+                    samples[i * count + c] = planes[c][i];
+            }
+            if (alphaInData && picture.Opacity(count) is { } opacity && opacity < planes.Count)
+                alpha = planes[opacity];
+        }
+        else
+        {
+            space = PdfColorSpace.Rgb;
+            var rgba = picture.Rgba(alpha: alphaInData);
+            samples = new byte[pixels * 3];
+            for (long i = 0; i < pixels; i++)
+                (samples[i * 3], samples[i * 3 + 1], samples[i * 3 + 2]) = (rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]);
+            if (alphaInData)
+                alpha = [.. Enumerable.Range(0, (int)pixels).Select(i => rgba[i * 4 + 3])];
+        }
+        var soft = alpha is not null && alpha.Any(a => a != 255)
+            ? new ImageSource { Width = picture.Width, Height = picture.Height, Bits = 8, Space = PdfColorSpace.Gray, Data = alpha }
+            : depth == 0 && PdfObjects.Get(image, "/SMask") is PdfDictionary { Stream: not null } mask ? FromXObject(mask, resources, 1) : null;
+        return new ImageSource
+        {
+            Width = picture.Width,
+            Height = picture.Height,
+            Bits = 8,
+            Space = space,
+            Interpolate = PdfObjects.Boolean(image, "/Interpolate", false),
+            Data = samples,
+            ColorKey = PdfObjects.Get(image, "/Mask") is PdfArray key ? PdfObjects.Numbers(key) : null,
+            StencilMask = depth == 0 && PdfObjects.Get(image, "/Mask") is PdfDictionary { Stream: not null } stencil ? FromXObject(stencil, resources, 1) : null,
+            SoftMask = soft,
+        };
     }
 
     /// <summary>The /JBIG2Globals stream's data of an image's decode parameters (a dictionary, or one per filter).</summary>

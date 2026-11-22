@@ -182,6 +182,39 @@ public class PdfPostScriptTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(sample == "transparency" ? [1] : [], writer.RasterPages.Select(r => r.Page));
     }
 
+    /// <summary>
+    /// A JPEG 2000 picture (behind Flate, with no /ColorSpace: the codestream's grey) and one with /DeviceGray are
+    /// decoded by Filee and drawn as PostScript images; the page stays translated.
+    /// </summary>
+    [Fact]
+    public void Jpeg_2000_pictures_are_drawn_by_filees_own_decoder()
+    {
+        var folder = fx.NewFolder();
+        var pixels = new byte[64 * 64];
+        for (var i = 0; i < pixels.Length; i++)
+            pixels[i] = (byte)(i % 64 < 32 ? 0 : 255);
+        var jpx = Jpeg2000TestFile.Grey(64, 64, pixels, new Jpeg2000TestFile.Layout());
+        string pdf;
+        using (var b = new PostScriptPdfBuilder())
+        {
+            static PdfSharp.Pdf.PdfName N(string name) => PostScriptPdfBuilder.Name(name);
+            var own = b.Stream(jpx, false, ("Type", N("XObject")), ("Subtype", N("Image")), ("Width", PostScriptPdfBuilder.Number(64)), ("Height", PostScriptPdfBuilder.Number(64)));
+            own.Elements["/Filter"] = b.Array(N("FlateDecode"), N("JPXDecode"));
+            var grey = b.Stream(jpx, true, ("Type", N("XObject")), ("Subtype", N("Image")), ("Width", PostScriptPdfBuilder.Number(64)), ("Height", PostScriptPdfBuilder.Number(64)),
+                ("ColorSpace", N("DeviceGray")), ("Filter", N("JPXDecode")));
+            b.Page(300, 300, "q 100 0 0 100 50 50 cm /Im0 Do Q q 100 0 0 100 150 150 cm /Im1 Do Q", b.Resources(("XObject", "Im0", own), ("XObject", "Im1", grey)));
+            pdf = b.Save(folder, "jpx.pdf");
+        }
+        var ps = Path.Combine(folder, "out.ps");
+        var writer = new PdfToPostScript(pdf, 150, null, TestContext.Current.CancellationToken);
+        writer.Write([0], ps, eps: false, folder);
+
+        Assert.Empty(writer.RasterPages);
+        var text = File.ReadAllText(ps);
+        Assert.Contains("/DeviceRGB setcolorspace", text, StringComparison.Ordinal);
+        Assert.Contains("/DeviceGray setcolorspace", text, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Transparent_pages_become_pictures_with_a_notice()
     {
