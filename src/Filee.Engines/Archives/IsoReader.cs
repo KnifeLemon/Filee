@@ -7,6 +7,8 @@
 //   2 directory, 4 associated, 0x80 more extents follow), unit size u8, gap u8, volume u16 LE+BE, name length u8,
 //   name ("NAME.EXT;1"; 0 is "." and 1 is ".."), a pad byte for even lengths, then the System Use area
 //
+// An interleaved file (unit size and gap not 0) is recorded a unit of blocks at a time with gap blocks between.
+//
 // Rock Ridge (SUSP entries in the System Use area, announced by "SP" in the root's "." record): NM the real name,
 // PX the Unix mode, SL a symbolic link, CL / RE a directory moved out of a deep tree and back, CE more entries in
 // another block. Names come from Rock Ridge when present, else from Joliet, else the plain ISO 9660 names.
@@ -30,7 +32,20 @@ internal static class IsoReader
     private const long MaxDirectoryBytes = 256 * 1024 * 1024;
     private const int MaxContinuations = 32;
 
-    private sealed record Extent(long Block, long Size);
+    /// <summary>A file's extent: from <c>Block</c>, <c>Size</c> bytes; interleaved, <c>Unit</c> blocks then <c>Gap</c> skipped.</summary>
+    private sealed record Extent(long Block, long Size, int Unit = 0, int Gap = 0)
+    {
+        /// <summary>The block that holds byte <paramref name="offset"/> of the extent's data.</summary>
+        public long BlockOf(long offset, int blockSize)
+        {
+            var index = offset / blockSize;
+            return Unit == 0 ? Block + index : Block + index / Unit * (Unit + Gap) + index % Unit;
+        }
+
+        /// <summary>How many bytes from <paramref name="offset"/> lie in consecutive blocks.</summary>
+        public long RunFrom(long offset, int blockSize) =>
+            Math.Min(Size - offset, Unit == 0 ? Size - offset : (Unit - offset / blockSize % Unit) * (long)blockSize - offset % blockSize);
+    }
 
     private sealed class Node
     {
@@ -181,8 +196,8 @@ internal static class IsoReader
                 position += length;
                 if (record.IsSelfOrParent)
                     continue;
-                if (record.UnitSize != 0 || record.Gap != 0)
-                    throw new NotSupportedException($"{name} has interleaved files, which Filee's built-in ISO reader does not unpack.");
+                if (record.UnitSize == 0 && record.Gap != 0 && (record.Flags & 0x02) == 0)
+                    throw ArchiveSafety.Damaged(name, "an interleaved file has no unit size");
 
                 var rr = _rockRidge ? RockRidge.Read(this, record.SystemUse[Math.Min(_suspSkip, record.SystemUse.Length)..]) : default;
                 if (rr.Relocated || (record.Flags & 0x04) != 0)
@@ -210,8 +225,12 @@ internal static class IsoReader
                     continue;
                 }
 
-                CheckExtent(record.Block, record.Size);
-                (pending ??= []).Add(new Extent(record.Block, record.Size));
+                var extent = new Extent(record.Block, record.Size, record.UnitSize, record.UnitSize == 0 ? 0 : record.Gap);
+                if (extent.Unit == 0 || extent.Size == 0)
+                    CheckExtent(extent.Block, extent.Size);
+                else
+                    CheckExtent(extent.Block, extent.BlockOf(extent.Size - 1, _blockSize) - extent.Block + 1, blocks: true);
+                (pending ??= []).Add(extent);
                 if ((record.Flags & 0x80) != 0)
                     continue; // more extents of the same file follow
                 var node = new Node { Path = path, IsLink = rr.IsLink, Modified = record.Modified };
@@ -223,9 +242,10 @@ internal static class IsoReader
                 throw ArchiveSafety.Damaged(name, "a file's last extent is missing");
         }
 
-        private void CheckExtent(long block, long size)
+        /// <param name="blocks">The size counts blocks instead of bytes.</param>
+        private void CheckExtent(long block, long size, bool blocks = false)
         {
-            if (block * _blockSize + size > stream.Length)
+            if (block * _blockSize + (blocks ? size * _blockSize : size) > stream.Length)
                 throw ArchiveSafety.Damaged(name, "a file lies beyond the end of the image");
         }
 
@@ -398,8 +418,8 @@ internal static class IsoReader
             if (_index == extents.Count || buffer.Length == 0)
                 return 0;
             var extent = extents[_index];
-            image.Position = extent.Block * blockSize + _offset;
-            var read = image.Read(buffer[..(int)Math.Min(buffer.Length, extent.Size - _offset)]);
+            image.Position = extent.BlockOf(_offset, blockSize) * blockSize + _offset % blockSize;
+            var read = image.Read(buffer[..(int)Math.Min(buffer.Length, extent.RunFrom(_offset, blockSize))]);
             if (read == 0)
                 throw new EndOfStreamException("The image ends in the middle of a file.");
             _offset += read;

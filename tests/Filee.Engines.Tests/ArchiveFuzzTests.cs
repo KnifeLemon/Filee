@@ -61,7 +61,8 @@ public class ArchiveFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     [Fact]
     public void Iso_reader_unpacks_or_refuses_every_mutated_image() =>
-        Fuzz("iso", [Iso(Seed(), IsoNames.Joliet), Iso(Seed(), IsoNames.RockRidge, symlink: "a"), Iso(Seed(), IsoNames.Plain)], mutateFrom: 16 * 2048);
+        Fuzz("iso", [Iso(Seed(), IsoNames.Joliet), Iso(Seed(), IsoNames.RockRidge, symlink: "a"), Iso(Seed(), IsoNames.Plain),
+            Iso(Seed(), IsoNames.Joliet, interleave: (1, 2))], mutateFrom: 16 * 2048);
 
     /// <summary>
     /// Disk images (DiskImageReader): FAT12 volumes alone and behind MBR and GPT tables, UDF discs (one behind an ISO
