@@ -11,6 +11,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Filee.App.Controls;
 using Filee.App.Services;
 using Filee.App.ViewModels;
@@ -671,13 +672,18 @@ public class ClipWindowTests
             Pump();
             Assert.InRange(vm.Music!.Offset, 4.7, 5.3);
 
+            // Loop music (#1432) is a switch shown with the music.
+            Assert.False(vm.LoopMusic);
+            vm.LoopMusic = true;
+            Assert.True(vm.Music!.Loop);
+
             // Playing plays it too; saving writes it.
             Press(window, Key.Space);
             WaitFor(() => frames.Played.Count == 1 && !vm.IsPlaying);
             Assert.Equal("song.mp3", Path.GetFileName(frames.Played[0].Music!.Path));
             Press(window, Key.Enter);
             var music = Assert.Single(exports).Preset.Media.Clip!.Music!;
-            Assert.Equal((0.4, 40.0), (music.Volume, music.Length));
+            Assert.Equal((0.4, 40.0, true), (music.Volume, music.Length, music.Loop));
         });
     }
 
@@ -867,15 +873,326 @@ public class ClipWindowTests
         });
     }
 
+    // ───────────────────────── Mark this frame ─────────────────────────
+
+    [AvaloniaFact]
+    public void The_time_beside_play_is_the_time_of_the_frame_in_the_picture()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, _, _) =>
+        {
+            vm.MoveHandle(ClipHandle.Start, 95.3);
+            vm.SetLength(30);
+            vm.MovePlayhead(103.4);
+            Assert.Equal(("1:43.4", false), (vm.FrameTimeText, vm.IsMarkerFrame));
+            Press(window, Key.S);
+            Assert.Equal(("1:35.3", true), (vm.FrameTimeText, vm.IsMarkerFrame));
+            Press(window, Key.E);
+            Assert.Equal(("2:05.3", true), (vm.FrameTimeText, vm.IsMarkerFrame));
+            // The end itself is just after the clip: its last frame is in the picture, and its time is beside Play.
+            vm.MoveHandle(ClipHandle.End, 125.36);
+            Assert.Equal(("2:05.4", "2:05.3"), (vm.EndText, vm.FrameTimeText));
+            Press(window, Key.P);
+            Assert.Equal(("1:43.4", false), (vm.FrameTimeText, vm.IsMarkerFrame));
+            // The window shows it there, and a screen reader hears which frame it is.
+            Assert.Equal("1:43.4", window.FindControl<TextBlock>("FrameTimeText")!.Text);
+            var readout = window.FindControl<Border>("FrameTime")!;
+            var peer = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(readout);
+            Assert.True(peer.IsContentElement());
+            Assert.Equal("Playhead 1:43.4", peer.GetName());
+            Press(window, Key.S);
+            Assert.Equal("Start 1:35.3", peer.GetName());
+            Assert.Equal("Start 1:35.3", ToolTip.GetTip(readout)); // in words, not by its tint alone
+            Assert.Contains("marker", readout.Classes);
+            Press(window, Key.P);
+            // Nothing is drawn over the picture any more.
+            Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "Playhead 1:43.4");
+        });
+    }
+
+    [AvaloniaFact]
+    public void F_marks_the_frame_in_the_picture_and_opens_it_in_Annotate()
+    {
+        var annotated = new List<(string Frame, string? Note)>();
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, frames, _) =>
+        {
+            vm.MoveHandle(ClipHandle.Start, 95.3);
+            vm.SetLength(30);
+            vm.MovePlayhead(103.4);
+            Press(window, Key.S); // the start's frame in the picture
+            Press(window, Key.F);
+            WaitFor(() => annotated.Count == 1);
+            var still = Assert.Single(frames.Stills);
+            Assert.Equal(vm.PreviewTime, still.Seconds);
+            Assert.Equal(95.3, still.Seconds, 6);
+            Assert.Equal("match 1m35.300s.png", Path.GetFileName(annotated[0].Frame));
+            Assert.Equal(still.Output, annotated[0].Frame);
+            Assert.Null(annotated[0].Note);
+            Assert.True(File.Exists(annotated[0].Frame));
+            Assert.Equal("match.mp4", Path.GetFileName(MarkedFramesFor(vm).VideoOf(annotated[0].Frame)));
+            Assert.False(vm.HasMessage);
+
+            // The button does the same, with the playhead's frame in the picture.
+            Press(window, Key.P);
+            var button = window.FindControl<Button>("MarkFrameButton")!;
+            Assert.True(button.IsEffectivelyVisible);
+            AssertKeysHintNamesF(window, true);
+            Assert.Same(vm.MarkFrameCommand, button.Command);
+            button.Command!.Execute(null);
+            WaitFor(() => annotated.Count == 2);
+            Assert.Equal("match 1m43.400s.png", Path.GetFileName(annotated[1].Frame));
+        }, annotate: (frame, note) => annotated.Add((frame, note)));
+    }
+
+    [AvaloniaFact]
+    public void The_end_marks_the_clips_last_frame_and_a_frame_being_taken_still_opens_after_the_window_closes()
+    {
+        var annotated = new List<(string Frame, string? Note)>();
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, frames, _) =>
+        {
+            vm.MoveHandle(ClipHandle.Start, 95.3);
+            vm.SetLength(30);
+            Press(window, Key.E);
+            // The end itself is just after the clip: its last frame is in the picture, and that is the one marked.
+            frames.HoldStill = new TaskCompletionSource();
+            Press(window, Key.F);
+            WaitFor(() => frames.Stills.Count == 1);
+            Assert.Equal(125.3 - 1 / 30.0, frames.Stills[0].Seconds, 6);
+            Assert.True(vm.IsBusy);
+            Assert.Equal("Taking the frame…", vm.BusyText);
+            Assert.False(vm.MarkFrameCommand.CanExecute(null)); // F again while it's taken does nothing
+            Press(window, Key.Enter); // saved, and the window closes on the last video
+            frames.HoldStill.SetResult();
+            WaitFor(() => annotated.Count == 1);
+            Assert.Equal("match 2m05.267s.png", Path.GetFileName(annotated[0].Frame));
+            Assert.Single(frames.Stills);
+        }, annotate: (frame, note) => annotated.Add((frame, note)));
+    }
+
+    [AvaloniaFact]
+    public void A_frame_being_taken_still_opens_when_the_window_moves_to_the_next_video()
+    {
+        var annotated = new List<(string Frame, string? Note)>();
+        WithClipWindow("en", false, ["first.mp4", "second.mp4"], (window, vm, frames, _) =>
+        {
+            frames.HoldStill = new TaskCompletionSource();
+            Press(window, Key.F);
+            WaitFor(() => frames.Stills.Count == 1);
+            vm.SkipCommand.Execute(null);
+            WaitFor(() => vm.CurrentFileName == "second.mp4" && !vm.IsLoading);
+            frames.HoldStill.SetResult();
+            WaitFor(() => annotated.Count == 1);
+            Assert.StartsWith("first 0m00.000s", Path.GetFileName(annotated[0].Frame));
+        }, annotate: (frame, note) => annotated.Add((frame, note)));
+    }
+
+    [AvaloniaTheory]
+    [InlineData("Esc")]
+    [InlineData("window closed")] // the title bar, Alt+F4, or Cut a clip opened on another video
+    public void Closing_while_a_frame_is_taken_drops_it(string how)
+    {
+        var annotated = new List<(string Frame, string? Note)>();
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, frames, _) =>
+        {
+            frames.HoldStill = new TaskCompletionSource();
+            Press(window, Key.F);
+            WaitFor(() => frames.Stills.Count == 1);
+            if (how == "Esc")
+                Press(window, Key.Escape);
+            else
+                window.Close();
+            // Taking it is stopped, not waited for: nothing is left to open the frame for.
+            WaitFor(() => !vm.IsMarkingFrame);
+            Assert.Empty(annotated);
+            Assert.False(Directory.Exists(Path.GetDirectoryName(frames.Stills[0].Output)));
+        }, annotate: (frame, note) => annotated.Add((frame, note)));
+    }
+
+    [AvaloniaFact]
+    public void A_frame_being_taken_still_opens_after_the_summary_of_videos_that_failed_is_closed()
+    {
+        var annotated = new List<(string Frame, string? Note)>();
+        WithClipWindow("en", false, ["broken.mp4", "match.mp4"], (window, vm, frames, _) =>
+        {
+            frames.HoldStill = new TaskCompletionSource();
+            Press(window, Key.F);
+            WaitFor(() => frames.Stills.Count == 1);
+            Press(window, Key.Enter); // the last video: the summary of the one that failed shows
+            WaitFor(() => vm.IsFinished);
+            Press(window, Key.Escape); // and is closed
+            frames.HoldStill.SetResult();
+            WaitFor(() => annotated.Count == 1);
+            Assert.StartsWith("match ", Path.GetFileName(annotated[0].Frame));
+        }, annotate: (frame, note) => annotated.Add((frame, note)));
+    }
+
+    [AvaloniaFact]
+    public void A_frame_still_being_taken_when_Filee_quits_is_dropped()
+    {
+        var annotated = new List<(string Frame, string? Note)>();
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, frames, _) =>
+        {
+            frames.HoldStill = new TaskCompletionSource();
+            Press(window, Key.F);
+            WaitFor(() => frames.Stills.Count == 1);
+            Press(window, Key.Enter); // the last video: the window closes, and the frame would still open...
+            // ...but Filee quits first, while (as on Windows when FFmpeg writes into it) the folder can't be deleted
+            // yet, so the frame is written all the same.
+            var folder = Path.GetDirectoryName(frames.Stills[0].Output)!;
+            using (HoldFolder(folder))
+                MarkedFramesFor(vm).Dispose();
+            Assert.True(Directory.Exists(folder));
+            frames.HoldStill.SetResult();
+            WaitFor(() => !vm.IsMarkingFrame);
+            Assert.Empty(annotated);
+            Assert.False(Directory.Exists(Path.GetDirectoryName(frames.Stills[0].Output))); // tried again once written
+        }, annotate: (frame, note) => annotated.Add((frame, note)));
+    }
+
+    [AvaloniaFact]
+    public void A_sounds_time_beside_play_is_the_playheads()
+    {
+        WithClipWindow("en", false, ["nopicture.mp4"], (window, vm, _, _) =>
+        {
+            vm.MovePlayhead(12.5);
+            Press(window, Key.S);
+            Assert.Equal(("0:12.5", false), (vm.FrameTimeText, vm.IsMarkerFrame));
+            Assert.Equal("Playhead 0:12.5", vm.PreviewLabel);
+        });
+    }
+
+    [AvaloniaFact]
+    public void Marking_while_playing_pauses_on_the_frame_shown()
+    {
+        var annotated = new List<(string Frame, string? Note)>();
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, frames, _) =>
+        {
+            frames.HoldPlaying = new TaskCompletionSource();
+            vm.MovePlayhead(12);
+            Press(window, Key.Space);
+            // Every picture played: the last one, 11 / 25 s in, is on screen.
+            WaitFor(() => vm.IsPlaying && Math.Abs(vm.Playhead - (12 + 11 / 25.0)) < 1e-9);
+            Press(window, Key.F);
+            Assert.False(vm.IsPlaying);
+            WaitFor(() => annotated.Count == 1);
+            // The frame on screen when F was pressed.
+            Assert.Equal(12 + 11 / 25.0, Assert.Single(frames.Stills).Seconds, 9);
+        }, annotate: (frame, note) => annotated.Add((frame, note)));
+    }
+
+    [AvaloniaFact]
+    public void An_HDR_frame_whose_colours_could_not_be_converted_opens_with_a_note()
+    {
+        var annotated = new List<(string Frame, string? Note)>();
+        WithClipWindow("en", false, ["iphone.mov"], (window, vm, frames, _) =>
+        {
+            frames.StillColorsNotConverted = true;
+            Press(window, Key.F);
+            WaitFor(() => annotated.Count == 1);
+            // Said in Annotate, which opens over the clip window, not in the clip window behind it.
+            Assert.Equal(AppHost.Get<ILocalizer>()["clip.mark_frame_hdr"], annotated[0].Note);
+            Assert.False(vm.HasMessage);
+        }, annotate: (frame, note) => annotated.Add((frame, note)));
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)] // FFmpeg couldn't even be started
+    public void A_frame_that_could_not_be_taken_says_so_and_leaves_nothing_behind(bool throws)
+    {
+        var annotated = new List<(string Frame, string? Note)>();
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, frames, _) =>
+        {
+            frames.StillFails = !throws;
+            frames.StillThrows = throws;
+            Press(window, Key.F);
+            WaitFor(() => frames.Stills.Count == 1 && vm.HasMessage);
+            Assert.Equal(AppHost.Get<ILocalizer>()["clip.mark_frame_failed"], vm.Message);
+            Assert.Empty(annotated);
+            Assert.False(Directory.Exists(Path.GetDirectoryName(frames.Stills.Single().Output)));
+            Assert.Null(MarkedFramesFor(vm).VideoOf(frames.Stills.Single().Output));
+        }, annotate: (frame, note) => annotated.Add((frame, note)));
+    }
+
+    [AvaloniaFact]
+    public void A_sound_has_no_frame_to_mark()
+    {
+        var annotated = new List<(string Frame, string? Note)>();
+        WithClipWindow("en", false, ["nopicture.mp4"], (window, vm, frames, _) =>
+        {
+            Assert.False(vm.HasPicture);
+            Assert.False(vm.MarkFrameCommand.CanExecute(null));
+            Assert.False(window.FindControl<Button>("MarkFrameButton")!.IsEffectivelyVisible);
+            AssertKeysHintNamesF(window, false); // the hint doesn't offer a key that does nothing here
+            Press(window, Key.F);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Empty(frames.Stills);
+            Assert.Empty(annotated);
+        }, annotate: (frame, note) => annotated.Add((frame, note)));
+    }
+
+    [AvaloniaFact]
+    public void Without_Annotate_the_window_offers_no_marking()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, frames, _) =>
+        {
+            Assert.False(vm.MarkFrameCommand.CanExecute(null));
+            Assert.False(window.FindControl<Button>("MarkFrameButton")!.IsEffectivelyVisible);
+            AssertKeysHintNamesF(window, false);
+            Press(window, Key.F);
+            Assert.Empty(frames.Stills);
+        });
+    }
+
+    /// <summary>
+    /// Keeps <paramref name="folder"/> from being deleted until disposed: a file in it held open on Windows, its parent
+    /// made read-only elsewhere (where root may delete anything, the test is skipped).
+    /// </summary>
+    private static IDisposable HoldFolder(string folder)
+    {
+        if (OperatingSystem.IsWindows())
+            return new FileStream(Path.Combine(folder, "held"), FileMode.Create, FileAccess.Write, FileShare.None,
+                1, FileOptions.DeleteOnClose);
+        if (Environment.IsPrivilegedProcess)
+            Assert.Skip("root may delete anything, so the folder can't be held here");
+        var parent = Path.GetDirectoryName(folder)!;
+        var mode = File.GetUnixFileMode(parent);
+        File.SetUnixFileMode(parent, mode & ~(UnixFileMode.UserWrite | UnixFileMode.GroupWrite | UnixFileMode.OtherWrite));
+        return new Undo(() =>
+        {
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(parent, mode);
+        });
+    }
+
+    private sealed class Undo(Action undo) : IDisposable
+    {
+        public void Dispose() => undo();
+    }
+
+    /// <summary>The keys shown under the window name F (marks the frame) exactly when marking is offered.</summary>
+    private static void AssertKeysHintNamesF(ClipWindow window, bool offered)
+    {
+        var shown = Assert.Single(window.GetVisualDescendants().OfType<TextBlock>(),
+            t => t.Name is "KeysHint" or "FrameKeysHint" && t.IsEffectivelyVisible);
+        Assert.Equal(offered, shown.Text!.Contains("F marks the frame", StringComparison.Ordinal));
+    }
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ClipWindowViewModel, MarkedFrames> Marks = new();
+
+    private static MarkedFrames MarkedFramesFor(ClipWindowViewModel vm) => Marks.TryGetValue(vm, out var marks) ? marks : throw new InvalidOperationException();
+
     // ───────────────────────── Helpers ─────────────────────────
 
     /// <summary>
-    /// Opens the window on made-up videos (a file name with "broken" can't be read) of <paramref name="duration"/>
-    /// seconds, waits until the timeline and the large picture are there, and runs <paramref name="act"/> with the
-    /// window, its model, the frames taken and the conversions started.
+    /// Opens the window on made-up videos (a file name with "broken" can't be read, one with "nopicture" is a sound) of
+    /// <paramref name="duration"/> seconds, waits until the timeline and the large picture are there, and runs
+    /// <paramref name="act"/> with the window, its model, the frames taken and the conversions started. With
+    /// <paramref name="annotate"/>, "Mark this frame" hands it the frames it takes (into a folder of the test's own)
+    /// and the note about each.
     /// </summary>
     internal static void WithClipWindow(string language, bool dark, string[] names,
-        Action<ClipWindow, ClipWindowViewModel, PaintedFrames, List<(string Path, Preset Preset)>> act, double duration = Length, Preset? tool = null)
+        Action<ClipWindow, ClipWindowViewModel, PaintedFrames, List<(string Path, Preset Preset)>> act, double duration = Length, Preset? tool = null,
+        Action<string, string?>? annotate = null)
     {
         TestServices.EnsureInitialized(language);
         var theme = AppHost.Get<ThemeService>();
@@ -883,6 +1200,7 @@ public class ClipWindowTests
             theme.Apply(new ThemeSettings { Mode = ThemeMode.Dark }, language);
         var folder = Directory.CreateTempSubdirectory("filee-clip-window-").FullName;
         ClipWindow? window = null;
+        MarkedFrames? marks = null;
         try
         {
             var files = names.Select(name => Path.Combine(folder, name)).ToList();
@@ -891,12 +1209,15 @@ public class ClipWindowTests
             var frames = new PaintedFrames(duration);
             var exports = new List<(string, Preset)>();
             tool ??= BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip");
+            marks = annotate is null ? null : new MarkedFrames(Path.Combine(folder, "work"));
             var vm = new ClipWindowViewModel(files, tool, AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), frames,
-                _ => "mkv", (path, preset) => exports.Add((path, preset)));
+                _ => "mkv", (path, preset) => exports.Add((path, preset)), marks: marks, annotate: annotate);
+            if (marks is not null)
+                Marks.AddOrUpdate(vm, marks);
             window = new ClipWindow { DataContext = vm, Width = 1240, Height = 880 };
             window.Show();
-            WaitFor(() => !vm.IsLoading && vm.Thumbnails.All(t => t is not null) && frames.Times.Contains(vm.PreviewTime)
-                && vm.DetailThumbnails.Count == ClipWindowViewModel.DetailCount);
+            WaitFor(() => !vm.IsLoading && (!vm.HasPicture || vm.Thumbnails.All(t => t is not null) && frames.Times.Contains(vm.PreviewTime)
+                && vm.DetailThumbnails.Count == ClipWindowViewModel.DetailCount));
             Pump();
             act(window, vm, frames, exports);
         }
@@ -904,6 +1225,7 @@ public class ClipWindowTests
         {
             if (window?.IsVisible == true)
                 window.Close();
+            marks?.Dispose();
             if (dark)
                 theme.Apply(new ThemeSettings(), language);
             try { Directory.Delete(folder, true); } catch (IOException) { }
@@ -985,7 +1307,35 @@ public class ClipWindowTests
         public Task<VideoSummary> ProbeAsync(string path, CancellationToken cancellationToken) =>
             Path.GetFileName(path).Contains("broken", StringComparison.Ordinal)
                 ? Task.FromException<VideoSummary>(new InvalidOperationException("Invalid data found when processing input"))
+                : Path.GetFileName(path).Contains("nopicture", StringComparison.Ordinal) ? Task.FromResult(new VideoSummary(duration, 0, 0, 0))
                 : Task.FromResult(new VideoSummary(duration, 1920, 1080, 30));
+
+        /// <summary>The frames "Mark this frame" took: the time asked for and where it was written.</summary>
+        public List<(double Seconds, string Output)> Stills { get; } = [];
+
+        /// <summary>A marked frame comes back as an HDR one FFmpeg couldn't give ordinary colours.</summary>
+        public bool StillColorsNotConverted { get; set; }
+
+        /// <summary>Taking a marked frame fails (FFmpeg found none).</summary>
+        public bool StillFails { get; set; }
+
+        /// <summary>A marked frame waits here before it is written, when set.</summary>
+        public TaskCompletionSource? HoldStill { get; set; }
+
+        public bool StillThrows { get; set; }
+
+        public async Task<FrameStill> WriteStillAsync(string path, double seconds, string output, CancellationToken cancellationToken)
+        {
+            Stills.Add((seconds, output));
+            if (HoldStill is { } hold)
+                await hold.Task.WaitAsync(cancellationToken);
+            if (StillThrows)
+                throw new IOException("FFmpeg could not be started");
+            if (StillFails)
+                return new FrameStill(false, false);
+            Assert.True(await WriteFrameAsync(path, seconds, output, 1080, cancellationToken));
+            return new FrameStill(true, StillColorsNotConverted);
+        }
 
         public Task<bool> WriteFrameAsync(string path, double seconds, string output, int maxHeight, CancellationToken cancellationToken)
         {

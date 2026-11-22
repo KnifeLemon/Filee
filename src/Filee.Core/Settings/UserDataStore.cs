@@ -478,27 +478,27 @@ internal static class SettingsMigrations
         if (settings.SchemaVersion < 21)
             InsertBefore(settings.EnginePriority, "wic", settings.EnginePriority.Contains("ffmpeg") ? "ffmpeg" : "pandoc");
 
-        // v100: Unhwp is gone; the built-in "hwp-text" engine (HWP / HWPX → TXT, Markdown, HTML) takes its place in the
+        // v102: Unhwp is gone; the built-in "hwp-text" engine (HWP / HWPX → TXT, Markdown, HTML) takes its place in the
         //       order, so every other engine keeps its rank. (Built-in engines branch; was schema 58, then 89, then 95,
-        //       there before main took 58–99. May be renumbered again if another change takes it first.)
-        if (settings.SchemaVersion < 100)
+        //       then 100, there before main took 58–101. May be renumbered again if another change takes it first.)
+        if (settings.SchemaVersion < 102)
             ReplaceEngine(settings.EnginePriority, "unhwp", "hwp-text");
 
-        // v101: LibreOffice no longer opens HWP / HWPX (no H2Orestart, no Java). Whoever sent HWP → PDF through it to get
+        // v103: LibreOffice no longer opens HWP / HWPX (no H2Orestart, no Java). Whoever sent HWP → PDF through it to get
         //       around rhwp gets the other way around rhwp, Filee's renderer. (Built-in engines branch; was schema 59,
-        //       then 90, then 96, there. May be renumbered again if another change takes it first.)
-        if (settings.SchemaVersion < 101 && settings.LibreOfficeForHwp == true)
+        //       then 90, then 96, then 101, there. May be renumbered again if another change takes it first.)
+        if (settings.SchemaVersion < 103 && settings.LibreOfficeForHwp == true)
             settings.FileeRenderer = true;
         settings.LibreOfficeForHwp = null;
 
-        // v102: Filee's renderer is the default document → PDF engine, and its slide renderer draws presentations. The
+        // v104: Filee's renderer is the default document → PDF engine, and its slide renderer draws presentations. The
         //       renderer is turned on for everyone (it was a preview of unreleased builds, so an "off" there was no
         //       choice against a default), and "Use LibreOffice for presentations", on by default since it beat the
         //       HWPX writer and rhwp, is turned off once so decks reach the slide renderer; whoever turns it back on
         //       keeps it. The other LibreOffice switches were off by default and stay as the user set them.
-        //       (Built-in engines branch; was schema 91, then 97, there. May be renumbered if another change takes it
-        //       first.)
-        if (settings.SchemaVersion < 102)
+        //       (Built-in engines branch; was schema 91, then 97, then 102, there. May be renumbered if another change
+        //       takes it first.)
+        if (settings.SchemaVersion < 104)
         {
             settings.FileeRenderer = true;
             settings.LibreOfficeForSlides = false;
@@ -1218,36 +1218,47 @@ internal static class SettingsMigrations
         // v99: CrossOver logs (.cxlog, #1383) learn the text donut; custom claims stay put.
         if (from < 99)
             changed |= LearnExtensions(profiles, out _, ["cxlog"]);
-        // v103: UYAP documents (.udf, #1338) learn their documents donut; custom claims stay put.
-        if (from < 103)
-            changed |= LearnExtensions(profiles, out _, ["udf"]);
-        // v104: Zstandard files (.zst, .tar.zst, .tzst, #1646) learn the archives donut; custom claims stay put.
-        if (from < 104)
-            changed |= LearnExtensions(profiles, out _, ["tar.zst", "tzst", "zst"]);
-        // v105: XPS and OpenXPS documents (.xps, .oxps, #613) learn their documents donut; custom claims stay put.
+        // v100: Source engine models (.mdl) and studiomdl data (.smd) learn the 3D models donut and "SMD" joins the 3D
+        //       models in the palette after glTF; custom claims stay put.
+        if (from < 100)
+        {
+            changed |= AddSourcePresets(presets);
+            changed |= LearnExtensions(profiles, out _, ["mdl", "smd"]);
+        }
+        // v101: "QC + SMD" (decompiling a Source engine model into its QC and SMDs) joins the palette after "SMD", not a
+        //       donut.
+        if (from < 101 && presets.All(p => p.Id != BuiltInData.DecompileModelId))
+            changed |= AddLikeNewLibrary(presets, BuiltInData.DecompileModelId);
+        // v105: UYAP documents (.udf, #1338) learn their documents donut; custom claims stay put.
         if (from < 105)
-            changed |= LearnExtensions(profiles, out _, ["xps", "oxps"]);
-        // v106: Excel binary workbooks (.xlsb, #1535) learn the spreadsheets donut; custom claims stay put.
+            changed |= LearnExtensions(profiles, out _, ["udf"]);
+        // v106: Zstandard files (.zst, .tar.zst, .tzst, #1646) learn the archives donut; custom claims stay put.
         if (from < 106)
-            changed |= LearnExtensions(profiles, out _, ["xlsb"]);
-        // v108: mind maps (.mm, .xmind; #1543, #1004) learn the documents donut; custom claims stay put.
+            changed |= LearnExtensions(profiles, out _, ["tar.zst", "tzst", "zst"]);
+        // v107: XPS and OpenXPS documents (.xps, .oxps, #613) learn their documents donut; custom claims stay put.
+        if (from < 107)
+            changed |= LearnExtensions(profiles, out _, ["xps", "oxps"]);
+        // v108: Excel binary workbooks (.xlsb, #1535) learn the spreadsheets donut; custom claims stay put.
         if (from < 108)
+            changed |= LearnExtensions(profiles, out _, ["xlsb"]);
+        // v110: mind maps (.mm, .xmind; #1543, #1004) learn the documents donut; custom claims stay put.
+        if (from < 110)
             changed |= LearnExtensions(profiles, out _, ["mm", "xmind"]);
-        // v109: Excel chart templates (.crtx, #1354) learn the vector donut; custom claims stay put.
-        if (from < 109)
-            changed |= LearnExtensions(profiles, out _, ["crtx"]);
-        // v111: OpenDocument drawing templates (.otg) learn the vector donut; custom claims stay put.
+        // v111: Excel chart templates (.crtx, #1354) learn the vector donut; custom claims stay put.
         if (from < 111)
+            changed |= LearnExtensions(profiles, out _, ["crtx"]);
+        // v113: OpenDocument drawing templates (.otg) learn the vector donut; custom claims stay put.
+        if (from < 113)
             changed |= LearnExtensions(profiles, out _, ["otg"]);
-        // v112: DjVu documents (.djvu, .djv, #346) learn the documents donut; custom claims stay put.
-        if (from < 112)
+        // v114: DjVu documents (.djvu, .djv, #346) learn the documents donut; custom claims stay put.
+        if (from < 114)
             changed |= LearnExtensions(profiles, out _, ["djvu", "djv"]);
-        // v115: interactive whiteboard and SMART Notebook files (.iwb, .notebook, #1665) learn the presentations donut;
+        // v117: interactive whiteboard and SMART Notebook files (.iwb, .notebook, #1665) learn the presentations donut;
         // custom claims stay put.
-        if (from < 115)
+        if (from < 117)
             changed |= LearnExtensions(profiles, out _, ["iwb", "notebook"]);
-        // v116: standalone DjVu IW44 pictures (.iw4, .iw44) learn the documents donut with DjVu; custom claims stay put.
-        if (from < 116)
+        // v118: standalone DjVu IW44 pictures (.iw4, .iw44) learn the documents donut with DjVu; custom claims stay put.
+        if (from < 118)
             changed |= LearnExtensions(profiles, out _, ["iw4", "iw44"]);
         return changed;
     }
@@ -1320,6 +1331,21 @@ internal static class SettingsMigrations
             at = presets.FindIndex(p => p.Id == "to-tar");
         presets.Insert(at < 0 ? presets.Count : at + 1, BuiltInData.GamePackPresets().Single(p => p.Id == "to-gma"));
         return true;
+    }
+
+    /// <summary>"SMD" after the last 3D model preset of the library (glTF), or at the end.</summary>
+    private static bool AddSourcePresets(List<Preset> presets)
+    {
+        var changed = false;
+        // Only "SMD": "QC + SMD" came a step later.
+        foreach (var preset in BuiltInData.SourceModelPresets().Where(p => p.Id == "to-smd" && presets.All(existing => existing.Id != p.Id)))
+        {
+            var models = BuiltInData.ModelPresets().Select(p => p.Id).ToHashSet();
+            var last = presets.FindLastIndex(p => models.Contains(p.Id));
+            presets.Insert(last < 0 ? presets.Count : last + 1, preset);
+            changed = true;
+        }
+        return changed;
     }
 
     private static bool AddCropVideo(List<Preset> presets)

@@ -1,6 +1,5 @@
 // Valve pak files (.vpk), the archives the Source engine keeps its games' files in (Half-Life 2, Counter-Strike: Source,
-// Team Fortress 2, the content Garry's Mod mounts). Read by Filee; layout (little endian) as in Valve's vpklib and
-// srctools:
+// Team Fortress 2, the content Garry's Mod mounts). Read by Filee; layout (little endian):
 //
 //   signature u32 0x55AA1234, version u32 (1 or 2), tree size u32
 //   version 2: file data size, archive MD5 size, other MD5 size, signature size (u32 each; the sections are not read)

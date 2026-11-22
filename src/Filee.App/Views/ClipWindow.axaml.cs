@@ -215,6 +215,12 @@ public partial class ClipWindow : Window
                 vm.Activate(ClipHandle.End);
                 e.Handled = true;
                 break;
+            case Key.F when plain && vm.CanEdit:
+                // "Mark this frame": the frame in the picture, opened in Annotate.
+                if (vm.MarkFrameCommand.CanExecute(null))
+                    vm.MarkFrameCommand.Execute(null);
+                e.Handled = true;
+                break;
             // Time runs left to right on the timeline, also in right-to-left languages: Left is always earlier.
             case Key.Left or Key.Right when vm.CanEdit && (e.KeyModifiers & ~KeyModifiers.Shift) == KeyModifiers.None:
                 var step = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? LargeStep : SmallStep;

@@ -13,7 +13,7 @@ public class XpsSettingsTests
         Assert.NotNull(ProfileSelector.Select(BuiltInData.CreateProfiles(), [file]));
 
     [Fact]
-    public void Version_105_donuts_learn_xps_and_oxps_without_taking_custom_claims()
+    public void Version_107_donuts_learn_xps_and_oxps_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
@@ -22,15 +22,15 @@ public class XpsSettingsTests
         donut.Remove("xps");
         donut.Remove("oxps");
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(104, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(106, presets, profiles));
         Assert.Contains("xps", donut);
         Assert.Contains("oxps", donut);
-        Assert.False(SettingsMigrations.ApplyToLibrary(104, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(106, presets, profiles));
 
         donut.Remove("xps");
         donut.Remove("oxps");
         profiles.Insert(0, new ToolbarProfile { Id = "my-prints", Name = "Prints", Extensions = ["XPS"] });
-        Assert.True(SettingsMigrations.ApplyToLibrary(104, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(106, presets, profiles));
         Assert.DoesNotContain("xps", donut); // the user's own donut has it
         Assert.Contains("oxps", donut);
     }

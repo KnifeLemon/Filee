@@ -1837,6 +1837,8 @@ public sealed class ArchiveOptions
 {
     /// <summary>Filesystem used for ISO creation; absent values retain Joliet.</summary>
     public IsoFileSystem IsoFileSystem { get; set; }
+    /// <summary>Custom ISO volume label; empty uses the input name.</summary>
+    public string IsoVolumeLabel { get; set; } = "";
     /// <summary>Put all dropped files into one archive instead of one archive per file.</summary>
     public bool CombineIntoOne { get; set; }
 

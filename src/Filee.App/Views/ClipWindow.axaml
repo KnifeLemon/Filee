@@ -1,8 +1,8 @@
 <!-- "Cut a clip": a frameless soft-rounded stage like the crop overlay's. The frame at the handle being moved large in
-     the middle; floating on the stage the file chip (top left), maximize and close (top right), and at the bottom a
-     card with the start, length and end, the timeline of the video with the clip between two handles, and the toolbar
-     pill with the quick lengths, the fast / exact choice, Skip and "Save clip". After the last file, when a file could
-     not be opened, a card with what went wrong. -->
+     the middle, with "Mark this frame" under it; floating on the stage the file chip (top left), maximize and close
+     (top right), and at the bottom a card with the start, length and end, the timeline of the video with the clip
+     between two handles, and the toolbar pill with the quick lengths, the fast / exact choice, Skip and "Save clip".
+     After the last file, when a file could not be opened, a card with what went wrong. -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Filee.App.ViewModels"
@@ -33,7 +33,10 @@
     <StreamGeometry x:Key="Clip.FadeOut">M2 4v16h20z</StreamGeometry>
     <StreamGeometry x:Key="Clip.Silence">M2 11h2v2H2z M5.5 8h2v8h-2z M9 5h2v14H9z M17 8h2v8h-2z M20 11h2v2h-2z M12.6 11.3h2.8v1.4h-2.8z</StreamGeometry>
     <StreamGeometry x:Key="Clip.Music">M12,3V12.26C11.5,12.09 11,12 10.5,12C8,12 6,14 6,16.5C6,19 8,21 10.5,21C13,21 15,19 15,16.5V6H19V3H12Z</StreamGeometry>
+    <StreamGeometry x:Key="Clip.Loop">M17,17H7V14L3,18L7,22V19H19V13H17M7,7H17V10L21,6L17,2V5H5V11H7V7Z</StreamGeometry>
     <StreamGeometry x:Key="Clip.Muted">M12,4L9.91,6.09L12,8.18M4.27,3L3,4.27L7.73,9H3V15H7L12,20V13.27L16.25,17.53C15.58,18.04 14.83,18.46 14,18.7V20.77C15.38,20.45 16.63,19.82 17.68,18.96L19.73,21L21,19.73L12,10.73M19,12C19,12.94 18.8,13.82 18.46,14.64L19.97,16.15C20.62,14.91 21,13.5 21,12C21,7.72 18,4.14 14,3.23V5.29C16.89,6.15 19,8.83 19,12M16.5,12C16.5,10.23 15.5,8.71 14,7.97V10.18L16.45,12.63C16.5,12.43 16.5,12.21 16.5,12Z</StreamGeometry>
+    <!-- Annotate's own brush (its slice icon), for the button that opens a frame there -->
+    <StreamGeometry x:Key="Clip.Mark">M7 16C7.55 16 8 16.45 8 17C8 18.1 7.1 19 6 19C5.83 19 5.67 19 5.5 18.95C5.81 18.4 6 17.74 6 17C6 16.45 6.45 16 7 16M18.67 3C18.41 3 18.16 3.1 17.96 3.29L9 12.25L11.75 15L20.71 6.04C21.1 5.65 21.1 5 20.71 4.63L19.37 3.29C19.17 3.09 18.92 3 18.67 3M7 14C5.34 14 4 15.34 4 17C4 18.31 2.84 19 2 19C2.92 20.22 4.5 21 6 21C8.21 21 10 19.21 10 17C10 15.34 8.66 14 7 14Z</StreamGeometry>
     <StreamGeometry x:Key="Clip.CloseGaps">M13,20V4H15.03V20H13M10,20V4H12.03V20H10M5,8L9.03,12L5,16V13H2V11H5V8M20,16L16,12L20,8V11H23V13H20V16Z</StreamGeometry>
   </Window.Resources>
 
@@ -112,6 +115,36 @@
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
+    <!-- "Mark this frame": an outlined pill, so it reads as something to press without competing with Save clip -->
+    <Style Selector="Button.mark">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="12,6,8,6" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.mark:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.mark:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="Button.mark:disabled">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+
+    <!-- The time beside Play: plain at the playhead, tinted like the start or end field while that frame is shown -->
+    <Style Selector="Border.frametime">
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="8,3" />
+      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="MinWidth" Value="58" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.frametime.marker">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    </Style>
+
     <!-- The start and end: what they are, the time, and their key; the active one tinted -->
     <Style Selector="Button.time">
       <Setter Property="Background" Value="Transparent" />
@@ -165,38 +198,46 @@
           BoxShadow="{DynamicResource CardShadow}">
     <Grid x:Name="Stage">
       <Grid RowDefinitions="*,Auto" IsVisible="{Binding IsEditing}">
-        <!-- The frame at the active handle, as large as fits -->
-        <Panel Margin="36,66,36,12">
-          <Border x:Name="PreviewFrame" CornerRadius="{DynamicResource SoftRadius}" ClipToBounds="True"
-                  IsVisible="{Binding HasPicture}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                  Background="{DynamicResource SurfaceAltBrush}" BoxShadow="{DynamicResource CardShadow}">
-            <Panel>
-              <Image Source="{Binding Preview}" Stretch="Uniform" />
-              <!-- Busy: preparing to play, finding silence, reading the music -->
-              <Border Classes="float" Padding="10,5,12,5" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10"
-                      IsVisible="{Binding IsBusy}">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                  <ProgressBar Classes="soft" IsIndeterminate="True" Width="34" VerticalAlignment="Center" />
-                  <TextBlock Text="{Binding BusyText}" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"
-                             Foreground="{DynamicResource TextPrimaryBrush}" />
-                </StackPanel>
-              </Border>
-              <!-- Which handle's frame this is, on the picture -->
-              <Border Classes="float" Padding="10,4" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10"
-                      IsVisible="{Binding Preview, Converter={x:Static ObjectConverters.IsNotNull}}">
-                <TextBlock Text="{Binding PreviewLabel}" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-              </Border>
-            </Panel>
-          </Border>
-          <!-- A sound has no picture: its name, and the waveform below -->
-          <StackPanel IsVisible="{Binding IsSoundOnly}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
-            <PathIcon Width="64" Height="64" Data="{StaticResource Clip.Music}" Foreground="{DynamicResource AccentBrush}" Opacity="0.7" />
-            <TextBlock Text="{Binding CurrentFileName}" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"
-                       TextTrimming="CharacterEllipsis" MaxWidth="560" Foreground="{DynamicResource TextPrimaryBrush}" />
-            <TextBlock Text="{Binding RingtoneLimitText}" FontSize="12.5" HorizontalAlignment="Center" IsVisible="{Binding IsRingtone}"
-                       Foreground="{DynamicResource TextSecondaryBrush}" />
-          </StackPanel>
-        </Panel>
+        <!-- The frame at the active handle, as large as fits, and "Mark this frame" under it -->
+        <Grid Margin="36,66,36,16" RowDefinitions="*,Auto">
+          <Panel>
+            <Border x:Name="PreviewFrame" CornerRadius="{DynamicResource SoftRadius}" ClipToBounds="True"
+                    IsVisible="{Binding HasPicture}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Background="{DynamicResource SurfaceAltBrush}" BoxShadow="{DynamicResource CardShadow}">
+              <Panel>
+                <Image Source="{Binding Preview}" Stretch="Uniform" />
+                <!-- Busy: preparing to play, finding silence, reading the music -->
+                <Border Classes="float" Padding="10,5,12,5" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10"
+                        IsVisible="{Binding IsBusy}">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ProgressBar Classes="soft" IsIndeterminate="True" Width="34" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding BusyText}" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                  </StackPanel>
+                </Border>
+              </Panel>
+            </Border>
+            <!-- A sound has no picture: its name, and the waveform below -->
+            <StackPanel IsVisible="{Binding IsSoundOnly}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+              <PathIcon Width="64" Height="64" Data="{StaticResource Clip.Music}" Foreground="{DynamicResource AccentBrush}" Opacity="0.7" />
+              <TextBlock Text="{Binding CurrentFileName}" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center"
+                         TextTrimming="CharacterEllipsis" MaxWidth="560" Foreground="{DynamicResource TextPrimaryBrush}" />
+              <TextBlock Text="{Binding RingtoneLimitText}" FontSize="12.5" HorizontalAlignment="Center" IsVisible="{Binding IsRingtone}"
+                         Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StackPanel>
+          </Panel>
+          <!-- Opens the frame in the picture in Annotate (F): outlined, apart from the solid Save clip -->
+          <Button x:Name="MarkFrameButton" Grid.Row="1" Classes="mark" HorizontalAlignment="Center" Margin="0,6,0,0"
+                  Command="{Binding MarkFrameCommand}" IsVisible="{Binding ShowsMarkFrame}"
+                  ToolTip.Tip="{DynamicResource clip.mark_frame_hint}" AutomationProperties.Name="{DynamicResource clip.mark_frame}">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Mark}" Foreground="{DynamicResource AccentBrush}" />
+              <TextBlock Text="{DynamicResource clip.mark_frame}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                         Foreground="{DynamicResource TextPrimaryBrush}" />
+              <Border Classes="key"><TextBlock Text="F" /></Border>
+            </StackPanel>
+          </Button>
+        </Grid>
 
         <!-- The clip: start, length, end and the timeline; then the toolbar and the keys -->
         <StackPanel Grid.Row="1" Margin="16,0,16,12" Spacing="8">
@@ -277,8 +318,15 @@
                   <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Pause}" Foreground="{DynamicResource AccentBrush}" IsVisible="{Binding IsPlaying}" />
                 </Panel>
               </Button>
-              <TextBlock Text="{Binding PlayheadText}" FontSize="13" FontWeight="SemiBold" MinWidth="50" VerticalAlignment="Center"
-                         Margin="2,0,6,0" Foreground="{DynamicResource TextPrimaryBrush}" />
+              <!-- The time of the frame in the picture: the playhead's, or the start's or end's, tinted as that field
+                   is; a screen reader hears which frame it is ("Start 1:35.3"), and the tooltip says it too -->
+              <Border x:Name="FrameTime" Classes="frametime" Classes.marker="{Binding IsMarkerFrame}"
+                      AutomationProperties.Name="{Binding PreviewLabel}" AutomationProperties.AccessibilityView="Content"
+                      ToolTip.Tip="{Binding PreviewLabel}">
+                <TextBlock x:Name="FrameTimeText" Text="{Binding FrameTimeText}" FontSize="13" FontWeight="SemiBold"
+                           HorizontalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}"
+                           AutomationProperties.AccessibilityView="Raw" />
+              </Border>
               <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="999" Padding="8,2" Margin="0,0,4,0" VerticalAlignment="Center"
                       IsVisible="{Binding SelectionText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                 <TextBlock Text="{Binding SelectionText}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
@@ -366,6 +414,13 @@
                   <TextBlock Text="{DynamicResource clip.music}" FontSize="13" VerticalAlignment="Center" />
                 </StackPanel>
               </Button>
+              <ToggleButton Classes="tool" IsChecked="{Binding LoopMusic}" IsVisible="{Binding HasMusic}" Padding="10,8"
+                            ToolTip.Tip="{DynamicResource clip.loop_music_hint}" AutomationProperties.Name="{DynamicResource clip.loop_music}">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Loop}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <TextBlock Text="{DynamicResource clip.loop_music}" FontSize="13" VerticalAlignment="Center" />
+                </StackPanel>
+              </ToggleButton>
               <Button Classes="tool" Command="{Binding CloseGapsCommand}" IsVisible="{Binding HasGaps}" Padding="10,8"
                       ToolTip.Tip="{DynamicResource clip.close_gaps_hint}" AutomationProperties.Name="{DynamicResource clip.close_gaps}">
                 <StackPanel Orientation="Horizontal" Spacing="7">
@@ -434,11 +489,18 @@
             </StackPanel>
           </Border>
           <Panel HorizontalAlignment="Center">
-            <TextBlock Text="{DynamicResource clip.hint_keys}" FontSize="11" HorizontalAlignment="Center" TextAlignment="Center"
-                       TextWrapping="Wrap" MaxWidth="820" Opacity="0.8" Foreground="{DynamicResource TextSecondaryBrush}"
-                       IsVisible="{Binding !HasMessage}" />
+            <!-- The keys; F only where there is a frame to mark -->
+            <Panel IsVisible="{Binding !HasMessage}">
+              <TextBlock x:Name="KeysHint" Text="{DynamicResource clip.hint_keys}" FontSize="11" HorizontalAlignment="Center"
+                         TextAlignment="Center" TextWrapping="Wrap" MaxWidth="820" Opacity="0.8"
+                         Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding !ShowsMarkFrame}" />
+              <TextBlock x:Name="FrameKeysHint" Text="{DynamicResource clip.hint_keys_frame}" FontSize="11"
+                         HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="820" Opacity="0.8"
+                         Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding ShowsMarkFrame}" />
+            </Panel>
             <!-- What an action did, for a moment -->
             <TextBlock Text="{Binding Message}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center"
+                       AutomationProperties.LiveSetting="Polite"
                        TextWrapping="Wrap" MaxWidth="820" Foreground="{DynamicResource AccentBrush}" IsVisible="{Binding HasMessage}" />
           </Panel>
         </StackPanel>

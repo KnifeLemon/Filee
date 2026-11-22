@@ -17,20 +17,20 @@ public class OtgSettingsTests
     }
 
     [Fact]
-    public void Version_111_donuts_learn_otg_without_taking_custom_claims()
+    public void Version_113_donuts_learn_otg_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var donut = profiles.Single(p => p.Id == "vector").Extensions;
         donut.Remove("otg");
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(110, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(112, presets, profiles));
         Assert.Contains("otg", donut);
-        Assert.False(SettingsMigrations.ApplyToLibrary(110, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(112, presets, profiles));
 
         donut.Remove("otg");
         profiles.Insert(0, new ToolbarProfile { Id = "my-templates", Name = "Templates", Extensions = ["OTG"] });
-        Assert.False(SettingsMigrations.ApplyToLibrary(110, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(112, presets, profiles));
         Assert.DoesNotContain("otg", donut); // the user's own donut has it
     }
 }

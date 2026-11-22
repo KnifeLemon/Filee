@@ -545,20 +545,25 @@ public sealed class ClipSequence : Control
                 var bars = new StreamGeometry();
                 using (var g = bars.Open())
                 {
-                    for (var i = 0; i < levels.Count; i++)
+                    // Music that repeats shows its file again after each pass, from the file's start.
+                    var passes = music.Repeats ? (int)Math.Min(1000, Math.Ceiling((music.From + length) / music.Length)) : 1;
+                    for (var pass = 0; pass < passes; pass++)
                     {
-                        var t = music.Length * i / levels.Count - music.From; // seconds into its play
-                        var t1 = music.Length * (i + 1) / levels.Count - music.From;
-                        if (t1 <= 0 || t >= length)
-                            continue;
-                        var x0 = XOf(music.Offset + Math.Max(0, t));
-                        var x1 = XOf(music.Offset + Math.Min(length, t1));
-                        var height = Math.Max(0.5, levels[i] * Math.Min(music.Volume, 2) * (rect.Height - 4) / 2);
-                        g.BeginFigure(new Point(x0, rect.Center.Y - height / 2), true);
-                        g.LineTo(new Point(Math.Max(x0 + 0.6, x1 - 0.3), rect.Center.Y - height / 2));
-                        g.LineTo(new Point(Math.Max(x0 + 0.6, x1 - 0.3), rect.Center.Y + height / 2));
-                        g.LineTo(new Point(x0, rect.Center.Y + height / 2));
-                        g.EndFigure(true);
+                        for (var i = 0; i < levels.Count; i++)
+                        {
+                            var t = music.Length * (pass + (double)i / levels.Count) - music.From; // seconds into its play
+                            var t1 = music.Length * (pass + (double)(i + 1) / levels.Count) - music.From;
+                            if (t1 <= 0 || t >= length)
+                                continue;
+                            var x0 = XOf(music.Offset + Math.Max(0, t));
+                            var x1 = XOf(music.Offset + Math.Min(length, t1));
+                            var height = Math.Max(0.5, levels[i] * Math.Min(music.Volume, 2) * (rect.Height - 4) / 2);
+                            g.BeginFigure(new Point(x0, rect.Center.Y - height / 2), true);
+                            g.LineTo(new Point(Math.Max(x0 + 0.6, x1 - 0.3), rect.Center.Y - height / 2));
+                            g.LineTo(new Point(Math.Max(x0 + 0.6, x1 - 0.3), rect.Center.Y + height / 2));
+                            g.LineTo(new Point(x0, rect.Center.Y + height / 2));
+                            g.EndFigure(true);
+                        }
                     }
                 }
                 context.DrawGeometry(brush, null, bars);

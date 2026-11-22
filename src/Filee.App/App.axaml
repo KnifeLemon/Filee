@@ -48,8 +48,10 @@
     <Style Selector="FlyoutPresenter.nopadding TabItem:selected /template/ Border#PART_SelectedPipe">
       <Setter Property="IsVisible" Value="False" />
     </Style>
-    <!-- The picker's card: the page's surface with the theme's soft corners and a faint outline. -->
-    <Style Selector="FlyoutPresenter.nopadding">
+    <!-- Every flyout's card (the colour picker, the icon picker, the list of running apps): the page's surface with the
+         theme's soft corners and a faint outline. Without it a flyout kept Avalonia's own grey, which ignored the
+         accent tint of Material You and of a theme's surface colour. -->
+    <Style Selector="FlyoutPresenter">
       <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
       <Setter Property="BorderThickness" Value="1" />
