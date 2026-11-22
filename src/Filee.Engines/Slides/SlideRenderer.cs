@@ -11,6 +11,7 @@
 //   (PowerPoint turns it upside down for a vertically flipped shape).
 // - Tables: rows as high as their content needs at least, cells' fills, text and borders, merged cells over their span.
 // - Charts: drawn by ChartDrawer in the shape's box, turned with it.
+// - Effects (shadow, glow, soft edges, reflection) and 3D (a turned front face, an extrusion): SlideRenderer.Effects.cs.
 
 using Filee.Engines.Charts;
 using Filee.Engines.Rendering;
@@ -19,7 +20,7 @@ using SkiaSharp;
 
 namespace Filee.Engines.Slides;
 
-internal sealed class SlideRenderer : IDisposable
+internal sealed partial class SlideRenderer : IDisposable
 {
     /// <summary>The width unwrapped text is laid out in before it is placed.</summary>
     private const float Unbounded = 100_000;
@@ -115,13 +116,17 @@ internal sealed class SlideRenderer : IDisposable
                 ChartDrawer.Draw(page, chart, new SKRect(0, 0, shape.Bounds.Width, shape.Bounds.Height), _charts, 1, matrix);
                 break;
             case SlideShape shape:
-                Shape(page, shape, matrix);
+                // A shape turned in space: its sides and back first, then the front face through the projection.
+                var face = Extruded(page, shape, matrix);
+                Shape(page, shape, face is { } front ? matrix.PreConcat(front) : matrix);
                 if (shape.Text is { IsEmpty: false } text)
                 {
                     // Text turns with its shape but isn't mirrored; a vertically flipped shape turns it upside down.
                     var textMatrix = parent.PreConcat(Local(shape, mirror: false));
                     if (shape.FlipVertical)
                         textMatrix = textMatrix.PreConcat(SKMatrix.CreateRotationDegrees(180, shape.Bounds.Width / 2, shape.Bounds.Height / 2));
+                    if (face is { } turned)
+                        textMatrix = textMatrix.PreConcat(Flat(turned));
                     Text(page, text, new SKSize(shape.Bounds.Width, shape.Bounds.Height), textMatrix);
                 }
                 break;
@@ -138,20 +143,7 @@ internal sealed class SlideRenderer : IDisposable
         var box = new SKRect(0, 0, shape.Bounds.Width, shape.Bounds.Height);
         if (shape.Fill is null && shape.Line is null)
             return;
-        page.Draw(canvas =>
-        {
-            canvas.Concat(in matrix);
-            if (shape.Fill is { } fill)
-            {
-                foreach (var path in shape.Paths.Where(p => p.Fill != PathFill.None))
-                {
-                    SlidePaint.Fill(canvas, path.Path, fill, box, _images);
-                    Veil(canvas, path);
-                }
-            }
-            if (shape.Line is { } line)
-                Stroke(canvas, shape.Paths.Where(p => p.Stroke).Select(p => p.Path).ToList(), line, box);
-        });
+        page.Draw(canvas => DrawOutlines(canvas, shape, matrix, box));
     }
 
     /// <summary>The lighter or darker parts of 3D-looking presets: a white or black veil over the fill.</summary>

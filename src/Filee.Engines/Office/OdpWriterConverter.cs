@@ -2,9 +2,11 @@
 // model.
 //
 // - PowerPoint decks (PPTX, PPTM, POTX, POTM, PPSX, and PowerPoint 97–2003 as the PPTX package it translates to) are
-//   read by the slide renderer's reader (PptxSlideReader) with their speaker notes (PptxNotes). Their edges are
-//   checked with the renderer's capability check: a deck with charts without a picture, effects, 3D, WordArt or other
-//   things the model leaves out takes LibreOffice's route where LibreOffice is installed.
+//   read by the slide renderer's reader (PptxSlideReader) with their speaker notes (PptxNotes): charts become ODF chart
+//   objects, outer shadows, glow and soft edges LibreOffice's shadow, glow and soft edge attributes, reflections a
+//   faded mirror copy, a shape's turn in space and extrusion ODF extrusion attributes. Their edges are checked with the
+//   renderer's capability check for the ODP writer: a deck with charts nothing reads and no picture of, inner shadows,
+//   blur, WordArt or other things the model leaves out takes LibreOffice's route where LibreOffice is installed.
 // - Every other format the document readers read (Markdown, the markup languages, Word, ODT, HWP / HWPX, HTML,
 //   spreadsheets, e-books, ...) is laid out on slides by the PPTX writer first (a slide per heading, Pandoc's rules),
 //   then written as the same deck in ODP, so both writers give the same slides.
@@ -13,7 +15,8 @@
 // here is never a step towards another format (a document → PDF stays off slides). That keeps them from leading on
 // to the template and the flat file too, so the writer makes those itself: the ODP it writes, turned into OTP or FODP
 // (Odf/OdfVariants). OpenDocument presentations themselves (ODP, OTP, FODP) are not sources: they become each other
-// through OdfVariantConverter, which keeps the whole deck, and keep LibreOffice's route to PPTX.
+// through OdfVariantConverter, which keeps the whole file as it is, and keep LibreOffice's route to PPTX (there is no
+// PresentationML writer of the slide model yet).
 
 using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Hwpx;
@@ -65,12 +68,12 @@ public sealed class OdpWriterConverter : IConverter, ICapabilityCheck
     private static IEnumerable<string> Documents(bool pandoc) => DocumentReaders.Formats(pandoc).Where(f => !NotDocuments.Contains(f));
 
     /// <summary>
-    /// For a deck, the first thing the slide model leaves out (charts, effects, 3D, ...; a PowerPoint 95 file); for a
-    /// document, a Word 6.0 / 95 or Works file the DOC reader doesn't read.
+    /// For a deck, the first thing the slide model leaves out (charts nothing reads, inner shadows, WordArt, ...; a
+    /// PowerPoint 95 file); for a document, a Word 6.0 / 95 or Works file the DOC reader doesn't read.
     /// </summary>
     public string? FirstUnsupported(string sourcePath, string sourceFormat) =>
         Decks.Contains(sourceFormat, StringComparer.OrdinalIgnoreCase)
-            ? SlideFormats.FirstUnsupported(sourcePath, sourceFormat)
+            ? SlideFormats.FirstUnsupported(sourcePath, sourceFormat, forOdp: true)
             : DocumentReaders.Unsupported(sourcePath, sourceFormat);
 
     public EngineStatus GetStatus()

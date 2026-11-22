@@ -9,7 +9,7 @@
 // - EMF and WMF: the metafile as it is, one picture filling a page of its size (LibreOffice Draw opens one the same way).
 // - Mind maps (MindMaps/): each sheet's map as drawn (topics as shapes with their text, branch lines), a page per sheet
 //   on pages of the largest sheet's size, each map centred on its page.
-// - Slide decks (SlideFormats: PowerPoint, OpenDocument presentations), with the slide renderer's check; speaker notes
+// - Slide decks (SlideFormats: PowerPoint, OpenDocument presentations), with the slide check for the ODP writer; speaker notes
 //   are not kept (drawings have none).
 // - PDF: each page rebuilt as editable text boxes, shapes, tables and pictures by the PDF slides engine (or as a
 //   picture with the "slides as pictures" option), read back from its PPTX. This edge alone is no direct-only one, so
@@ -66,7 +66,7 @@ public sealed partial class DrawingConverter
     private static string? FirstUnsupportedForOdg(string sourcePath, string sourceFormat) => sourceFormat switch
     {
         "svg" or "svgz" => SvgDrawingReader.FirstUnsupported(sourcePath),
-        _ when SlideFormats.Decks.Contains(sourceFormat, StringComparer.OrdinalIgnoreCase) => SlideFormats.FirstUnsupported(sourcePath, sourceFormat),
+        _ when SlideFormats.Decks.Contains(sourceFormat, StringComparer.OrdinalIgnoreCase) => SlideFormats.FirstUnsupported(sourcePath, sourceFormat, forOdp: true),
         _ => null,
     };
 

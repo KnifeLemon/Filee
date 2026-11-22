@@ -18,8 +18,9 @@
 //   a paragraph's runs, are drawn as equations rather than from the fallback's picture of them).
 // - Fills: solid, gradient (linear, circle, rectangle; group fill), picture, pattern. Lines: width, dash, cap, join,
 //   compound, arrowheads.
-// Shadows, glow, reflection, 3D and WordArt warps are left out; the capability check (SlideCapabilities) names them,
-// and its pass run to the end is the deck's note when the renderer draws the deck anyway (SlideDeck.LeftOut).
+// - Effects (outer shadow, glow, soft edges, reflection) and 3D (camera turn, extrusion): PptxSlideReader.Effects.cs.
+// Inner and preset shadows, blur, bevels and WordArt warps are left out; the capability check (SlideCapabilities)
+// names them, and its pass run to the end is the deck's note when the renderer draws the deck anyway (SlideDeck.LeftOut).
 //
 // Hostile input: parts through DocumentPackage (sizes, inflate ratio, XML depth and elements), DocumentBudget for
 // paragraphs, objects and group nesting, and limits for the whole deck on path commands (each path counts as one more,
@@ -477,6 +478,8 @@ internal sealed partial class PptxSlideReader
             fill = ThemeFill(context, part, fillRef);
         result.Fill = fill;
         result.Line = Line(context, part, chain.Select(e => Properties(e)?.Element(A + "ln")).OfType<XElement>().ToList(), style?.Element(A + "lnRef"));
+        result.Effects = Effects(context, chain.Select(Properties), style);
+        result.ThreeD = ThreeD(context, chain.Select(Properties), style);
 
         var body = shape.Element(P + "txBody") ?? shape.Element(Dsp + "txBody");
         if (body is not null)
@@ -524,8 +527,10 @@ internal sealed partial class PptxSlideReader
             return null;
         result.Fill = fill;
         result.Paths = Geometry(chain.Select(Properties).OfType<XElement>(), result.Bounds).Paths;
-        result.Line = Line(context, part, chain.Select(e => Properties(e)?.Element(A + "ln")).OfType<XElement>().ToList(),
-            picture.Element(P + "style")?.Element(A + "lnRef"));
+        var style = picture.Element(P + "style");
+        result.Line = Line(context, part, chain.Select(e => Properties(e)?.Element(A + "ln")).OfType<XElement>().ToList(), style?.Element(A + "lnRef"));
+        result.Effects = Effects(context, chain.Select(Properties), style);
+        result.ThreeD = ThreeD(context, chain.Select(Properties), style);
         return result;
     }
 

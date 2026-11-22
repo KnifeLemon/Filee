@@ -23,7 +23,8 @@ internal sealed class OdpBuilder
         "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" " +
         "xmlns:presentation=\"urn:oasis:names:tc:opendocument:xmlns:presentation:1.0\" " +
         "xmlns:dr3d=\"urn:oasis:names:tc:opendocument:xmlns:dr3d:1.0\" " +
-        "xmlns:chart=\"urn:oasis:names:tc:opendocument:xmlns:chart:1.0\"";
+        "xmlns:chart=\"urn:oasis:names:tc:opendocument:xmlns:chart:1.0\" " +
+        "xmlns:loext=\"urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0\"";
 
     /// <summary>A drawing (office:drawing, Draw) instead of a presentation.</summary>
     public bool Drawing { get; init; }

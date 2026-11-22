@@ -3,9 +3,13 @@
 // shown slides and the layouts and masters they use are looked at, as the reader reads them.
 //
 // Named: charts ChartReader doesn't draw (3D, radar, stock, ..., and chartex) without a stored picture, SmartArt without its stored drawing, OLE objects and other embedded content
-// without a picture, ink, shadows and other effects (glow, reflection, soft edges, blur; on shapes, pictures and text,
-// or through the theme's effect styles), 3D, WordArt warps, outlined text, preset shapes not
-// in PresetShapes, and pictures Skia can't decode (TIFF, JPEG XR).
+// without a picture, ink, effects the renderer doesn't draw (inner and preset shadows, blur, effect DAGs, and any
+// effect on text; on shapes and pictures, or through the theme's effect styles: outer shadows, glow, soft edges and
+// reflections are drawn), 3D (drawn roughly: a turned face and a flat-shaded extrusion), WordArt warps, outlined text,
+// preset shapes not in PresetShapes, and pictures Skia can't decode (TIFF, JPEG XR).
+//
+// The ODP writer asks the same check for the decks it writes (forOdp): there 3D is no reason, since it keeps a shape's
+// turn and extrusion as ODF extrusion attributes (bevels and materials left out).
 //
 // A PowerPoint 97–2003 deck is looked through as the PPTX package it translates to, after what the translation leaves
 // out (Office/Ppt: freeforms, WordArt, ...); a PowerPoint 95 file is named as such.
@@ -29,17 +33,22 @@ internal static class SlideCapabilities
     private static readonly XNamespace A = DrawingColors.A;
     private static readonly XNamespace R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
-    private static readonly HashSet<string> Effects = ["outerShdw", "innerShdw", "prstShdw", "glow", "reflection", "softEdge", "blur"];
+    /// <summary>Effects of shapes and pictures the renderer and the ODP writer don't draw or keep.</summary>
+    private static readonly HashSet<string> Effects = ["innerShdw", "prstShdw", "blur"];
+
+    /// <summary>Every effect: on text, none of them is drawn.</summary>
+    private static readonly HashSet<string> AllEffects = ["outerShdw", "innerShdw", "prstShdw", "glow", "reflection", "softEdge", "blur"];
 
     /// <summary>The first thing in the deck the renderer doesn't draw; null when it draws everything (or the file can't be read).</summary>
-    public static string? FirstUnsupported(string path, CancellationToken cancellationToken = default)
+    /// <param name="forOdp">For the ODP writer, which keeps 3D.</param>
+    public static string? FirstUnsupported(string path, CancellationToken cancellationToken = default, bool forOdp = false)
     {
         try
         {
             if (PptReader.Unsupported(path) is { } old)
                 return old;
             using var package = SlidePackage.Open(path);
-            return package.Dropped ?? Scan(package, null, cancellationToken);
+            return package.Dropped ?? Scan(package, null, cancellationToken, forOdp);
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException or Core.Conversion.ConversionRefusedException)
         {
@@ -57,11 +66,11 @@ internal static class SlideCapabilities
     {
         foreach (var (kind, count) in package.DroppedKinds)
             leftOut.Add(kind, count);
-        Scan(package, leftOut, cancellationToken);
+        Scan(package, leftOut, cancellationToken, forOdp: false);
     }
 
     /// <summary>The first feature named; with <paramref name="leftOut"/>, every element is looked at and counted.</summary>
-    private static string? Scan(SlidePackage package, SlideLeftOut? leftOut, CancellationToken cancellationToken)
+    private static string? Scan(SlidePackage package, SlideLeftOut? leftOut, CancellationToken cancellationToken, bool forOdp)
     {
         var presentationPart = package.MainPart ?? "ppt/presentation.xml";
         var presentation = package.Part(presentationPart);
@@ -108,7 +117,7 @@ internal static class SlideCapabilities
         {
             if (package.Part(part) is not { } root)
                 continue;
-            var feature = Part(package, part, root, themedEffects, leftOut, cancellationToken);
+            var feature = Part(package, part, root, themedEffects, leftOut, cancellationToken, forOdp);
             first ??= feature;
             if (first is not null && leftOut is null)
                 return first;
@@ -158,7 +167,7 @@ internal static class SlideCapabilities
     private readonly record struct Finding(string? Feature, string? Kind);
 
     private static string? Part(SlidePackage package, string part, XElement root, HashSet<int> themedEffects, SlideLeftOut? leftOut,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool forOdp)
     {
         var count = 0;
         string? first = null;
@@ -170,11 +179,12 @@ internal static class SlideCapabilities
             {
                 "graphicData" => Graphic(package, part, element),
                 "contentPart" => new Finding("ink", "ink"),
-                "effectLst" when element.Elements().Any(e => Effects.Contains(e.Name.LocalName)) => new Finding("shadows and effects", "effects"),
+                "effectLst" when element.Elements().Any(e => (OnText(element) ? AllEffects : Effects).Contains(e.Name.LocalName)) =>
+                    new Finding("shadows and effects", "effects"),
                 "effectDag" => new Finding("shadows and effects", "effects"),
                 "effectRef" when int.TryParse((string?)element.Attribute("idx"), out var index) && themedEffects.Contains(index) =>
                     new Finding("shadows and effects", "effects"),
-                "sp3d" when element.HasElements || element.Attributes().Any(a => a.Name.LocalName is "extrusionH" or "contourW" or "z") =>
+                "sp3d" when !forOdp && (element.HasElements || element.Attributes().Any(a => a.Name.LocalName is "extrusionH" or "contourW" or "z")) =>
                     new Finding("3D effects", "effects"),
                 "prstTxWarp" when (string?)element.Attribute("prst") is { } warp && warp != "textNoShape" => new Finding("WordArt text warp", "wordart"),
                 "ln" when element.Parent?.Name.LocalName is "rPr" or "defRPr" or "endParaRPr" && element.Elements().Any(e => e.Name.LocalName != "noFill") =>
@@ -192,6 +202,9 @@ internal static class SlideCapabilities
         }
         return first;
     }
+
+    /// <summary>An effect list of text (a run's or paragraph's properties) rather than of a shape.</summary>
+    private static bool OnText(XElement effectList) => effectList.Parent?.Name.LocalName is "rPr" or "defRPr" or "endParaRPr";
 
     /// <summary>
     /// A graphic frame's content: tables are drawn; charts, SmartArt and objects only with what they store for drawing.

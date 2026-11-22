@@ -13,19 +13,22 @@
 // - Placeholders (presentation:class): empty ones (presentation:placeholder) are left out; one without a position takes
 //   its master's; text takes the presentation style chain, outline levels the master's outline styles ("<master>-
 //   outline2" …).
-// - Shapes: draw:frame (text box, picture, table, an embedded object's replacement picture), draw:custom-shape
+// - Shapes: draw:frame (text box, picture, table, a formula object's equation, an embedded or OLE object's replacement picture), draw:custom-shape
 //   (OdfEnhancedGeometry), draw:rect (corner radius), draw:ellipse / draw:circle (full, section, cut, arc),
 //   draw:line, draw:polyline, draw:polygon, draw:path (SVG path data), draw:connector (along its svg:d, or the route
 //   of its draw:type: OdfConnectors) and draw:measure (straight),
 //   draw:g groups, draw:a links (their content); placement by svg:x / svg:y / svg:width / svg:height and
 //   draw:transform (rotate, translate, scale, skew, matrix), turned and mirrored as the model has it.
 // - Fills, lines and text frames through the graphic and presentation style chains (OdfGraphicStyles, OdfDrawText).
-// - Charts (embedded chart objects) through OdfChartReader, drawn by the slide renderer (charts it doesn't draw keep
-//   their replacement picture and are named by the check); their points count against a ChartBudget.
-// Left out: charts OdfChartReader doesn't draw, OLE objects, 3D scenes, Fontwork, shadows, form controls, notes, animations; the capability check
-// (FirstUnsupported, a pass of this reader that draws nothing) names the first of them on a shown page, so such a file
-// can keep LibreOffice's route. Read for drawing, the same places count each kind once per element for the deck's note
-// (SlideDeck.LeftOut, SlideLeftOut), with objects drawn from their replacement pictures.
+// - Charts (embedded chart objects) through OdfChartReader, drawn by the slide renderer (charts it doesn't draw are
+//   drawn from their replacement picture); their points count against a ChartBudget.
+// - Shadows, glow, soft edges and extrusion (OdfDrawReader.Effects.cs); 3D scenes as flat-shaded faces
+//   (OdfDrawReader.Scene3D.cs).
+// Left out: charts and objects without a replacement picture Filee can draw (LibreOffice's own SVM pictures among
+// them), Fontwork, form controls, notes, animations; the capability check (FirstUnsupported, a pass of this reader that
+// draws nothing) names the first of them on a shown page, so such a file can keep LibreOffice's route. Read for
+// drawing, the same places count each kind once per element for the deck's note (SlideDeck.LeftOut, SlideLeftOut),
+// with objects drawn from their replacement pictures.
 //
 // Hostile input: the package through DocumentPackage, a flat file through SafeXml (OdfDrawPackage); pages up to
 // MaxPages; DocumentBudget for paragraphs, objects and nesting (groups, lists); a character count for text; limits for
@@ -37,6 +40,7 @@ using System.Globalization;
 using System.Xml.Linq;
 using Filee.Engines.Charts;
 using Filee.Engines.Documents;
+using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Slides;
 using SkiaSharp;
 using OdfNames = Filee.Engines.Hwp.Hwpx.Odt.Odf;
@@ -77,6 +81,8 @@ internal sealed partial class OdfDrawReader
     private static readonly XNamespace Presentation = OdfNames.Presentation;
     private static readonly XNamespace Dr3d = OdfNames.Dr3d;
     private static readonly XNamespace Chart = OdfNames.Chart;
+    private static readonly XNamespace MathMl = OdfNames.MathMl;
+    private static readonly XNamespace Config = "urn:oasis:names:tc:opendocument:xmlns:config:1.0";
 
     /// <summary>Placeholder classes of a master page that are templates for the pages, not drawn on them.</summary>
     private static readonly HashSet<string> TemplateClasses =
@@ -123,7 +129,7 @@ internal sealed partial class OdfDrawReader
     }
 
     /// <summary>
-    /// The first thing on a shown page the reader doesn't draw (charts, OLE objects, 3D scenes, ...); null when it draws
+    /// The first thing on a shown page the reader doesn't draw (charts and OLE objects without a picture, Fontwork, ...); null when it draws
     /// everything, or when the file can't be read (the conversion then stops with the reader's own reason).
     /// </summary>
     public static string? FirstUnsupported(string path, CancellationToken cancellationToken = default)
@@ -290,7 +296,9 @@ internal sealed partial class OdfDrawReader
                 return;
             if (element.Name == Dr3d + "scene")
             {
-                Unsupported("3D scenes", "shapes_left_out", element);
+                Visit();
+                if (Scene(element, context, scope) is { } scene)
+                    output.Add(scene);
                 continue;
             }
             if (element.Name.Namespace != Draw)
@@ -502,10 +510,10 @@ internal sealed partial class OdfDrawReader
             return null;
         var chain = StyleChain(element, context, scope);
         var props = OdfGraphicStyles.Props(chain, "graphic-properties");
-        Shadow(props);
         var shape = Placed(place);
         shape.Fill = _styles.Fill(props, solid: true);
         shape.Line = _styles.Line(props, stroke: true);
+        shape.Effects = Effects(props);
 
         SKRect? textArea = null;
         float textRotation = 0;
@@ -514,7 +522,7 @@ internal sealed partial class OdfDrawReader
             if (!_geometries.TryGetValue(geometryElement, out var geometry))
                 _geometries[geometryElement] = geometry = OdfEnhancedGeometry.Parse(geometryElement);
             if (geometry.Extruded)
-                Unsupported("3D effects", "effects", element);
+                shape.ThreeD = Extrusion(geometryElement, props);
             if (geometry.Fontwork)
                 Unsupported("Fontwork", "wordart", element);
             if (!geometry.HasPath && OdfEnhancedGeometry.Preset(geometry.Type) is null)
@@ -542,10 +550,10 @@ internal sealed partial class OdfDrawReader
             return null;
         var chain = StyleChain(element, context, scope);
         var props = OdfGraphicStyles.Props(chain, "graphic-properties");
-        Shadow(props);
         var shape = Placed(place);
         shape.Fill = _styles.Fill(props, solid: true);
         shape.Line = _styles.Line(props, stroke: true);
+        shape.Effects = Effects(props);
         if (element.Name.LocalName == "rect")
         {
             shape.Paths = [Rectangle(shape.Bounds, Math.Max(0, Points(Attr(element, Draw + "corner-radius")) ?? 0))];
@@ -614,8 +622,7 @@ internal sealed partial class OdfDrawReader
         }
         path.Offset(-bounds.Left, -bounds.Top);
         var props = OdfGraphicStyles.Props(StyleChain(element, context, scope), "graphic-properties");
-        Shadow(props);
-        var shape = new SlideShape { Bounds = bounds, Paths = [new SlidePath(path, PathFill.None)], Line = _styles.Line(props, stroke: true) };
+        var shape = new SlideShape { Bounds = bounds, Paths = [new SlidePath(path, PathFill.None)], Line = _styles.Line(props, stroke: true), Effects = Effects(props) };
         return shape.Line is null ? null : shape;
     }
 
@@ -627,8 +634,8 @@ internal sealed partial class OdfDrawReader
             return null;
         var chain = StyleChain(element, context, scope);
         var props = OdfGraphicStyles.Props(chain, "graphic-properties");
-        Shadow(props);
         var shape = Placed(place);
+        shape.Effects = Effects(props);
         var (vx, vy, vw, vh) = ViewBox(Attr(element, Svg + "viewBox"), shape.Bounds);
         var sx = vw > 0 ? shape.Bounds.Width / vw : 1;
         var sy = vh > 0 ? shape.Bounds.Height / vh : 1;
@@ -676,11 +683,6 @@ internal sealed partial class OdfDrawReader
         return parts is [var x, var y, var w, var h, ..] && w > 0 && h > 0 ? (x, y, w, h) : (0, 0, bounds.Width / 72 * 2540, bounds.Height / 72 * 2540);
     }
 
-    private void Shadow(OdfProps props)
-    {
-        if (props[Draw + "shadow"] == "visible")
-            Unsupported("shadows", "effects", null);
-    }
 
     // ───────────────────────── Frames ─────────────────────────
 
@@ -692,7 +694,6 @@ internal sealed partial class OdfDrawReader
             return null;
         var chain = StyleChain(element, context, scope);
         var props = OdfGraphicStyles.Props(chain, "graphic-properties");
-        Shadow(props);
         var content = element.Elements().FirstOrDefault(e => e.Name == Draw + "text-box" || e.Name == Draw + "image" || e.Name == Draw + "object"
                                                              || e.Name == Draw + "object-ole" || e.Name == Table + "table");
         if (content is null)
@@ -703,6 +704,7 @@ internal sealed partial class OdfDrawReader
         var shape = Placed(place);
         shape.Fill = _styles.Fill(props, solid: false);
         shape.Line = _styles.Line(props, stroke: false);
+        shape.Effects = Effects(props);
         var radius = Math.Max(0, Points(Attr(content, Draw + "corner-radius") ?? Attr(element, Draw + "corner-radius")) ?? 0);
         shape.Paths = [Rectangle(shape.Bounds, radius)];
         if (content.Name == Draw + "text-box")
@@ -720,10 +722,15 @@ internal sealed partial class OdfDrawReader
             shape.Fill = new PictureFill(new SlideImage(() => ChartPicture.Png(chart, width, height) ?? []), SKRect.Empty, SKRect.Empty);
             return shape;
         }
-        // An object the renderer doesn't draw: its replacement picture, when there is one, stands in for it.
+        // A formula object: its equation, from its MathML.
+        if (content.Name == Draw + "object" && FormulaObject(content) is { } formula)
+        {
+            shape.Text = FormulaFrame(formula.Math, formula.Size);
+            return shape;
+        }
+        // An object the renderer doesn't draw: its replacement picture, when there is one, stands in for it; without
+        // one it is named.
         var embedded = content.Name == Draw + "object" || content.Name == Draw + "object-ole" ? ObjectKind(content) : null;
-        if (embedded is not null)
-            Unsupported(embedded);
 
         // A picture, or an object's replacement picture: the first one Filee can draw.
         var images = element.Elements(Draw + "image").ToList();
@@ -739,7 +746,7 @@ internal sealed partial class OdfDrawReader
             }
         }
         if (embedded is not null)
-            LeftOut(embedded == "charts" ? "charts" : "objects", element);
+            Unsupported(embedded, embedded == "charts" ? "charts" : "objects", element);
         if (images.Count > 0 && content.Name == Draw + "image")
             Unsupported(PictureKind(Attr(images[0], XLink + "href")), "pictures", element);
         return shape.Fill is null && shape.Line is null ? null : shape;
@@ -753,6 +760,37 @@ internal sealed partial class OdfDrawReader
         var href = Attr(embedded, XLink + "href");
         var content = _package.XmlPart(href, "content.xml");
         return OdfChartReader.IsChart(content) ? OdfChartReader.Read(content, _package.XmlPart(href, "styles.xml")).Chart : null;
+    }
+
+    /// <summary>
+    /// The equation of a formula object (inline, or its folder's content.xml in MathML) and its size in points (an
+    /// mstyle's mathsize, else the object's BaseFontHeight setting, else 12); null for other objects and empty formulas.
+    /// </summary>
+    private (MathNode Math, float Size)? FormulaObject(XElement embedded)
+    {
+        var href = Attr(embedded, XLink + "href");
+        var math = embedded.Element(MathMl + "math") ?? embedded.Element(Office + "document")?.Descendants(MathMl + "math").FirstOrDefault()
+                   ?? (_package.XmlPart(href, "content.xml") is { } root && root.Name == MathMl + "math" ? root : null);
+        if (math is null || MathMLReader.Read(math) is not { } formula)
+            return null;
+        float? size = null;
+        if (math.Descendants(MathMl + "mstyle").Select(s => Attr(s, "mathsize")).FirstOrDefault(s => s is not null) is { } mathSize && mathSize.Trim().EndsWith("pt", StringComparison.Ordinal))
+            size = Points(mathSize.Trim());
+        else if (_package.XmlPart(href, "settings.xml")?.Descendants().FirstOrDefault(e => e.Name.LocalName == "config-item" && Attr(e, Config + "name") == "BaseFontHeight") is { } item
+                 && int.TryParse(item.Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var points))
+            size = points;
+        return (formula.Math, Math.Clamp(size ?? 12, 1, 1000));
+    }
+
+    /// <summary>A frame of one centred equation, in the middle of the object's box.</summary>
+    private static SlideTextFrame FormulaFrame(MathNode math, float size)
+    {
+        var format = new HCharFormat(Size: (int)Math.Round(size * 100));
+        var paragraph = new HParagraph { Format = new HParaFormat(Align: HAlign.Center), MarkFormat = format };
+        paragraph.Inlines.Add(new HEquation(math, format));
+        var frame = new SlideTextFrame { Anchor = TextAnchor.Middle, Wrap = false, InsetLeft = 0, InsetTop = 0, InsetRight = 0, InsetBottom = 0 };
+        frame.Paragraphs.Add(paragraph);
+        return frame;
     }
 
     /// <summary>What an embedded object is: a chart, or another kind of object.</summary>
