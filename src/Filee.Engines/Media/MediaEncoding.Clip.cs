@@ -29,7 +29,7 @@ internal static partial class MediaEncoding
     /// (when <paramref name="audio"/>; muted parts silent) with the clip's music mixed under it. The video is read once,
     /// from the first part on: <c>-ss</c> before <c>-i</c> (see <paramref name="seek"/>), the parts cut out of it with
     /// <c>trim</c>, so a clip late in a long video starts at once. The music is the second input, read from where it
-    /// starts playing.
+    /// starts playing, or read again and again from its start when it repeats.
     /// </summary>
     /// <param name="edit">The clip, already <see cref="ClipEdit.Clamped"/> to the video.</param>
     /// <param name="seek">
@@ -58,7 +58,11 @@ internal static partial class MediaEncoding
         // Each part's trims end its streams, and FFmpeg stops reading once every output has ended.
         var at = seek ?? SeekPoint.Plain(sourceParts[0].Start);
         List<string> inputs = [.. at.EncodeInput, "-i", input];
-        if (song is not null)
+        // Music that repeats is read over and over from the file's start (-stream_loop starts each pass there, not at
+        // -ss), and its first pass is cut to start where it plays from (atrim below).
+        if (song is { Repeats: true })
+            inputs.AddRange(["-stream_loop", "-1", "-i", song.Path]);
+        else if (song is not null)
             inputs.AddRange(["-ss", ClipRange.Ffmpeg(song.From), "-i", song.Path]);
 
         var graph = new StringBuilder();
@@ -143,7 +147,8 @@ internal static partial class MediaEncoding
             var length = song.PlayLength(total);
             var fade = song.Fade ? Math.Min(ClipMusic.FadeSeconds, length / 2) : 0;
             var delay = (long)Math.Round(song.Offset * 1000);
-            var chain = $"[1:a:{musicTrack}]atrim=duration={Seconds(length)},asetpts=PTS-STARTPTS";
+            var skip = song.Repeats ? $"start={Seconds(song.From)}:" : "";
+            var chain = $"[1:a:{musicTrack}]atrim={skip}duration={Seconds(length)},asetpts=PTS-STARTPTS";
             if (song.PlayVolume != 1)
                 chain += $",volume={Seconds(song.PlayVolume)}";
             if (fade > 0)
