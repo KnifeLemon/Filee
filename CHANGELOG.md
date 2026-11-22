@@ -22,6 +22,8 @@ Rename this heading to the version number when you release it.
 level: recommended
 ko: GitHub에서 업데이트 파일을 받지 못하면 Filee 다운로드 서버(dl.filee.sh)에서 받아요
 en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't answer
+ko: Zstandard 압축 파일(.tar.zst, .tzst, .zst)을 풀거나 다른 압축 형식으로 바꿀 수 있어요
+en: Zstandard archives (.tar.zst, .tzst, .zst) unpack and convert to other archive formats
 ko: 모양 정보가 없는 주석(형광펜, 메모 등)이 있는 PDF도 PDF/A 검사를 통과해요
 en: PDFs with highlights or notes that carry no appearance now pass PDF/A checks
 ko: Word 문서를 PDF로 바꿀 때 머리글 아래 줄과 문단 사이 구분선이 그대로 나와요
@@ -39,6 +41,11 @@ en: A shortcut's results are saved next to the shortcut, not next to the file it
   PDF/A-2b but failed a validator such as veraPDF. Ghostscript now draws such markup into the page: it looks the same
   but is no longer a separate annotation. Links stay clickable, and markup saved with an appearance stays an
   annotation unless another one of its kind in the file has none.
+
+- **Zstandard archives open: `.tar.zst` / `.tzst` and `.zst`** (#1646). Extract unpacks a `.tar.zst` straight into
+  its files (no `.tar` left to open again), and it converts to ZIP, 7Z, TAR and the other archive formats like a
+  `.tar.xz`. A single `.zst` unpacks to the file inside, or becomes a `.gz`, `.bz2` or `.xz`. Filee reads Zstandard
+  but doesn't write it. The formats are in the Developer field, which is on by default.
 
 - **Updating from Settings → About works when GitHub's downloads don't answer** (#1593). The in-app update on Windows
   gave up when GitHub's download link didn't answer within 20 seconds, which some networks hit every time. Filee now
