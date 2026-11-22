@@ -5,7 +5,7 @@
 // copies out and unpacks like any ZIP. 7-Zip is an optional engine (Settings → Engines) for the long tail: when it is
 // installed it reads 7z archives with a method Filee does not decode (PPMd, RISC-V …, see
 // SevenZipReader.NeedsOtherDecoder) and is asked again when an in-process reader meets a feature it lacks (Quantum
-// CABs, cabinet sets, other LHA methods, multi-volume ARJ; NTFS, APFS or exFAT in disk images) or damage it
+// CABs, cabinet sets, other LHA methods, multi-volume ARJ; NTFS or APFS in disk images) or damage it
 // can't read past. Without it such an archive is refused with error.archive_needs_7zip, which suggests installing it; a
 // bridge disc whose UDF part fails is read by its ISO 9660 part first. Deliberate refusals (password, paths leaving the
 // folder, bombs) are final.

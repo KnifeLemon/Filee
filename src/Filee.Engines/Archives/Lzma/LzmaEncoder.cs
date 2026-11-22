@@ -19,6 +19,7 @@
 
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Filee.Engines.Archives.Lzma;
 
@@ -61,12 +62,8 @@ internal sealed class LzmaEncoder : LzmaModel
     private readonly int[] _lengths = new int[MatchMaxLength + 1];
     private readonly uint[] _distances = new uint[MatchMaxLength + 1];
     private readonly int[] _repLengths = new int[4];
-    private readonly int[] _nodePrice = new int[Nodes];
-    private readonly int[] _nodePrev = new int[Nodes];
-    private readonly int[] _nodeLength = new int[Nodes];
-    private readonly uint[] _nodeBack = new uint[Nodes];
-    private readonly int[] _nodeState = new int[Nodes];
-    private readonly uint[] _nodeReps = new uint[Nodes * 4];
+    private readonly Node[] _nodes = new Node[Nodes];
+    private readonly NodeState[] _nodeStates = new NodeState[Nodes];
     private readonly int[] _path = new int[Nodes];
     private readonly int[] _matchLengthPrices = new int[MaxPosStates * LengthSymbols];
     private readonly int[] _repLengthPrices = new int[MaxPosStates * LengthSymbols];
@@ -273,6 +270,26 @@ internal sealed class LzmaEncoder : LzmaModel
 
     // ───────── Price-based parse ─────────
 
+    /// <summary>
+    /// The cheapest way found to reach a position of the window: its price, the node it comes from, and the symbol
+    /// (length 1 with <see cref="LiteralBack"/>: a literal, length 1 otherwise: a short repeat; back below 4: that
+    /// repeat; else a match at distance back − 4). Kept together, as the relaxing loops touch all four.
+    /// </summary>
+    private struct Node
+    {
+        public int Price;
+        public int Prev;
+        public int Length;
+        public uint Back;
+    }
+
+    /// <summary>The state and the four distances the cheapest path to a node leaves.</summary>
+    private struct NodeState
+    {
+        public int State;
+        public uint Rep0, Rep1, Rep2, Rep3;
+    }
+
     private void EncodeOptimal(RangeEncoder rc, int end, long packedLimit)
     {
         var buffer = _mf.Buffer;
@@ -286,12 +303,13 @@ internal sealed class LzmaEncoder : LzmaModel
         var room = (packedLimit - rc.FlushedSize) / WorstBytes;
         var overrun = room >= Nodes;
         var window = (int)Math.Clamp(room, 1, OptimalWindow);
-        _nodePrice[0] = 0;
-        _nodeState[0] = State;
-        _nodeReps[0] = Rep0;
-        _nodeReps[1] = Rep1;
-        _nodeReps[2] = Rep2;
-        _nodeReps[3] = Rep3;
+        // Every node a choice reaches lies below OptimalWindow + MatchMaxLength + 1 = Nodes: choices start before the
+        // window's end (i < window <= OptimalWindow) and none is longer than MatchMaxLength. The loops below index
+        // the nodes through references, without checks.
+        ref var nodes = ref MemoryMarshal.GetArrayDataReference(_nodes);
+        ref var states = ref MemoryMarshal.GetArrayDataReference(_nodeStates);
+        nodes.Price = 0;
+        states = new NodeState { State = State, Rep0 = Rep0, Rep1 = Rep1, Rep2 = Rep2, Rep3 = Rep3 };
         var furthest = 0;
         int last;
         for (var i = 0; ; i++)
@@ -322,14 +340,14 @@ internal sealed class LzmaEncoder : LzmaModel
             var longest = count > 0 ? _lengths[count - 1] : 0;
 
             var total = _total + i;
-            var state = _nodeState[i];
-            var reps = _nodeReps.AsSpan(i * 4, 4);
+            ref var at = ref Unsafe.Add(ref states, i);
+            var state = at.State;
             var bestRep = 0;
             var bestRepIndex = 0;
             for (var r = 0; r < 4; r++)
             {
                 _repLengths[r] = 0;
-                var distance = reps[r];
+                var distance = r switch { 0 => at.Rep0, 1 => at.Rep1, 2 => at.Rep2, _ => at.Rep3 };
                 if (available < 2 || distance >= total)
                     continue;
                 var from = cur - (int)distance - 1;
@@ -362,33 +380,47 @@ internal sealed class LzmaEncoder : LzmaModel
                 break;
             }
 
+            var rep0 = at.Rep0;
+            var shortRep = rep0 < total && buffer[cur - (int)rep0 - 1] == buffer[cur];
+            if (i == 0 && count == 0 && bestRep < 2 && !shortRep)
+            {
+                EmitLiteral(rc); // nothing but a literal reaches past the cursor
+                return;
+            }
+
             var reach = i + Math.Max(1, Math.Max(longest, bestRep));
             for (; furthest < reach; furthest++)
-                _nodePrice[furthest + 1] = int.MaxValue;
+                Unsafe.Add(ref nodes, furthest + 1).Price = int.MaxValue;
 
-            var price = _nodePrice[i];
+            ref var here = ref Unsafe.Add(ref nodes, i);
+            var price = here.Price;
             var posState = (int)total & PbMask;
             var state2 = (state << 4) + posState;
-            Relax(i + 1, price + BitPrice.Of(IsMatch[state2], 0) + LiteralPrice(cur, total, state, reps[0]), i, 1, LiteralBack);
+            // The literal's own price is only worked out when the bit before it leaves it a chance (prices are never
+            // negative).
+            var literalPrice = price + BitPrice.Of(IsMatch[state2], 0);
+            if (literalPrice < Unsafe.Add(ref here, 1).Price)
+                Relax(ref Unsafe.Add(ref here, 1), literalPrice + LiteralPrice(cur, total, state, rep0), i, 1, LiteralBack);
 
             var matchPrice = price + BitPrice.Of(IsMatch[state2], 1);
             var repPrice = matchPrice + BitPrice.Of(IsRep[state], 1);
-            if (reps[0] < total && buffer[cur - (int)reps[0] - 1] == buffer[cur])
-                Relax(i + 1, repPrice + BitPrice.Of(IsRepG0[state], 0) + BitPrice.Of(IsRep0Long[state2], 0), i, 1, 0);
+            if (shortRep)
+                Relax(ref Unsafe.Add(ref here, 1), repPrice + BitPrice.Of(IsRepG0[state], 0) + BitPrice.Of(IsRep0Long[state2], 0), i, 1, 0);
             for (var r = 0; r < 4; r++)
             {
                 var length = _repLengths[r];
                 if (length < 2)
                     continue;
                 var basePrice = repPrice + RepIndexPrice(r, state, state2);
-                var prices = _repLengthPrices.AsSpan(posState * LengthSymbols);
+                // Indexed by length (2 … 273, below LengthSymbols + MatchMinLength).
+                ref var prices = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_repLengthPrices), posState * LengthSymbols - MatchMinLength);
                 for (var l = MatchMinLength; l <= length; l++)
-                    Relax(i + l, basePrice + prices[l - MatchMinLength], i, l, (uint)r);
+                    Relax(ref Unsafe.Add(ref here, l), basePrice + Unsafe.Add(ref prices, l), i, l, (uint)r);
             }
             if (count > 0)
             {
                 var basePrice = matchPrice + BitPrice.Of(IsRep[state], 0);
-                var prices = _matchLengthPrices.AsSpan(posState * LengthSymbols);
+                ref var prices = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_matchLengthPrices), posState * LengthSymbols - MatchMinLength);
                 // Lengths the last distance repeats as far are cheaper as a repeat; start past them.
                 var l = Math.Max(MatchMinLength, _repLengths[0] + 1);
                 var k = 0;
@@ -398,25 +430,23 @@ internal sealed class LzmaEncoder : LzmaModel
                 {
                     var distance = _distances[k];
                     var back = distance + 4;
+                    var upTo = _lengths[k];
                     // The distance is priced by length state: lengths 2, 3, 4 and 5 or more.
-                    var other = DistancePrice(distance, 5);
-                    int short2 = 0, short3 = 0, short4 = 0;
-                    if (l <= 4)
+                    for (; l <= upTo && l <= 4; l++)
+                        Relax(ref Unsafe.Add(ref here, l), basePrice + Unsafe.Add(ref prices, l) + DistancePrice(distance, l), i, l, back);
+                    if (l > upTo)
+                        continue;
+                    var withDistance = basePrice + DistancePrice(distance, 5);
+                    for (; l <= upTo; l++)
                     {
-                        short2 = DistancePrice(distance, 2);
-                        short3 = DistancePrice(distance, 3);
-                        short4 = DistancePrice(distance, 4);
-                    }
-                    for (; l <= _lengths[k]; l++)
-                    {
-                        var candidatePrice = basePrice + prices[l - MatchMinLength] + (l switch { 2 => short2, 3 => short3, 4 => short4, _ => other });
-                        var node = i + l;
-                        if (candidatePrice < _nodePrice[node])
+                        ref var node = ref Unsafe.Add(ref here, l);
+                        var candidatePrice = withDistance + Unsafe.Add(ref prices, l);
+                        if (candidatePrice < node.Price)
                         {
-                            _nodePrice[node] = candidatePrice;
-                            _nodePrev[node] = i;
-                            _nodeLength[node] = l;
-                            _nodeBack[node] = back;
+                            node.Price = candidatePrice;
+                            node.Prev = i;
+                            node.Length = l;
+                            node.Back = back;
                         }
                     }
                 }
@@ -425,13 +455,13 @@ internal sealed class LzmaEncoder : LzmaModel
 
         // Walk the cheapest path back from the end of the window, then code it forwards.
         var steps = 0;
-        for (var j = last; j > 0; j = _nodePrev[j])
+        for (var j = last; j > 0; j = _nodes[j].Prev)
             _path[steps++] = j;
         while (steps-- > 0)
         {
-            var j = _path[steps];
-            var length = _nodeLength[j];
-            var back = _nodeBack[j];
+            var node = _nodes[_path[steps]];
+            var length = node.Length;
+            var back = node.Back;
             if (length == 1)
             {
                 if (back == LiteralBack)
@@ -457,13 +487,14 @@ internal sealed class LzmaEncoder : LzmaModel
     /// </summary>
     private int BestEnd(int cut, int furthest)
     {
-        var perByte = (long)_nodePrice[cut] / cut;
+        var perByte = (long)_nodes[cut].Price / cut;
         var best = cut;
-        long bestScore = _nodePrice[cut];
+        long bestScore = _nodes[cut].Price;
         for (var j = cut + 1; j <= furthest; j++)
         {
-            var score = _nodePrice[j] - perByte * (j - cut);
-            if (_nodePrice[j] != int.MaxValue && score < bestScore)
+            var nodePrice = _nodes[j].Price;
+            var score = nodePrice - perByte * (j - cut);
+            if (nodePrice != int.MaxValue && score < bestScore)
             {
                 best = j;
                 bestScore = score;
@@ -472,47 +503,52 @@ internal sealed class LzmaEncoder : LzmaModel
         return best;
     }
 
-    private void Relax(int node, int price, int from, int length, uint back)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Relax(ref Node node, int price, int from, int length, uint back)
     {
-        if (price < _nodePrice[node])
+        if (price < node.Price)
         {
-            _nodePrice[node] = price;
-            _nodePrev[node] = from;
-            _nodeLength[node] = length;
-            _nodeBack[node] = back;
+            node.Price = price;
+            node.Prev = from;
+            node.Length = length;
+            node.Back = back;
         }
     }
 
-    /// <summary>The state and distances the cheapest path to <paramref name="node"/> leaves.</summary>
-    private void FollowNode(int node)
+    /// <summary>The state and distances the cheapest path to <paramref name="index"/> leaves.</summary>
+    private void FollowNode(int index)
     {
-        var from = _nodePrev[node];
-        var state = _nodeState[from];
-        var reps = _nodeReps.AsSpan(node * 4, 4);
-        _nodeReps.AsSpan(from * 4, 4).CopyTo(reps);
-        var length = _nodeLength[node];
-        var back = _nodeBack[node];
-        if (length == 1)
+        var node = _nodes[index];
+        var s = _nodeStates[node.Prev];
+        if (node.Length == 1)
         {
-            state = back == LiteralBack ? AfterLiteral(state) : AfterShortRep(state);
+            s.State = node.Back == LiteralBack ? AfterLiteral(s.State) : AfterShortRep(s.State);
         }
-        else if (back < 4)
+        else if (node.Back < 4)
         {
-            var distance = reps[(int)back];
-            for (var r = (int)back; r > 0; r--)
-                reps[r] = reps[r - 1];
-            reps[0] = distance;
-            state = AfterRep(state);
+            switch (node.Back)
+            {
+                case 1:
+                    (s.Rep0, s.Rep1) = (s.Rep1, s.Rep0);
+                    break;
+                case 2:
+                    (s.Rep0, s.Rep1, s.Rep2) = (s.Rep2, s.Rep0, s.Rep1);
+                    break;
+                case 3:
+                    (s.Rep0, s.Rep1, s.Rep2, s.Rep3) = (s.Rep3, s.Rep0, s.Rep1, s.Rep2);
+                    break;
+            }
+            s.State = AfterRep(s.State);
         }
         else
         {
-            reps[3] = reps[2];
-            reps[2] = reps[1];
-            reps[1] = reps[0];
-            reps[0] = back - 4;
-            state = AfterMatch(state);
+            s.Rep3 = s.Rep2;
+            s.Rep2 = s.Rep1;
+            s.Rep1 = s.Rep0;
+            s.Rep0 = node.Back - 4;
+            s.State = AfterMatch(s.State);
         }
-        _nodeState[node] = state;
+        _nodeStates[index] = s;
     }
 
     private int RepIndexPrice(int index, int state, int state2)
@@ -537,24 +573,14 @@ internal sealed class LzmaEncoder : LzmaModel
     private void RefreshPrices()
     {
         _pricedAt = _total;
-        for (var posState = 0; posState <= PbMask; posState++)
-        {
-            for (var l = 0; l < LengthSymbols; l++)
-            {
-                _matchLengthPrices[posState * LengthSymbols + l] = MatchLength.Price((uint)l, posState);
-                _repLengthPrices[posState * LengthSymbols + l] = RepLength.Price((uint)l, posState);
-            }
-        }
+        MatchLength.AllPrices(PbMask + 1, LengthSymbols, _matchLengthPrices);
+        RepLength.AllPrices(PbMask + 1, LengthSymbols, _repLengthPrices);
         for (var lengthState = 0; lengthState < LengthStates; lengthState++)
         {
-            var slots = PosSlot.AsSpan(lengthState << PosSlotBits, 1 << PosSlotBits);
-            for (uint slot = 0; slot < 1 << PosSlotBits; slot++)
-            {
-                var price = BitPrice.Tree(slots, PosSlotBits, slot);
-                if (slot >= EndPosModelIndex)
-                    price += 16 * ((int)(slot >> 1) - 1 - AlignBits); // direct bits: one bit (16 / 16) each
-                _slotPrices[(lengthState << PosSlotBits) + (int)slot] = price;
-            }
+            var slotPrices = _slotPrices.AsSpan(lengthState << PosSlotBits, 1 << PosSlotBits);
+            BitPrice.AllOfTree(PosSlot.AsSpan(lengthState << PosSlotBits, 1 << PosSlotBits), PosSlotBits, slotPrices);
+            for (var slot = EndPosModelIndex; slot < 1 << PosSlotBits; slot++)
+                slotPrices[slot] += 16 * ((slot >> 1) - 1 - AlignBits); // direct bits: one bit (16 / 16) each
             for (uint distance = 0; distance < FullDistances; distance++)
             {
                 var slot = Slot(distance);

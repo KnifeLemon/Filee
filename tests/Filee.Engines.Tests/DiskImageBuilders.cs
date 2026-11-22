@@ -1,5 +1,6 @@
 // Writes disk images in code for the disk image tests: FAT12/16/32 volumes with long names (Microsoft's FAT
-// specification), UDF discs (ECMA-167 and OSTA UDF 1.02 / 2.01, optionally behind an ISO 9660 bridge), MBR, GPT and
+// specification), exFAT volumes (Microsoft's exFAT specification), ext2/3/4 volumes (the kernel's ext4 layout:
+// extent trees, block maps, inline data, hashed folders), UDF discs (ECMA-167 and OSTA UDF 1.02 / 2.01, optionally behind an ISO 9660 bridge), MBR, GPT and
 // Apple partition maps around volumes, and DMG (UDIF) files around a disk with raw, zero, zlib, bzip2, ADC, LZFSE and
 // LZMA (.xz) runs.
 // Each follows the format's own description, independently of the readers in Filee.Engines/Archives; the bundled
@@ -7,6 +8,7 @@
 
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Numerics;
 using System.Text;
 using Filee.Core.Presets;
 using Filee.Engines.Archives;
@@ -337,6 +339,699 @@ internal static class DiskImageBuilders
         }
         return stream.ToArray();
     }
+
+    // ───────────────────────── exFAT ─────────────────────────
+
+    /// <summary>How <see cref="ExFat"/> writes a volume.</summary>
+    /// <param name="ClusterSize">Bytes per cluster (512-byte sectors).</param>
+    /// <param name="Contiguous">Files and folders marked "no FAT chain" (their clusters in a row), as Windows writes them; false: FAT chains.</param>
+    /// <param name="Fragment">With FAT chains, every other cluster left free, so the chains jump.</param>
+    /// <param name="Unwritten">Bytes at the end of each file that are zeros lie past its valid data length (not written).</param>
+    /// <param name="SecondFat">Two FATs, the second the active one (the first is left empty).</param>
+    /// <param name="Small">No smaller than the data needs (the specification asks for 1 MB at least): for fuzzing.</param>
+    public sealed record ExFatOptions(int ClusterSize = 4096, bool Contiguous = true, bool Fragment = false, bool Unwritten = false,
+        bool SecondFat = false, string Label = "FILEE EXFAT", bool Small = false);
+
+    /// <summary>
+    /// An exFAT volume of <paramref name="entries"/> written from Microsoft's exFAT specification: the boot region
+    /// and its backup (with the boot checksum), the FAT, the allocation bitmap, an up-case table for ASCII, the root
+    /// folder with the label, then the folders' and files' clusters. Times carry their UTC offset.
+    /// <paramref name="patch"/> may change the image afterwards, given where each path's entry set lies.
+    /// </summary>
+    public static byte[] ExFat(IReadOnlyList<TestEntry> entries, ExFatOptions? options = null, Action<byte[], Dictionary<string, int>>? patch = null)
+    {
+        var o = options ?? new ExFatOptions();
+        const int sector = 512;
+        var cs = o.ClusterSize;
+        var spc = cs / sector;
+        var tree = Tree(entries);
+        var files = entries.Where(e => !e.IsFolder).ToList();
+        long SetBytes(string name) => 32 * (2 + (name.Length + 14) / 15);
+        var needed = 2 + 8 + files.Sum(f => (f.Data!.Length + cs - 1) / cs * (o.Fragment ? 2 : 1))
+                     + tree.Sum(t => (t.Value.Sum(c => SetBytes(c.Name)) + 3 * 32 + cs - 1) / cs * (o.Fragment ? 2 : 1) + 1);
+        const long fatOffset = 24;
+        var fats = o.SecondFat ? 2 : 1;
+        long clusterCount = Math.Max(needed, o.Small ? 16 : 64), fatLength, heap;
+        while (true)
+        {
+            fatLength = ((clusterCount + 2) * 4 + sector - 1) / sector;
+            heap = (fatOffset + fats * fatLength + spc - 1) / spc * spc;
+            var volume = Math.Max(heap + clusterCount * spc, o.Small ? 0 : 2048);
+            var fit = (volume - heap) / spc;
+            if (fit == clusterCount)
+                break;
+            clusterCount = fit;
+        }
+        var totalSectors = heap + clusterCount * spc;
+        var image = new byte[totalSectors * sector];
+        var fat = new uint[clusterCount + 2];
+        fat[0] = 0xFFFFFFF8;
+        fat[1] = 0xFFFFFFFF;
+        var used = new bool[clusterCount + 2];
+        uint next = 2;
+        Span<byte> ClusterSpan(uint cluster) => image.AsSpan((int)((heap + (cluster - 2L) * spc) * sector), cs);
+
+        // Clusters for data of this length: in a row, or chained (with gaps when fragmenting); returns the first.
+        uint Allocate(ReadOnlySpan<byte> data, bool chained, bool fragment = true)
+        {
+            if (data.Length == 0)
+                return 0;
+            var count = (data.Length + cs - 1) / cs;
+            var first = next;
+            uint previous = 0;
+            for (var i = 0; i < count; i++)
+            {
+                var cluster = next++;
+                if (chained && fragment && o.Fragment && i < count - 1)
+                    next++;
+                used[cluster] = true;
+                data.Slice(i * cs, Math.Min(cs, data.Length - i * cs)).CopyTo(ClusterSpan(cluster));
+                if (chained)
+                {
+                    if (previous != 0)
+                        fat[previous] = cluster;
+                    fat[cluster] = 0xFFFFFFFF;
+                }
+                previous = cluster;
+            }
+            return first;
+        }
+
+        // The allocation bitmap and the up-case table come first (written at the end, once all is allocated).
+        var bitmapCluster = next++;
+        used[bitmapCluster] = true;
+        fat[bitmapCluster] = 0xFFFFFFFF;
+        var upcase = new byte[128 * 2];
+        for (var c = 0; c < 128; c++)
+            BinaryPrimitives.WriteUInt16LittleEndian(upcase.AsSpan(c * 2), char.ToUpperInvariant((char)c));
+        var upcaseCluster = Allocate(upcase, chained: true);
+
+        var sets = new Dictionary<string, int>(StringComparer.Ordinal);
+        var setOffsets = new List<(string Path, int Offset)>();
+        // Folders deepest first, so a folder's set can name its children's clusters.
+        var data = new Dictionary<string, (uint First, long Length)>(StringComparer.Ordinal);
+        foreach (var f in files)
+        {
+            var content = f.Data!;
+            data[f.Name] = (Allocate(content, chained: !o.Contiguous), content.Length);
+        }
+        var rootCluster = 0u;
+        // The image offset of byte <offset> of data from <first>, its clusters <step> apart.
+        int Locate(uint first, int offset, int step) => (int)((heap + (first + (long)offset / cs * step - 2) * spc) * sector) + offset % cs;
+        foreach (var path in tree.Keys.OrderByDescending(p => p.Length == 0 ? -1 : p.Count(c => c == '/')).ThenBy(p => p, StringComparer.Ordinal))
+        {
+            var folder = new MemoryStream();
+            if (path.Length == 0)
+            {
+                var label = new byte[32];
+                label[0] = 0x83;
+                label[1] = (byte)o.Label.Length;
+                Encoding.Unicode.GetBytes(o.Label).CopyTo(label, 2);
+                folder.Write(label);
+                var bitmap = new byte[32];
+                bitmap[0] = 0x81;
+                BinaryPrimitives.WriteUInt32LittleEndian(bitmap.AsSpan(20), bitmapCluster);
+                BinaryPrimitives.WriteUInt64LittleEndian(bitmap.AsSpan(24), (ulong)((clusterCount + 7) / 8));
+                folder.Write(bitmap);
+                var table = new byte[32];
+                table[0] = 0x82;
+                BinaryPrimitives.WriteUInt32LittleEndian(table.AsSpan(4), BootChecksum(upcase, skip: false));
+                BinaryPrimitives.WriteUInt32LittleEndian(table.AsSpan(20), upcaseCluster);
+                BinaryPrimitives.WriteUInt64LittleEndian(table.AsSpan(24), (ulong)upcase.Length);
+                folder.Write(table);
+            }
+            foreach (var (name, file) in tree[path])
+            {
+                var childPath = path.Length == 0 ? name : path + "/" + name;
+                var (first, length) = data[file is null ? childPath + "/" : childPath];
+                var valid = length;
+                if (file is not null && o.Unwritten)
+                {
+                    while (valid > 0 && file.Data![valid - 1] == 0)
+                        valid--;
+                }
+                setOffsets.Add((file is null ? childPath + "/" : childPath, (int)folder.Length));
+                folder.Write(EntrySet(name, file is null, file?.Time ?? KnownTime, first, length, valid,
+                    contiguous: file is null ? !o.Fragment && o.Contiguous : o.Contiguous));
+            }
+            var bytes = folder.ToArray();
+            if (path.Length == 0)
+            {
+                bytes = [.. bytes, .. new byte[(cs - bytes.Length % cs) % cs]];
+                rootCluster = Allocate(bytes, chained: true, fragment: false);
+                foreach (var (p, offset) in setOffsets.Where(s => !s.Path.TrimEnd('/').Contains('/')))
+                    sets[p] = Locate(rootCluster, offset, 1);
+            }
+            else
+            {
+                // A folder always has a cluster; its size is whole clusters.
+                bytes = [.. bytes, .. new byte[bytes.Length == 0 ? cs : (cs - bytes.Length % cs) % cs]];
+                var first = Allocate(bytes, chained: o.Fragment || !o.Contiguous);
+                data[path + "/"] = (first, bytes.Length);
+                foreach (var (p, offset) in setOffsets.Where(s => s.Path.TrimEnd('/').Contains('/') && s.Path[..s.Path.TrimEnd('/').LastIndexOf('/')] == path))
+                    sets[p] = Locate(first, offset, o.Fragment ? 2 : 1);
+            }
+        }
+
+        // The bitmap, the FAT, the boot region and its backup.
+        var bitmapBytes = ClusterSpan(bitmapCluster);
+        for (var c = 2; c < used.Length; c++)
+        {
+            if (used[c])
+                bitmapBytes[(c - 2) >> 3] |= (byte)(1 << ((c - 2) & 7));
+        }
+        var fatStart = (int)((fatOffset + (o.SecondFat ? fatLength : 0)) * sector);
+        for (var c = 0; c < fat.Length; c++)
+            BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(fatStart + c * 4), fat[c]);
+        var boot = image.AsSpan(0, sector);
+        ((ReadOnlySpan<byte>)[0xEB, 0x76, 0x90]).CopyTo(boot);
+        "EXFAT   "u8.CopyTo(boot[3..]);
+        BinaryPrimitives.WriteUInt64LittleEndian(boot[72..], (ulong)totalSectors);
+        BinaryPrimitives.WriteUInt32LittleEndian(boot[80..], (uint)fatOffset);
+        BinaryPrimitives.WriteUInt32LittleEndian(boot[84..], (uint)fatLength);
+        BinaryPrimitives.WriteUInt32LittleEndian(boot[88..], (uint)heap);
+        BinaryPrimitives.WriteUInt32LittleEndian(boot[92..], (uint)clusterCount);
+        BinaryPrimitives.WriteUInt32LittleEndian(boot[96..], rootCluster);
+        BinaryPrimitives.WriteUInt32LittleEndian(boot[100..], 0x1234ABCD);
+        BinaryPrimitives.WriteUInt16LittleEndian(boot[104..], 0x0100);
+        BinaryPrimitives.WriteUInt16LittleEndian(boot[106..], (ushort)(o.SecondFat ? 1 : 0));
+        boot[108] = 9;
+        boot[109] = (byte)BitOperations.Log2((uint)spc);
+        boot[110] = (byte)fats;
+        boot[111] = 0x80;
+        boot[112] = 0xFF;
+        boot[120..510].Fill(0xF4);
+        BinaryPrimitives.WriteUInt16LittleEndian(boot[510..], 0xAA55);
+        for (var s = 1; s <= 8; s++)
+            BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(s * sector + sector - 4), 0xAA550000);
+        var checksum = BootChecksum(image.AsSpan(0, 11 * sector), skip: true);
+        for (var i = 0; i < sector; i += 4)
+            BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(11 * sector + i), checksum);
+        image.AsSpan(0, 12 * sector).CopyTo(image.AsSpan(12 * sector));
+        patch?.Invoke(image, sets);
+        return image;
+
+        static byte[] EntrySet(string name, bool folder, DateTime time, uint first, long length, long valid, bool contiguous)
+        {
+            var nameEntries = (name.Length + 14) / 15;
+            var set = new byte[32 * (2 + nameEntries)];
+            set[0] = 0x85;
+            set[1] = (byte)(1 + nameEntries);
+            BinaryPrimitives.WriteUInt16LittleEndian(set.AsSpan(4), (ushort)(folder ? 0x10 : 0x20));
+            var stamp = (uint)((time.Year - 1980) << 25 | time.Month << 21 | time.Day << 16 | time.Hour << 11 | time.Minute << 5 | time.Second / 2);
+            var offset = TimeZoneInfo.Local.GetUtcOffset(time);
+            var quarters = (int)(offset.TotalMinutes / 15);
+            foreach (var at in (ReadOnlySpan<int>)[8, 12, 16])
+                BinaryPrimitives.WriteUInt32LittleEndian(set.AsSpan(at), stamp);
+            set[20] = set[21] = (byte)(time.Second % 2 * 100);
+            set[22] = set[23] = set[24] = (byte)(0x80 | (quarters & 0x7F));
+            var stream = set.AsSpan(32, 32);
+            stream[0] = 0xC0;
+            stream[1] = (byte)(1 | (contiguous ? 2 : 0));
+            stream[3] = (byte)name.Length;
+            ushort hash = 0;
+            foreach (var c in name.ToUpperInvariant())
+            {
+                hash = (ushort)(((hash & 1) != 0 ? 0x8000 : 0) + (hash >> 1) + (c & 0xFF));
+                hash = (ushort)(((hash & 1) != 0 ? 0x8000 : 0) + (hash >> 1) + (c >> 8));
+            }
+            BinaryPrimitives.WriteUInt16LittleEndian(stream[4..], hash);
+            BinaryPrimitives.WriteUInt64LittleEndian(stream[8..], (ulong)valid);
+            BinaryPrimitives.WriteUInt32LittleEndian(stream[20..], first);
+            BinaryPrimitives.WriteUInt64LittleEndian(stream[24..], (ulong)length);
+            for (var n = 0; n < nameEntries; n++)
+            {
+                var e = set.AsSpan(64 + n * 32, 32);
+                e[0] = 0xC1;
+                var part = name.Substring(n * 15, Math.Min(15, name.Length - n * 15));
+                Encoding.Unicode.GetBytes(part).CopyTo(e[2..]);
+            }
+            ushort sum = 0;
+            for (var i = 0; i < set.Length; i++)
+            {
+                if (i is not (2 or 3))
+                    sum = (ushort)(((sum & 1) != 0 ? 0x8000 : 0) + (sum >> 1) + set[i]);
+            }
+            BinaryPrimitives.WriteUInt16LittleEndian(set.AsSpan(2), sum);
+            return set;
+        }
+
+        static uint BootChecksum(ReadOnlySpan<byte> bytes, bool skip)
+        {
+            uint sum = 0;
+            for (var i = 0; i < bytes.Length; i++)
+            {
+                if (skip && i is 106 or 107 or 112)
+                    continue;
+                sum = ((sum & 1) != 0 ? 0x80000000u : 0) + (sum >> 1) + bytes[i];
+            }
+            return sum;
+        }
+    }
+
+    // ───────────────────────── ext2/3/4 ─────────────────────────
+
+    /// <summary>How <see cref="Ext"/> writes a volume.</summary>
+    /// <param name="BlockSize">1024 (the first data block is then 1), 2048 or 4096.</param>
+    /// <param name="Extents">ext4 extent trees; false: ext2 block maps (direct, one and two levels of indirect blocks).</param>
+    /// <param name="Fragment">Every other block of a file left free, so its extents are one block each (trees of depth 1 or 2).</param>
+    /// <param name="Sparse">All-zero blocks of a file are not stored: holes in its map.</param>
+    /// <param name="Unwritten">All-zero blocks are stored but marked unwritten in their extent (ext4 preallocation).</param>
+    /// <param name="Inline">Files of up to 128 bytes and small folders kept in their inodes (inline data).</param>
+    /// <param name="Htree">Folders as hashed folders: the first block an index root ("." and a ".." over the rest of it).</param>
+    /// <param name="BlocksPerGroup">Blocks per group (0: 8 × block size as mke2fs, at most 8 MB, so test images stay small).</param>
+    /// <param name="SymbolicLink">A symbolic link "link" at the top (its target kept in the inode), which readers leave out.</param>
+    public sealed record ExtOptions(
+        int BlockSize = 1024,
+        bool Extents = true,
+        bool SixtyFourBit = false,
+        bool Fragment = false,
+        bool Sparse = false,
+        bool Unwritten = false,
+        bool Inline = false,
+        bool Htree = false,
+        int BlocksPerGroup = 0,
+        int InodesPerGroup = 32,
+        bool SymbolicLink = false,
+        string Label = "FILEE EXT");
+
+    /// <summary>
+    /// An ext2/3/4 volume of <paramref name="entries"/> written from the kernel's description of the layout: a
+    /// superblock, group descriptors, inode tables of every group one after the other (as flex_bg places them), then
+    /// the folders' and files' blocks. No journal and no bitmaps worth the name (readers of files don't need them).
+    /// <paramref name="patch"/> may change the image afterwards, given the block size and each path's inode offset.
+    /// </summary>
+    public static byte[] Ext(IReadOnlyList<TestEntry> entries, ExtOptions? options = null, Action<byte[], ExtLayout>? patch = null)
+    {
+        var o = options ?? new ExtOptions();
+        var bs = o.BlockSize;
+        var firstData = bs == 1024 ? 1 : 0;
+        var perGroup = o.BlocksPerGroup > 0 ? o.BlocksPerGroup : Math.Min(8 * bs, (8 << 20) / bs); // groups of 8 MB at most
+        const int inodeSize = 256;
+        var tree = Tree(entries);
+        var paths = tree.Keys.ToList(); // folders, "" first
+        var files = entries.Where(e => !e.IsFolder).ToList();
+        var inodeCount = 11 + paths.Count + files.Count + 1;
+        // Room: data and folder blocks, map blocks, twice that when fragmented; then the groups that hold it all.
+        long dataBlocks = files.Sum(f => (f.Data!.Length + bs - 1) / bs * (o.Fragment ? 2 : 1) + 4);
+        dataBlocks += paths.Sum(p => (tree[p].Sum(c => 8 + Encoding.UTF8.GetByteCount(c.Name) + 4) + 64) / bs + 4) * (o.Htree ? 2 : 1);
+        long groups = 1;
+        long inodeBlocks;
+        while (true)
+        {
+            var ipg = Math.Max(o.InodesPerGroup, (int)((inodeCount + groups - 1) / groups + 7) / 8 * 8);
+            inodeBlocks = groups * ((long)ipg * inodeSize + bs - 1) / bs;
+            var descriptorBlocks = (groups * (o.SixtyFourBit ? 64 : 32) + bs - 1) / bs;
+            var needed = firstData + 1 + descriptorBlocks + 2 * groups + inodeBlocks + dataBlocks + 16;
+            if (needed <= groups * perGroup)
+                break;
+            groups++;
+        }
+        var inodesPerGroup = Math.Max(o.InodesPerGroup, (int)((inodeCount + groups - 1) / groups + 7) / 8 * 8);
+        // As mke2fs counts them: with 1 KB blocks the first group starts at block 1 and the last is a block short.
+        var totalBlocks = groups * perGroup;
+        var image = new byte[totalBlocks * bs];
+        var descSize = o.SixtyFourBit ? 64 : 32;
+        var gdtBlocks = (groups * descSize + bs - 1) / bs;
+        long next = firstData + 1 + gdtBlocks;
+        var bitmapStart = next; // a block bitmap and an inode bitmap per group
+        next += 2 * groups;
+        var tableStart = next;
+        var tableBlocksPerGroup = ((long)inodesPerGroup * inodeSize + bs - 1) / bs;
+        next += groups * tableBlocksPerGroup;
+
+        var layout = new ExtLayout(bs, new Dictionary<string, long>(StringComparer.Ordinal));
+        long InodeOffset(uint number)
+        {
+            var group = (number - 1) / inodesPerGroup;
+            var index = (number - 1) % inodesPerGroup;
+            return (tableStart + group * tableBlocksPerGroup) * bs + index * (long)inodeSize;
+        }
+        var usedBlocks = new bool[totalBlocks];
+        long Allocate()
+        {
+            var block = next++;
+            usedBlocks[block] = true;
+            if (o.Fragment)
+                next++;
+            if (next > totalBlocks)
+                throw new InvalidOperationException("the ext builder ran out of blocks");
+            return block;
+        }
+
+        // Inode numbers: the root is 2, the first free one 11.
+        var numbers = new Dictionary<string, uint>(StringComparer.Ordinal) { [""] = 2 };
+        uint nextInode = 11;
+        foreach (var p in paths.Where(p => p.Length > 0))
+            numbers[p] = nextInode++;
+        foreach (var f in files)
+            numbers[f.Name] = nextInode++;
+        var linkInode = o.SymbolicLink ? nextInode++ : 0;
+
+        var hasInline = false;
+        long sectors = 0;
+        // Writes the data map of an inode for its content (extents, block map or inline) and returns the 60 bytes.
+        byte[] MapFor(byte[] content, long inodeAt, bool folder, ref uint flags)
+        {
+            var map = new byte[60];
+            if (o.Inline && (folder ? content.Length <= 56 + 4 : content.Length <= 128))
+            {
+                hasInline = true;
+                flags |= 0x10000000;
+                content.AsSpan(0, Math.Min(60, content.Length)).CopyTo(map);
+                if (content.Length > 60)
+                {
+                    // The rest in the "system.data" attribute after the 32-byte extra part.
+                    var at = (int)inodeAt + 128 + 32;
+                    BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(at), 0xEA020000);
+                    var entry = at + 4;
+                    image[entry] = 4; // name length
+                    image[entry + 1] = 7; // "system."
+                    BinaryPrimitives.WriteUInt16LittleEndian(image.AsSpan(entry + 2), 24); // value offset from the first entry
+                    BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(entry + 8), (uint)(content.Length - 60));
+                    "data"u8.CopyTo(image.AsSpan(entry + 16));
+                    content.AsSpan(60).CopyTo(image.AsSpan(entry + 24));
+                }
+                return map;
+            }
+            var count = (content.Length + bs - 1) / bs;
+            var blocks = new long[count];
+            var unwritten = new bool[count];
+            for (var i = 0; i < count; i++)
+            {
+                var chunk = content.AsSpan(i * bs, Math.Min(bs, content.Length - i * bs));
+                var zero = !folder && !chunk.ContainsAnyExcept((byte)0);
+                if (zero && o.Sparse)
+                {
+                    blocks[i] = 0;
+                    continue;
+                }
+                blocks[i] = Allocate();
+                sectors += bs / 512;
+                if (zero && o.Unwritten)
+                    unwritten[i] = true;
+                else
+                    chunk.CopyTo(image.AsSpan((int)(blocks[i] * bs)));
+            }
+            if (o.Extents)
+            {
+                flags |= 0x80000;
+                var extents = new List<(uint First, ushort Length, long Start)>();
+                for (var i = 0; i < count; i++)
+                {
+                    if (blocks[i] == 0)
+                        continue;
+                    var length = (ushort)(unwritten[i] ? 32769 : 1);
+                    if (extents.Count > 0 && extents[^1] is var last && last.First + (last.Length & 0x7FFF) == i
+                        && last.Start + (last.Length & 0x7FFF) == blocks[i] && (last.Length > 32768) == unwritten[i] && (last.Length & 0x7FFF) < 32767)
+                        extents[^1] = (last.First, (ushort)(last.Length + 1), last.Start);
+                    else
+                        extents.Add(((uint)i, length, blocks[i]));
+                }
+                // Leaves of up to (bs - 12) / 12 extents, then index levels until the root (4 entries) holds them.
+                var level = extents.Select(e => (e.First, Bytes: Extent(e))).ToList();
+                var depth = 0;
+                while (level.Count > 4)
+                {
+                    var perNode = (bs - 12) / 12;
+                    var upper = new List<(uint, byte[])>();
+                    for (var i = 0; i < level.Count; i += perNode)
+                    {
+                        var part = level.Skip(i).Take(perNode).ToList();
+                        var block = Allocate();
+                        sectors += bs / 512;
+                        Header(image.AsSpan((int)(block * bs)), part.Count, perNode, depth);
+                        for (var k = 0; k < part.Count; k++)
+                            part[k].Bytes.CopyTo(image.AsSpan((int)(block * bs) + 12 + k * 12));
+                        var index = new byte[12];
+                        BinaryPrimitives.WriteUInt32LittleEndian(index, part[0].First);
+                        BinaryPrimitives.WriteUInt32LittleEndian(index.AsSpan(4), (uint)block);
+                        BinaryPrimitives.WriteUInt16LittleEndian(index.AsSpan(8), (ushort)(block >> 32));
+                        upper.Add((part[0].First, index));
+                    }
+                    level = upper;
+                    depth++;
+                }
+                Header(map, level.Count, 4, depth);
+                for (var k = 0; k < level.Count; k++)
+                    level[k].Bytes.CopyTo(map.AsSpan(12 + k * 12));
+                return map;
+            }
+            // Block map: 12 direct, one indirect block, one double indirect block.
+            var perBlock = bs / 4;
+            for (var i = 0; i < Math.Min(12, count); i++)
+                BinaryPrimitives.WriteUInt32LittleEndian(map.AsSpan(i * 4), (uint)blocks[i]);
+            long Indirect(ReadOnlySpan<long> part)
+            {
+                if (!part.ContainsAnyExcept(0L))
+                    return 0;
+                var block = Allocate();
+                sectors += bs / 512;
+                for (var k = 0; k < part.Length; k++)
+                    BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan((int)(block * bs) + k * 4), (uint)part[k]);
+                return block;
+            }
+            if (count > 12)
+                BinaryPrimitives.WriteUInt32LittleEndian(map.AsSpan(48), (uint)Indirect(blocks.AsSpan(12, Math.Min(perBlock, count - 12))));
+            if (count > 12 + perBlock)
+            {
+                var rest = blocks.AsSpan(12 + perBlock);
+                if (rest.Length > perBlock * perBlock)
+                    throw new InvalidOperationException("the ext builder writes no triple indirect blocks");
+                var singles = new long[(rest.Length + perBlock - 1) / perBlock];
+                for (var k = 0; k < singles.Length; k++)
+                    singles[k] = Indirect(rest.Slice(k * perBlock, Math.Min(perBlock, rest.Length - k * perBlock)));
+                BinaryPrimitives.WriteUInt32LittleEndian(map.AsSpan(52), (uint)Indirect(singles));
+            }
+            return map;
+        }
+
+        void WriteInode(uint number, ushort mode, long size, DateTime time, ushort links, byte[] content, bool folder, string path)
+        {
+            var at = InodeOffset(number);
+            layout.Inodes[path] = at;
+            uint flags = folder && o.Htree && content.Length > bs ? 0x1000u : 0;
+            sectors = 0;
+            var map = MapFor(content, at, folder, ref flags);
+            var inode = image.AsSpan((int)at, inodeSize);
+            BinaryPrimitives.WriteUInt16LittleEndian(inode, mode);
+            BinaryPrimitives.WriteUInt32LittleEndian(inode[4..], (uint)size);
+            BinaryPrimitives.WriteUInt32LittleEndian(inode[0x6C..], (uint)(size >> 32));
+            var seconds = (uint)new DateTimeOffset(time).ToUnixTimeSeconds();
+            foreach (var field in (ReadOnlySpan<int>)[0x08, 0x0C, 0x10])
+                BinaryPrimitives.WriteUInt32LittleEndian(inode[field..], seconds);
+            BinaryPrimitives.WriteUInt16LittleEndian(inode[0x1A..], links);
+            BinaryPrimitives.WriteUInt32LittleEndian(inode[0x1C..], (uint)sectors);
+            BinaryPrimitives.WriteUInt32LittleEndian(inode[0x20..], flags);
+            map.CopyTo(inode[0x28..]);
+            BinaryPrimitives.WriteUInt16LittleEndian(inode[0x80..], 32); // extra part: up to the creation time
+        }
+
+        // Folders: "." and "..", then the children; each block's last entry reaches its end.
+        foreach (var path in paths)
+        {
+            var children = tree[path];
+            var list = new List<(uint Number, byte Type, string Name)>
+            {
+                (numbers[path], 2, "."),
+                (path.Length == 0 ? 2 : numbers[path.Contains('/') ? path[..path.LastIndexOf('/')] : ""], 2, ".."),
+            };
+            foreach (var (name, file) in children)
+                list.Add((numbers[path.Length == 0 ? name : path + "/" + name], file is null ? (byte)2 : (byte)1, name));
+            if (path.Length == 0 && o.SymbolicLink)
+                list.Add((linkInode, 7, "link"));
+            byte[] content;
+            var inlineFolder = o.Inline && list.Skip(2).Sum(e => (8 + Encoding.UTF8.GetByteCount(e.Name) + 3) & ~3) <= 56;
+            if (inlineFolder)
+            {
+                // The parent's inode number, then the entries (no "." or ".."), the last one over the rest of the 60 bytes.
+                content = new byte[60];
+                BinaryPrimitives.WriteUInt32LittleEndian(content, list[1].Number);
+                var at = 4;
+                var rest = list.Skip(2).ToList();
+                if (rest.Count == 0)
+                {
+                    BinaryPrimitives.WriteUInt16LittleEndian(content.AsSpan(8), 56);
+                }
+                for (var i = 0; i < rest.Count; i++)
+                {
+                    var nameBytes = Encoding.UTF8.GetBytes(rest[i].Name);
+                    var length = i == rest.Count - 1 ? 60 - at : (8 + nameBytes.Length + 3) & ~3;
+                    DirEntry(content.AsSpan(at), rest[i].Number, length, rest[i].Type, nameBytes);
+                    at += length;
+                }
+            }
+            else
+            {
+                var blocks = new List<byte[]>();
+                var block = new byte[bs];
+                var used = 0;
+                var lastAt = -1;
+                var start = 0;
+                if (o.Htree)
+                {
+                    // An index root: "." and a ".." whose record holds the index (count and limit, one entry).
+                    DirEntry(block, list[0].Number, 12, 2, "."u8);
+                    DirEntry(block.AsSpan(12), list[1].Number, bs - 12, 2, ".."u8);
+                    block[24 + 5] = 8; // info length
+                    BinaryPrimitives.WriteUInt16LittleEndian(block.AsSpan(32), (ushort)((bs - 32) / 8)); // limit
+                    BinaryPrimitives.WriteUInt16LittleEndian(block.AsSpan(34), 1); // count
+                    BinaryPrimitives.WriteUInt32LittleEndian(block.AsSpan(36), 1); // the leaf block
+                    blocks.Add(block);
+                    block = new byte[bs];
+                    start = 2;
+                }
+                foreach (var e in list.Skip(start))
+                {
+                    var nameBytes = Encoding.UTF8.GetBytes(e.Name);
+                    var length = (8 + nameBytes.Length + 3) & ~3;
+                    if (used + length > bs)
+                    {
+                        BinaryPrimitives.WriteUInt16LittleEndian(block.AsSpan(lastAt + 4), (ushort)(bs - lastAt));
+                        blocks.Add(block);
+                        block = new byte[bs];
+                        used = 0;
+                    }
+                    DirEntry(block.AsSpan(used), e.Number, length, e.Type, nameBytes);
+                    lastAt = used;
+                    used += length;
+                }
+                if (lastAt >= 0)
+                {
+                    BinaryPrimitives.WriteUInt16LittleEndian(block.AsSpan(lastAt + 4), (ushort)(bs - lastAt));
+                    blocks.Add(block);
+                }
+                else if (o.Htree)
+                {
+                    DirEntry(block, 0, bs, 0, []); // an empty leaf for the index's one entry
+                    blocks.Add(block);
+                }
+                content = [.. blocks.SelectMany(b => b)];
+            }
+            var subfolders = children.Count(c => c.File is null);
+            WriteInode(numbers[path], 0x41ED, content.Length, KnownTime, (ushort)(2 + subfolders), content, folder: true, path.Length == 0 ? "/" : path + "/");
+        }
+        foreach (var f in files)
+            WriteInode(numbers[f.Name], 0x81A4, f.Data!.Length, f.Time, 1, f.Data, folder: false, f.Name);
+        if (o.SymbolicLink)
+        {
+            // A fast symbolic link: the target in the map's 60 bytes, no extents flag.
+            var at = InodeOffset(linkInode);
+            var inode = image.AsSpan((int)at, inodeSize);
+            BinaryPrimitives.WriteUInt16LittleEndian(inode, 0xA1FF);
+            BinaryPrimitives.WriteUInt32LittleEndian(inode[4..], 10);
+            BinaryPrimitives.WriteUInt16LittleEndian(inode[0x1A..], 1);
+            "/etc/hosts"u8.CopyTo(inode[0x28..]);
+            BinaryPrimitives.WriteUInt16LittleEndian(inode[0x80..], 32);
+            layout.Inodes["link"] = at;
+        }
+
+        // Superblock (at byte 1024) and group descriptors.
+        var sb = image.AsSpan(1024, 1024);
+        BinaryPrimitives.WriteUInt32LittleEndian(sb, (uint)(groups * inodesPerGroup));
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[4..], (uint)totalBlocks);
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x14..], (uint)firstData);
+        var log = BitOperations.Log2((uint)bs) - 10;
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x18..], (uint)log);
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x1C..], (uint)log);
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x20..], (uint)perGroup);
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x24..], (uint)perGroup);
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x28..], (uint)inodesPerGroup);
+        var now = (uint)new DateTimeOffset(KnownTime).ToUnixTimeSeconds();
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x2C..], now);
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x30..], now);
+        BinaryPrimitives.WriteUInt16LittleEndian(sb[0x36..], 0xFFFF); // max mount count
+        BinaryPrimitives.WriteUInt16LittleEndian(sb[0x38..], 0xEF53);
+        BinaryPrimitives.WriteUInt16LittleEndian(sb[0x3A..], 1); // clean
+        BinaryPrimitives.WriteUInt16LittleEndian(sb[0x3C..], 1); // on errors: continue
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x4C..], 1); // dynamic revision
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x54..], 11); // first free inode
+        BinaryPrimitives.WriteUInt16LittleEndian(sb[0x58..], inodeSize);
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x5C..], o.Htree ? 0x20u : 0); // dir_index
+        var incompat = 0x2u | (o.Extents ? 0x40u : 0) | (o.SixtyFourBit ? 0x80u : 0) | (hasInline ? 0x8000u : 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x60..], incompat);
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x64..], 0x1 | 0x2); // sparse_super, large_file
+        for (var i = 0; i < 16; i++)
+            sb[0x68 + i] = (byte)(0x31 + i); // UUID
+        Encoding.UTF8.GetBytes(o.Label).CopyTo(sb[0x78..]);
+        if (o.SixtyFourBit)
+            BinaryPrimitives.WriteUInt16LittleEndian(sb[0xFE..], 64);
+        BinaryPrimitives.WriteUInt16LittleEndian(sb[0x15C..], 32); // min / wanted extra inode size
+        BinaryPrimitives.WriteUInt16LittleEndian(sb[0x15E..], 32);
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x150..], (uint)(totalBlocks >> 32));
+        var gdt = image.AsSpan((firstData + 1) * bs, (int)gdtBlocks * bs);
+        // Bitmaps (the padding past the last block or inode set, as mke2fs does) and the free counts they add up to.
+        for (var b = 0L; b < bitmapStart + 2 * groups + groups * tableBlocksPerGroup; b++)
+            usedBlocks[b] = true;
+        long freeBlocks = 0, freeInodes = 0;
+        for (var g = 0; g < groups; g++)
+        {
+            var blockBitmap = image.AsSpan((int)((bitmapStart + 2 * g) * bs), bs);
+            var inodeBitmap = image.AsSpan((int)((bitmapStart + 2 * g + 1) * bs), bs);
+            int groupFreeBlocks = 0, groupFreeInodes = 0, groupFolders = 0;
+            for (var i = 0; i < bs * 8; i++)
+            {
+                var block = firstData + (long)g * perGroup + i;
+                if (i >= perGroup || block >= totalBlocks || usedBlocks[block])
+                    blockBitmap[i >> 3] |= (byte)(1 << (i & 7));
+                else
+                    groupFreeBlocks++;
+                var inode = (long)g * inodesPerGroup + i + 1;
+                if (i >= inodesPerGroup || inode < nextInode)
+                    inodeBitmap[i >> 3] |= (byte)(1 << (i & 7));
+                else
+                    groupFreeInodes++;
+            }
+            foreach (var (path, number) in numbers)
+            {
+                if ((number - 1) / inodesPerGroup == g && tree.ContainsKey(path))
+                    groupFolders++;
+            }
+            freeBlocks += groupFreeBlocks;
+            freeInodes += groupFreeInodes;
+            var d = gdt.Slice(g * descSize, descSize);
+            BinaryPrimitives.WriteUInt32LittleEndian(d, (uint)(bitmapStart + 2 * g));
+            BinaryPrimitives.WriteUInt32LittleEndian(d[4..], (uint)(bitmapStart + 2 * g + 1));
+            BinaryPrimitives.WriteUInt32LittleEndian(d[8..], (uint)(tableStart + g * tableBlocksPerGroup));
+            BinaryPrimitives.WriteUInt16LittleEndian(d[0x0C..], (ushort)groupFreeBlocks);
+            BinaryPrimitives.WriteUInt16LittleEndian(d[0x0E..], (ushort)groupFreeInodes);
+            BinaryPrimitives.WriteUInt16LittleEndian(d[0x10..], (ushort)groupFolders);
+        }
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x0C..], (uint)freeBlocks);
+        BinaryPrimitives.WriteUInt32LittleEndian(sb[0x10..], (uint)freeInodes);
+        patch?.Invoke(image, layout);
+        return image;
+
+        static byte[] Extent((uint First, ushort Length, long Start) e)
+        {
+            var bytes = new byte[12];
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes, e.First);
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(4), e.Length);
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(6), (ushort)(e.Start >> 32));
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), (uint)e.Start);
+            return bytes;
+        }
+
+        static void Header(Span<byte> node, int count, int max, int depth)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(node, 0xF30A);
+            BinaryPrimitives.WriteUInt16LittleEndian(node[2..], (ushort)count);
+            BinaryPrimitives.WriteUInt16LittleEndian(node[4..], (ushort)max);
+            BinaryPrimitives.WriteUInt16LittleEndian(node[6..], (ushort)depth);
+        }
+
+        static void DirEntry(Span<byte> at, uint number, int length, byte type, ReadOnlySpan<byte> name)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(at, number);
+            BinaryPrimitives.WriteUInt16LittleEndian(at[4..], (ushort)length);
+            at[6] = (byte)name.Length;
+            at[7] = type;
+            name.CopyTo(at[8..]);
+        }
+    }
+
+    /// <summary>Where <see cref="Ext"/> put things: the block size and each path's inode ("/" the root, "dir/" a folder).</summary>
+    public sealed record ExtLayout(int BlockSize, Dictionary<string, long> Inodes);
 
     // ───────────────────────── Partition tables ─────────────────────────
 

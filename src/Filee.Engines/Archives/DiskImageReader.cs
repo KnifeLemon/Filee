@@ -4,10 +4,11 @@
 //     passed its trailer and block tables; a .img is the disk itself. A .img that is really a CD or DVD image (ISO
 //     9660 or UDF at sector 16) goes to the disc readers.
 //   Partitions: GPT, Apple partition map or MBR (DiskImagePartitions), or one volume over the whole disk.
-//   File systems: FAT12/16/32 by Filee's own reader (DiskImageFat: long names), UDF through DiscUtils.Udf (UDF 1.02 to
-//     2.60, plain and metadata partitions), HFS+ through DiscUtils.HfsPlus. A volume of another known kind (NTFS,
-//     exFAT, APFS, HFSX, classic HFS, ext2/3/4, ISO 9660 inside a partition) sends the whole image to 7-Zip, so nothing
-//     is left out quietly; encrypted volumes (BitLocker, LUKS, FileVault DMGs) are refused. Unknown partitions (swap,
+//   File systems: FAT12/16/32 by Filee's own reader (DiskImageFat: long names), exFAT (DiskImageExFat) and ext2/3/4
+//     (DiskImageExt) by Filee's own readers, UDF through DiscUtils.Udf (UDF 1.02 to 2.60, plain and metadata
+//     partitions), HFS+ through DiscUtils.HfsPlus. A volume of another known kind (NTFS, APFS, HFSX, classic HFS, ISO
+//     9660 inside a partition, ext volumes with features Filee doesn't read) sends the whole image to 7-Zip, so nothing is left out
+//     quietly; encrypted volumes (BitLocker, LUKS, FileVault DMGs) are refused. Unknown partitions (swap,
 //     Microsoft reserved, empty ones) are skipped. With more than one volume to unpack each gets its own folder,
 //     "<number> <label>".
 //
@@ -37,6 +38,8 @@ internal static class DiskImageReader
     {
         Unknown,
         Fat,
+        ExFat,
+        Ext,
         Udf,
         HfsPlus,
     }
@@ -127,8 +130,8 @@ internal static class DiskImageReader
             throw ArchiveSafety.Encrypted(name);
         if (oem.SequenceEqual("NTFS    "u8))
             return (Kind.Unknown, "NTFS");
-        if (oem.SequenceEqual("EXFAT   "u8))
-            return (Kind.Unknown, "exFAT");
+        if (DiskImageExFat.Detect(head))
+            return (Kind.ExFat, null);
         if (DiskImageFat.Detect(head))
             return (Kind.Fat, null);
         if (head.Length >= 1026)
@@ -143,8 +146,8 @@ internal static class DiskImageReader
         }
         if (head.Length >= 36 && head.AsSpan(32, 4).SequenceEqual("NXSB"u8))
             return (Kind.Unknown, "APFS");
-        if (head.Length >= 1082 && head[1080] == 0x53 && head[1081] == 0xEF)
-            return (Kind.Unknown, "ext2/3/4");
+        if (DiskImageExt.Detect(head))
+            return (Kind.Ext, null);
         if (Disc(volume, name) is { } disc)
             return disc == Kind.Udf ? (Kind.Udf, null) : (Kind.Unknown, "ISO 9660");
         return (Kind.Unknown, null);
@@ -169,6 +172,20 @@ internal static class DiskImageReader
                     var fat = new DiskImageFat(stream, name);
                     fat.Walk("", nodes, names, cancellationToken);
                     label = fat.Label ?? volume.Name ?? fat.Type;
+                }
+                else if (kind == Kind.ExFat)
+                {
+                    guard.Allow(long.MaxValue); // Filee's own reader bounds itself
+                    var exfat = new DiskImageExFat(stream, name);
+                    exfat.Walk("", nodes, names, cancellationToken);
+                    label = exfat.Label ?? volume.Name ?? "exFAT";
+                }
+                else if (kind == Kind.Ext)
+                {
+                    guard.Allow(long.MaxValue); // Filee's own reader bounds itself
+                    var ext = new DiskImageExt(stream, name);
+                    ext.Walk("", nodes, names, cancellationToken);
+                    label = ext.Label ?? volume.Name ?? ext.Type;
                 }
                 else
                 {

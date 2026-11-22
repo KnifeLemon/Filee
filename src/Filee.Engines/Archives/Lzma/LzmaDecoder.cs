@@ -72,6 +72,33 @@ internal sealed class LengthModel
         rc.EncodeTree(High, HighBits, length - LowSymbols - MidSymbols);
     }
 
+    /// <summary>
+    /// <see cref="Price"/> of every length symbol for each of <paramref name="posStates"/> position states, into
+    /// <paramref name="prices"/> (<paramref name="symbols"/> per state), the trees priced once each.
+    /// </summary>
+    public void AllPrices(int posStates, int symbols, Span<int> prices)
+    {
+        Span<int> low = stackalloc int[LowSymbols];
+        Span<int> mid = stackalloc int[MidSymbols];
+        Span<int> high = stackalloc int[1 << HighBits];
+        BitPrice.AllOfTree(High, HighBits, high);
+        var choiceLow = BitPrice.Of(Choice[0], 0);
+        var choiceMid = BitPrice.Of(Choice[0], 1) + BitPrice.Of(Choice[1], 0);
+        var choiceHigh = BitPrice.Of(Choice[0], 1) + BitPrice.Of(Choice[1], 1);
+        for (var posState = 0; posState < posStates; posState++)
+        {
+            BitPrice.AllOfTree(Low.AsSpan(posState << LowBits, LowSymbols), LowBits, low);
+            BitPrice.AllOfTree(Mid.AsSpan(posState << MidBits, MidSymbols), MidBits, mid);
+            var row = prices.Slice(posState * symbols, symbols);
+            for (var l = 0; l < symbols; l++)
+            {
+                row[l] = l < LowSymbols ? choiceLow + low[l]
+                    : l < LowSymbols + MidSymbols ? choiceMid + mid[l - LowSymbols]
+                    : choiceHigh + high[l - LowSymbols - MidSymbols];
+            }
+        }
+    }
+
     /// <summary>The cost of <see cref="Encode"/> in 1/16 bit.</summary>
     public int Price(uint length, int posState)
     {
