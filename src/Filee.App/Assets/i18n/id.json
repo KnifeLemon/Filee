@@ -272,7 +272,7 @@
   "engine.gcode.name": "G-code (bawaan)",
   "engine.gcode.description": "Jalur printer 3D dan mesin CNC (G-code) ke PDF, SVG, dan gambar, atau pratinjau dari slicer.",
   "engine.slides-md.name": "Slide ke Markdown (bawaan)",
-  "engine.slides-md.description": "Slide PowerPoint (PPTX, PPTM, POTX, PPSX) ke Markdown, satu bagian per slide: judul, daftar, tabel, gambar, dan catatan pembicara, siap untuk reveal.js.",
+  "engine.slides-md.description": "Slide PowerPoint (PPTX, PPTM, POTX, POTM, PPSX) ke Markdown, satu bagian per slide: judul, daftar, tabel, gambar, dan catatan pembicara, siap untuk reveal.js.",
   "engine.model3d.name": "Model 3D (bawaan)",
   "engine.model3d.description": "Model 3D: GLB, glTF, STL, OBJ, 3MF, dan PLY saling konversi, FBX ke format mana pun, serta pratinjau gambar PNG.",
   "engine.image3d.name": "Gambar ke relief 3D (bawaan)",

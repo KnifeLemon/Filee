@@ -1,11 +1,13 @@
 // PowerPoint slides as Markdown a reveal.js deck reads (issue #1702): one section per slide, separated by "---"; the
 // slide's title as a heading ("#" on a title slide, "##" otherwise), its text with bullet and numbered lists at their
-// levels, links, bold and italic, tables as pipe tables, pictures saved next to the file, and the speaker notes after
-// a "Note:" line. A slide with nothing to show (a blank or a chart only) stays as an empty section, so the slide count
-// matches. Read straight from the package, in the order the slide lists its objects (title first), unlike
-// PptxReader, which places every object on a page for PDF and HWPX.
+// levels, links, bold and italic, tables as pipe tables, pictures saved once per part next to the file, and the speaker
+// notes after a "Note:" line. Line starts that would read as Markdown syntax, a slide break ("---") or a speaker-notes
+// marker ("Note:") are escaped. A slide with nothing to show (a blank or a chart only) stays as an empty section so the
+// slide count matches, with "<!-- slide 1 -->" if the first slide is empty so the file never starts with "---". Read
+// straight from the package, in the order the slide lists its objects (title first), unlike PptxReader, which places
+// every object on a page for PDF and HWPX.
 //
-// Not converted: charts, SmartArt, equations, animations and hidden slides.
+// Not converted: charts, SmartArt, equations, animations, hidden slides, and footer/date/slide-number placeholders.
 
 using System.Text;
 using System.Xml.Linq;
@@ -24,6 +26,7 @@ internal sealed class SlidesMarkdown
     private readonly Func<string, string?> _pictures;
     private readonly string _work;
     private readonly CancellationToken _cancellationToken;
+    private readonly Dictionary<string, string?> _pictureLinks = new(StringComparer.Ordinal);
 
     private SlidesMarkdown(OpcPackage package, Func<string, string?> pictures, string work, CancellationToken cancellationToken)
     {
@@ -57,6 +60,9 @@ internal sealed class SlidesMarkdown
                 continue;
             slides.Add(Slide(slidePath, slide));
         }
+        // Keep the file from starting with "---" when the first slide is empty (Jekyll/Obsidian read it as front matter).
+        if (slides.Count > 0 && slides[0].Length == 0)
+            slides[0] = "<!-- slide 1 -->";
         return string.Join("\n\n---\n\n", slides).Trim('\n') + "\n";
     }
 
@@ -74,6 +80,8 @@ internal sealed class SlidesMarkdown
         }
         foreach (var shape in objects.Where(o => !ReferenceEquals(o, title)))
         {
+            if (PlaceholderType(shape) is "ftr" or "dt" or "sldNum")
+                continue;
             if (shape.Name == P + "pic")
                 AddPicture(shape, slidePath, blocks);
             else if (shape.Name == P + "graphicFrame" && shape.Descendants(A + "tbl").FirstOrDefault() is { } table)
@@ -145,13 +153,13 @@ internal sealed class SlidesMarkdown
             if (!bullet)
             {
                 Flush();
-                blocks.Add(MarkdownWriter.EscapeLineStart(text));
+                blocks.Add(EscapeLineStart(text));
                 continue;
             }
             foreach (var deeper in numbers.Keys.Where(l => l > level).ToList())
                 numbers.Remove(deeper);
             var marker = numbered ? $"{numbers[level] = numbers.GetValueOrDefault(level) + 1}." : "-";
-            list.Append(new string(' ', level * 2)).Append(marker).Append(' ').Append(text).Append('\n');
+            list.Append(new string(' ', level * 2)).Append(marker).Append(' ').Append(EscapeLineStart(text)).Append('\n');
         }
         Flush();
         return blocks;
@@ -215,9 +223,10 @@ internal sealed class SlidesMarkdown
     {
         var rows = table.Elements(A + "tr")
             .Select(row => row.Elements(A + "tc")
-                // A cell merged into its neighbour is drawn by that neighbour.
-                .Where(cell => (string?)cell.Attribute("hMerge") is not ("1" or "true"))
-                .Select(cell => string.Join("<br>", cell.Descendants(A + "p").Select(p => Runs(p, slidePath)).Where(t => t.Length > 0)))
+                // Keep a blank cell for horizontal merge continuations so later cells stay in their column.
+                .Select(cell => (string?)cell.Attribute("hMerge") is "1" or "true"
+                    ? ""
+                    : string.Join("<br>", cell.Descendants(A + "p").Select(p => Runs(p, slidePath)).Where(t => t.Length > 0)))
                 .ToList())
             .Where(row => row.Count > 0)
             .ToList();
@@ -237,7 +246,14 @@ internal sealed class SlidesMarkdown
     private void AddPicture(XElement picture, string slidePath, List<string> blocks)
     {
         var id = (string?)picture.Element(P + "blipFill")?.Element(A + "blip")?.Attribute(R + "embed");
-        if (_package.Target(slidePath, id) is not { } part || _package.Extract(part, _work) is not { } file || _pictures(file) is not { } link)
+        if (_package.Target(slidePath, id) is not { } part)
+            return;
+        if (!_pictureLinks.TryGetValue(part, out var link))
+        {
+            link = _package.Extract(part, _work) is { } file ? _pictures(file) : null;
+            _pictureLinks[part] = link;
+        }
+        if (link is null)
             return;
         var properties = picture.Element(P + "nvPicPr")?.Element(P + "cNvPr");
         var alt = (string?)properties?.Attribute("descr") is { Length: > 0 } description ? description : (string?)properties?.Attribute("name") ?? "";
@@ -253,7 +269,44 @@ internal sealed class SlidesMarkdown
         var body = Objects(notes.Element(P + "cSld")?.Element(P + "spTree")).FirstOrDefault(o => PlaceholderType(o) == "body");
         if (body is null)
             return null;
-        var lines = Paragraphs(body).Select(p => Runs(p, notesPath)).Where(t => t.Length > 0).Select(MarkdownWriter.EscapeLineStart);
+        var lines = Paragraphs(body).Select(p => Runs(p, notesPath)).Where(t => t.Length > 0).Select(EscapeLineStart);
         return string.Join("\n", lines);
+    }
+
+    /// <summary>
+    /// Escapes Markdown line starts plus reveal.js slide breaks (<c>---</c>, <c>***</c>, <c>___</c>) and
+    /// speaker-notes markers (<c>Note:</c> / <c>Notes:</c>) so slide text never splits a slide or starts notes.
+    /// </summary>
+    private static string EscapeLineStart(string text)
+    {
+        var escaped = MarkdownWriter.EscapeLineStart(text);
+        var trimmed = escaped.TrimStart();
+        if (IsThematicBreak(trimmed.TrimEnd()))
+            return "\\" + trimmed;
+        var colon = trimmed.StartsWith("note:", StringComparison.OrdinalIgnoreCase) ? 4
+            : trimmed.StartsWith("notes:", StringComparison.OrdinalIgnoreCase) ? 5
+            : -1;
+        if (colon >= 0)
+        {
+            var index = escaped.Length - trimmed.Length + colon;
+            return escaped[..index] + "\\" + escaped[index..];
+        }
+        return escaped;
+    }
+
+    private static bool IsThematicBreak(string trimmed)
+    {
+        if (trimmed.Length < 3 || trimmed[0] is not ('-' or '*' or '_'))
+            return false;
+        var marker = trimmed[0];
+        var count = 0;
+        foreach (var ch in trimmed)
+        {
+            if (ch == marker)
+                count++;
+            else if (ch is not (' ' or '\t'))
+                return false;
+        }
+        return count >= 3;
     }
 }

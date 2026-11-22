@@ -272,7 +272,7 @@
   "engine.gcode.name": "G-code (integriert)",
   "engine.gcode.description": "Werkzeugwege von 3D-Druckern und CNC-Maschinen (G-Code) als PDF, SVG und Bild, oder die Vorschau des Slicers.",
   "engine.slides-md.name": "Folien zu Markdown (integriert)",
-  "engine.slides-md.description": "PowerPoint-Folien (PPTX, PPTM, POTX, PPSX) als Markdown, ein Abschnitt pro Folie: Titel, Listen, Tabellen, Bilder und Sprechernotizen, bereit für reveal.js.",
+  "engine.slides-md.description": "PowerPoint-Folien (PPTX, PPTM, POTX, POTM, PPSX) als Markdown, ein Abschnitt pro Folie: Titel, Listen, Tabellen, Bilder und Sprechernotizen, bereit für reveal.js.",
   "engine.model3d.name": "3D-Modelle (integriert)",
   "engine.model3d.description": "3D-Modelle: Konvertiert GLB, glTF, STL, OBJ, 3MF und PLY untereinander, FBX in jedes dieser Formate und erstellt eine PNG-Vorschau.",
   "engine.image3d.name": "Bilder zu 3D-Relief (integriert)",

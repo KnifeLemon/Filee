@@ -279,7 +279,7 @@
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "将 3D 打印机和 CNC 机床的刀路 (G-code) 转为 PDF、SVG 和图片，或使用切片软件保存的预览图。",
   "engine.slides-md.name": "幻灯片转 Markdown (built-in)",
-  "engine.slides-md.description": "PowerPoint 幻灯片（PPTX、PPTM、POTX、PPSX）转为 Markdown，每张幻灯片一节：保留标题、列表、表格、图片和演讲者备注，可直接用于 reveal.js。",
+  "engine.slides-md.description": "PowerPoint 幻灯片（PPTX、PPTM、POTX、POTM、PPSX）转为 Markdown，每张幻灯片一节：保留标题、列表、表格、图片和演讲者备注，可直接用于 reveal.js。",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "GLB、glTF、STL、OBJ、3MF 和 PLY 3D 模型互相转换，FBX 可转换为其中任意格式，并可生成 PNG 预览。",
   "engine.image3d.name": "图片转 3D 浮雕（内置）",

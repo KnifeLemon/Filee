@@ -272,7 +272,7 @@
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "3D प्रिन्टर र CNC मेसिनका टूलपाथ (G-code) लाई PDF, SVG र चित्रमा, वा स्लाइसरकै पूर्वावलोकन।",
   "engine.slides-md.name": "स्लाइडबाट Markdown (built-in)",
-  "engine.slides-md.description": "PowerPoint स्लाइड (PPTX, PPTM, POTX, PPSX) लाई Markdown मा, प्रत्येक स्लाइड एउटा खण्ड: शीर्षक, सूची, तालिका, तस्बिर र वक्ताका टिप्पणी, reveal.js का लागि तयार।",
+  "engine.slides-md.description": "PowerPoint स्लाइड (PPTX, PPTM, POTX, POTM, PPSX) लाई Markdown मा, प्रत्येक स्लाइड एउटा खण्ड: शीर्षक, सूची, तालिका, तस्बिर र वक्ताका टिप्पणी, reveal.js का लागि तयार।",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "थ्रीडी मोडलहरू: GLB, glTF, STL, OBJ, 3MF र PLY एकअर्कामा, FBX यीमध्ये कुनैमा पनि, र PNG पूर्वावलोकन।",
   "engine.image3d.name": "चित्रबाट थ्रीडी रिलिफ (बिल्ट-इन)",

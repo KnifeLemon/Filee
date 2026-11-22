@@ -2,6 +2,7 @@
 // headings, lists at their levels, links and emphasis, tables, pictures next to the file, speaker notes after "Note:",
 // and slides without text kept. Presentations are built with PptxBuilder.
 
+using System.Text.RegularExpressions;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Office.Slides;
@@ -136,5 +137,124 @@ public class SlidesMarkdownTests(EngineFixture fx) : IClassFixture<EngineFixture
 
         var error = Assert.Throws<InvalidDataException>(() => SlidesMarkdown.Write(path, _ => null, fx.NewFolder(), Ct));
         Assert.Contains("presentation.xml", error.Message);
+    }
+
+    [Fact]
+    public async Task Slide_break_lines_in_body_and_notes_are_escaped()
+    {
+        var deck = new PptxBuilder();
+        deck.Slide(deck.Title("Breaks") + deck.TextBox(
+            P(PptxBuilder.Run("---")) +
+            P(PptxBuilder.Run("- - -")) +
+            P(PptxBuilder.Run("-- -")))).Notes("Before", "---", "After");
+        deck.Slide(deck.Title("Next"));
+
+        var (markdown, _) = await ConvertAsync(deck);
+
+        var slides = markdown.Split("\n\n---\n\n");
+        Assert.Equal(2, slides.Length);
+        Assert.Equal(1, markdown.Split('\n').Count(line => line == "---"));
+        Assert.Contains("\n\n\\---\n\n", slides[0]);
+        Assert.Contains("Note:\nBefore\n\\---\nAfter", slides[0]);
+    }
+
+    [Fact]
+    public async Task Notes_markers_in_body_and_notes_are_escaped()
+    {
+        var deck = new PptxBuilder();
+        deck.Slide(deck.Title("Remarks") + deck.TextBox(
+            P(PptxBuilder.Run("Note: x")) +
+            P(PptxBuilder.Run("notes: y")))).Notes("NOTE: z", "Keep talking.");
+
+        var (markdown, _) = await ConvertAsync(deck);
+
+        Assert.Contains("Note\\: x", markdown);
+        Assert.Contains("notes\\: y", markdown);
+        Assert.Contains("NOTE\\: z", markdown);
+        var noteLines = markdown.Split('\n').Where(line => Regex.IsMatch(line, @"^\s*notes?:", RegexOptions.IgnoreCase)).ToList();
+        Assert.Equal("Note:", Assert.Single(noteLines));
+    }
+
+    [Fact]
+    public async Task List_item_line_starts_are_escaped()
+    {
+        var deck = new PptxBuilder();
+        deck.Slide(deck.Title("Priorities") + deck.Body(("# 1 priority", 0), ("1. step", 0)));
+
+        var (markdown, _) = await ConvertAsync(deck);
+
+        Assert.Contains("- \\# 1 priority\n- 1\\. step", markdown);
+    }
+
+    [Fact]
+    public async Task Merged_table_cells_keep_columns_aligned()
+    {
+        var deck = new PptxBuilder();
+        deck.Slide(deck.Title("Merged") + deck.RawTable(
+            838200, 1825625, 2000000, 400000,
+            [PptxBuilder.TableCell("A"), PptxBuilder.TableCell("B"), PptxBuilder.TableCell("C")],
+            [PptxBuilder.TableCell("Span", "gridSpan=\"2\""), PptxBuilder.TableCell("ignored", "hMerge=\"1\""), PptxBuilder.TableCell("Col3")],
+            [PptxBuilder.TableCell("", "vMerge=\"1\""), PptxBuilder.TableCell("B2"), PptxBuilder.TableCell("C2")]));
+
+        var (markdown, _) = await ConvertAsync(deck);
+
+        Assert.Contains("| A | B | C |\n| --- | --- | --- |\n| Span |  | Col3 |\n|  | B2 | C2 |", markdown);
+    }
+
+    [Fact]
+    public async Task Reused_picture_is_written_once_and_linked_from_every_slide()
+    {
+        var deck = new PptxBuilder();
+        var logo = deck.Image(await File.ReadAllBytesAsync(EngineFixture.MakeImage(fx.NewFolder(), "logo.png", ImageMagick.MagickFormat.Png), Ct));
+        deck.Slide(deck.Title("One") + deck.Picture(logo, 0, 0, 1000000, 1000000));
+        deck.Slide(deck.Title("Two") + deck.Picture(logo, 0, 0, 1000000, 1000000));
+
+        var (markdown, output) = await ConvertAsync(deck);
+
+        var files = Directory.GetFiles(Path.Combine(Path.GetDirectoryName(output)!, "deck_files"));
+        Assert.Single(files);
+        var slides = markdown.Split("\n\n---\n\n");
+        Assert.Equal(2, slides.Length);
+        Assert.Contains("![Picture](deck_files/img0001.png)", slides[0]);
+        Assert.Contains("![Picture](deck_files/img0001.png)", slides[1]);
+
+        var calls = 0;
+        var pptx = deck.Save(Path.Combine(fx.NewFolder(), "refused.pptx"));
+        SlidesMarkdown.Write(pptx, _ => { calls++; return null; }, fx.NewFolder(), Ct);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task Footer_date_and_slide_number_placeholders_are_skipped()
+    {
+        var deck = new PptxBuilder();
+        deck.Slide(
+            deck.Title("Topic") +
+            deck.Body(("Main point", 0)) +
+            deck.Placeholder("ftr", "Confidential") +
+            deck.Placeholder("dt", "2026-11-22") +
+            deck.Placeholder("sldNum", "1"));
+
+        var (markdown, _) = await ConvertAsync(deck);
+
+        Assert.Equal("## Topic\n\n- Main point\n", markdown);
+    }
+
+    [Fact]
+    public async Task Empty_first_slide_does_not_start_with_front_matter_separator()
+    {
+        var deck = new PptxBuilder();
+        deck.Slide("");
+        deck.Slide(deck.Title("Second"));
+        deck.Slide(deck.Title("Third"));
+
+        var (markdown, _) = await ConvertAsync(deck);
+
+        Assert.False(markdown.StartsWith("---", StringComparison.Ordinal));
+        var slides = markdown.Split("\n\n---\n\n");
+        Assert.Equal(3, slides.Length);
+        Assert.Equal("<!-- slide 1 -->", slides[0]);
+        Assert.Equal("## Second", slides[1]);
+        Assert.Equal("## Third", slides[2].TrimEnd('\n'));
     }
 }

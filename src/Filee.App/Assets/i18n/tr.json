@@ -272,7 +272,7 @@
   "engine.gcode.name": "G-code (yerleşik)",
   "engine.gcode.description": "3B yazıcıların ve CNC makinelerinin takım yolları (G-code) PDF, SVG ve resme, ya da dilimleyicinin kendi önizlemesi.",
   "engine.slides-md.name": "Slaytlardan Markdown (yerleşik)",
-  "engine.slides-md.description": "PowerPoint slaytları (PPTX, PPTM, POTX, PPSX) her slayt bir bölüm olacak şekilde Markdown'a: başlıklar, listeler, tablolar, resimler ve konuşmacı notları, reveal.js için hazır.",
+  "engine.slides-md.description": "PowerPoint slaytları (PPTX, PPTM, POTX, POTM, PPSX) her slayt bir bölüm olacak şekilde Markdown'a: başlıklar, listeler, tablolar, resimler ve konuşmacı notları, reveal.js için hazır.",
   "engine.model3d.name": "3B modeller (yerleşik)",
   "engine.model3d.description": "3B modeller: GLB, glTF, STL, OBJ, 3MF ve PLY arasında dönüştürme; FBX'ten bunların tümüne ve PNG önizlemesine dönüştürme.",
   "engine.image3d.name": "Resimden 3B kabartma (yerleşik)",

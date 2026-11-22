@@ -222,6 +222,11 @@ internal sealed class PptxBuilder
         $"<p:sp><p:nvSpPr><p:cNvPr id=\"{_nextId++}\" name=\"Title\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"ctrTitle\"/></p:nvPr></p:nvSpPr><p:spPr/>" +
         $"<p:txBody><a:bodyPr/><a:lstStyle/>{Paragraph(text)}</p:txBody></p:sp>";
 
+    /// <summary>A placeholder shape with the given type (e.g. "ftr", "dt", "sldNum").</summary>
+    public string Placeholder(string type, string text) =>
+        $"<p:sp><p:nvSpPr><p:cNvPr id=\"{_nextId++}\" name=\"{OpcWriter.Escape(type)}\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"{OpcWriter.Escape(type)}\"/></p:nvPr></p:nvSpPr><p:spPr/>" +
+        $"<p:txBody><a:bodyPr/><a:lstStyle/>{Paragraph(text)}</p:txBody></p:sp>";
+
     /// <summary>Speaker notes for the slide added last, one paragraph per line.</summary>
     public PptxBuilder Notes(params string[] lines)
     {
@@ -282,6 +287,20 @@ internal sealed class PptxBuilder
         string.Concat(rows.Select(row => $"<a:tr h=\"{rowHeight}\">" +
             string.Concat(row.Select(cell => $"<a:tc><a:txBody><a:bodyPr/><a:lstStyle/>{Paragraph(cell)}</a:txBody><a:tcPr/></a:tc>")) + "</a:tr>")) +
         "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>";
+
+    /// <summary>A table whose cells are pre-built <c>a:tc</c> elements (from <see cref="TableCell"/>).</summary>
+    public string RawTable(long x, long y, long columnWidth, long rowHeight, params string[][] rows) =>
+        $"<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"{_nextId++}\" name=\"Table\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>" +
+        $"<p:xfrm><a:off x=\"{x}\" y=\"{y}\"/><a:ext cx=\"{columnWidth * rows[0].Length}\" cy=\"{rowHeight * rows.Length}\"/></p:xfrm>" +
+        "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\"><a:tbl>" +
+        "<a:tblPr firstRow=\"1\" bandRow=\"1\"><a:tableStyleId>{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}</a:tableStyleId></a:tblPr>" +
+        $"<a:tblGrid>{string.Concat(rows[0].Select(_ => $"<a:gridCol w=\"{columnWidth}\"/>"))}</a:tblGrid>" +
+        string.Concat(rows.Select(row => $"<a:tr h=\"{rowHeight}\">{string.Concat(row)}</a:tr>")) +
+        "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>";
+
+    /// <summary>A table cell element with optional attributes such as <c>gridSpan="2"</c> or <c>hMerge="1"</c>.</summary>
+    public static string TableCell(string text, string attributes = "") =>
+        $"<a:tc{(attributes.Length > 0 ? " " + attributes : "")}><a:txBody><a:bodyPr/><a:lstStyle/>{(text.Length > 0 ? Paragraph(text) : "<a:p/>")}</a:txBody><a:tcPr/></a:tc>";
 
     /// <summary>A group whose child coordinates are scaled by <paramref name="scale"/> into the slide.</summary>
     public string Group(long x, long y, long cx, long cy, double scale, string children) =>

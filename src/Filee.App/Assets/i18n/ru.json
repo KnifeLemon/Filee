@@ -279,7 +279,7 @@
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "Траектории 3D-принтеров и станков с ЧПУ (G-code) в PDF, SVG и изображения или превью слайсера.",
   "engine.slides-md.name": "Слайды в Markdown (built-in)",
-  "engine.slides-md.description": "Слайды PowerPoint (PPTX, PPTM, POTX, PPSX) в Markdown, по разделу на слайд: заголовки, списки, таблицы, изображения и заметки докладчика, готово для reveal.js.",
+  "engine.slides-md.description": "Слайды PowerPoint (PPTX, PPTM, POTX, POTM, PPSX) в Markdown, по разделу на слайд: заголовки, списки, таблицы, изображения и заметки докладчика, готово для reveal.js.",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "3D-модели: GLB, glTF, STL, OBJ, 3MF и PLY друг в друга, FBX — в любой из них, плюс превью в PNG.",
   "engine.image3d.name": "Изображения в 3D-рельеф (встроенный)",

@@ -1145,18 +1145,21 @@ shows as a deck and any editor reads as a document. Before it, PPTX → Markdown
 placed the slides' objects on pages and lost the slides, titles and lists.
 
 - One section per visible slide, `---` between them. A slide with nothing to show (blank, or a chart only) stays an
-  empty section, so the slide count matches.
+  empty section, so the slide count matches (an empty first slide gets `<!-- slide 1 -->` so the file never starts with
+  `---`).
 - The title placeholder leads the slide: `#` on a title slide (`ctrTitle`), `##` otherwise.
 - Text in the slide's order: body and content placeholders are bullet lists unless a paragraph has no bullet
   (`buNone`); text boxes are paragraphs unless a paragraph has one. Levels become indented items, automatic numbering
-  becomes `1.`, `2.`; runs keep bold, italic and web/mail links. Text that would read as Markdown is escaped.
-- Tables become pipe tables (the first row as header, a cell's paragraphs joined by `<br>`).
-- Pictures go into `<name>_files` next to the file, like the other Markdown outputs; **Leave out pictures** leaves
-  them out.
+  becomes `1.`, `2.`; runs keep bold, italic and web/mail links. Text that would read as Markdown, a slide break
+  (`---`) or a `Note:` marker is escaped.
+- Tables become pipe tables (the first row as header, a cell's paragraphs joined by `<br>`, merged cells keeping
+  columns aligned).
+- Pictures go into `<name>_files` next to the file (one file per picture part, even when reused across slides), like the
+  other Markdown outputs; **Leave out pictures** leaves them out.
 - The speaker notes follow a `Note:` line, which reveal.js shows in its speaker view.
 - Right-to-left and other scripts are written as they are; Markdown has no direction of its own.
 
-Not converted: charts, SmartArt, equations, animations and hidden slides.
+Not converted: charts, SmartArt, equations, animations, hidden slides, and footer / date / slide-number placeholders.
 
 ## Office Open XML variants
 

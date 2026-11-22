@@ -272,7 +272,7 @@
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "เส้นทางของเครื่องพิมพ์ 3 มิติและเครื่อง CNC (G-code) เป็น PDF, SVG และรูปภาพ หรือภาพตัวอย่างของสไลเซอร์",
   "engine.slides-md.name": "สไลด์เป็น Markdown (built-in)",
-  "engine.slides-md.description": "สไลด์ PowerPoint (PPTX, PPTM, POTX, PPSX) เป็น Markdown หนึ่งส่วนต่อหนึ่งสไลด์ พร้อมหัวเรื่อง รายการ ตาราง รูปภาพ และบันทึกของผู้บรรยาย ใช้กับ reveal.js ได้ทันที",
+  "engine.slides-md.description": "สไลด์ PowerPoint (PPTX, PPTM, POTX, POTM, PPSX) เป็น Markdown หนึ่งส่วนต่อหนึ่งสไลด์ พร้อมหัวเรื่อง รายการ ตาราง รูปภาพ และบันทึกของผู้บรรยาย ใช้กับ reveal.js ได้ทันที",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "โมเดล 3D: GLB, glTF, STL, OBJ, 3MF และ PLY สลับกันได้ FBX เป็นฟอร์แมตใดก็ได้ และแสดงตัวอย่างเป็น PNG",
   "engine.image3d.name": "รูปภาพเป็นภาพนูน 3D (ในตัว)",
