@@ -212,6 +212,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// <summary>The music under the clip (a copy), or null.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMusic))]
+    [NotifyPropertyChangedFor(nameof(LoopMusic))]
     private ClipMusic? _music;
 
     /// <summary>The loudness of the whole music file, for A2.</summary>
@@ -1038,6 +1039,19 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         {
             StopPlaying();
             _cutter.MoveMusic(offset);
+        }
+    }
+
+    /// <summary>The music plays again from its start until the clip ends (#1432), or stops when it ends.</summary>
+    public bool LoopMusic
+    {
+        get => Music?.Loop == true;
+        set
+        {
+            if (_syncing || !CanEdit || _cutter?.Music is null || _cutter.Music.Loop == value)
+                return;
+            StopPlaying();
+            _cutter.SetMusicLoop(value);
         }
     }
 

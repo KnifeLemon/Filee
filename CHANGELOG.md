@@ -26,6 +26,8 @@ ko: 모양 정보가 없는 주석(형광펜, 메모 등)이 있는 PDF도 PDF/A
 en: PDFs with highlights or notes that carry no appearance now pass PDF/A checks
 ko: 비스듬히 스캔하거나 찍은 페이지로 만든 검색 가능한 PDF도 TXT로 변환하면 텍스트가 나와요
 en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT with their text
+ko: 클립 자르기에서 음악을 클립이 끝날 때까지 반복할 수 있어요
+en: Cut a clip can loop its music until the clip ends
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -41,6 +43,7 @@ en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT 
   so the server can only hand out the real installer. The log says where each file came from.
   It helps from the update after this version on: on such a network, this version itself still comes from
   [filee.sh](https://filee.sh/).
+
 - **Searchable PDFs of pages scanned at an angle convert to text** (#1538). A PDF made with Searchable PDF from a page
   scanned or photographed a few degrees askew failed to convert to TXT with "The PDF contains no text", although other
   PDF readers select its text: Tesseract writes each line along its slanted baseline, and Filee only read level text.
@@ -48,6 +51,10 @@ en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT 
   "Recognize text". PDFs with visible text read as before.
 - **rustyfiles** counts as a file manager for gestures (#1714): with the default *File managers and desktop* scope, a
   Ctrl + drag out of rustyfiles opens the donut, as in Explorer (Windows).
+
+- **Cut a clip can loop its music** (#1432). With music on A2, **Loop music** next to **Music** plays the song again
+  from its start each time it ends, until the clip ends, and fades it out with the clip. Off, the music stops when the
+  song ends, as before. Several songs one after another on A2 are not there yet.
 
 ## 2.5.0
 
