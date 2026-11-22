@@ -613,7 +613,9 @@ internal static class FloatingObjects
         HBorder line, SKRect area, bool flipHorizontal, bool flipVertical, HArrow? head = null, HArrow? tail = null)
     {
         using var path = Outline(kind, geometry, cornerRatio, area, flipHorizontal, flipVertical);
-        if (kind is not (HShapeKind.Line or HShapeKind.Path) && (gradient is not null || ParagraphText.Color(fill) is not null))
+        // Lines and open paths have no inside; a closed free-form (Word custGeom with a close, ODF polygon, 한글 polygon) is filled.
+        var filled = kind != HShapeKind.Line && (kind != HShapeKind.Path || geometry?.Path is { Closed: true });
+        if (filled && (gradient is not null || ParagraphText.Color(fill) is not null))
         {
             using var paint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
             using var shader = gradient is null ? null : Gradient(gradient, area);

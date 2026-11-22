@@ -689,4 +689,21 @@ public class ConnectorTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // The arrowhead at the end (6 pt across: 3 × 2 pt), 1 pt from its back.
         Assert.True(Dark(295, 180 - 2.2f) && Dark(295, 180 + 2.2f));
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void The_renderer_fills_a_closed_free_form_and_leaves_an_open_one_empty(bool closed)
+    {
+        // A triangle 200 × 80 pt from (100, 100) down to (200, 180), filled black: inside only when the path is closed.
+        var shape = Open(new HPath(Pt(0, 0), [new(Pt(10000, 8000)), new(Pt(20000, 0))], closed), 20000, 8000, null, null);
+        shape.Fill = "#000000";
+        const int Scale = 4;
+        using var page = SKBitmap.Decode(FileeRenderer.ToImages(Model(shape), 72 * Scale, cancellationToken: TestContext.Current.CancellationToken).First());
+        bool Dark(float x, float y) => page.GetPixel((int)(x * Scale), (int)(y * Scale)).Red < 128;
+
+        Assert.Equal(closed, Dark(200, 120));
+        // Outside the triangle either way.
+        Assert.False(Dark(130, 160));
+    }
 }
