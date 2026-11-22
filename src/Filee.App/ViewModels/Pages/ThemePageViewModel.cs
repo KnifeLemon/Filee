@@ -84,6 +84,11 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
 
     public bool IsMaterialYou => Style?.Value == ThemeStyle.MaterialYou;
 
+    // The three Appearance buttons mark the one that is on (the Mode choice is the single source of truth).
+    public bool IsModeSystem => Mode?.Value == ThemeMode.System;
+    public bool IsModeLight => Mode?.Value == ThemeMode.Light;
+    public bool IsModeDark => Mode?.Value == ThemeMode.Dark;
+
     [ObservableProperty] private Choice<ThemeStyle> _style = null!;
     [ObservableProperty] private Choice<ThemeMode> _mode = null!;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(AccentBrush), nameof(PreviewBackdrop))] private Color _accent;
@@ -163,6 +168,9 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
     partial void OnModeChanged(Choice<ThemeMode>? oldValue, Choice<ThemeMode> newValue)
     {
         OnPropertyChanged(nameof(PastelPresets));
+        OnPropertyChanged(nameof(IsModeSystem));
+        OnPropertyChanged(nameof(IsModeLight));
+        OnPropertyChanged(nameof(IsModeDark));
         if (!Choices.Restore(oldValue, newValue, v => Mode = v))
         {
             _settingPresetOrMode = true;
@@ -208,6 +216,14 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
     private void PickSwatch(Color color)
     {
         Accent = color;
+    }
+
+    [RelayCommand]
+    private void SetMode(ThemeMode target)
+    {
+        var match = Modes.FirstOrDefault(m => m.Value == target);
+        if (match != null && Mode != match)
+            Mode = match;
     }
 
     [RelayCommand]
