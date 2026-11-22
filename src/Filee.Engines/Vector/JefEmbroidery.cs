@@ -1,8 +1,9 @@
-// Janome JEF embroidery designs (issue #1716) as SVG, drawn like Tajima DST (DstEmbroidery). The layout follows
-// pyembroidery's reader (MIT): a little-endian header whose first int32 is where the stitches start, the number of
-// threads at offset 24 and, from offset 116, each thread's number in Janome's thread chart; then two signed bytes
-// (dx, dy in 0.1 mm, Y up) per stitch, where 0x80 starts a command (0x01 next thread, 0x02 move, 0x10 end) followed
-// by two more bytes. Thread 0 isn't a colour: a change to it is a stop for the same thread.
+// Janome JEF embroidery designs (issue #1716) as SVG, drawn like Tajima DST (DstEmbroidery). A JEF file starts with a
+// little-endian header: its first int32 is the offset of the stitch data, the int32 at offset 24 the number of entries
+// in the thread table, and from offset 116 one int32 per entry, a number in Janome's thread chart. The stitch data is
+// two bytes per record: a signed dx and dy in 0.1 mm (Y up), or 0x80 and a command (0x01 colour change, 0x02 move
+// without thread, 0x10 end), a command's own two bytes following. A table entry of 0 is no colour but a pause: the
+// machine stops and the same thread goes on.
 
 namespace Filee.Engines.Vector;
 
@@ -13,6 +14,9 @@ internal static class JefEmbroidery
 
     /// <summary>More threads than a design has; a header claiming more is not a JEF header.</summary>
     private const int MaxThreads = 256;
+
+    /// <summary>Far above any number in Janome's chart; a table entry beyond it is not a thread number.</summary>
+    private const int MaxThreadNumber = 0xFFFF;
 
     /// <summary>
     /// Janome's thread chart by number (1–78), as pyembroidery lists it (EmbThreadJef.py, MIT); number 0 is no colour.
@@ -114,14 +118,21 @@ internal static class JefEmbroidery
         var count = BitConverter.ToInt32(data, 24);
         if (count is < 0 or > MaxThreads || start < ThreadTable + count * 4 || start > data.Length)
             throw new InvalidDataException("The file isn't a Janome JEF embroidery design (its header doesn't add up).");
-        var numbers = new List<int>(count);
+        var table = new int[count];
         for (var i = 0; i < count; i++)
-            numbers.Add(Math.Abs(BitConverter.ToInt32(data, ThreadTable + i * 4)));
+        {
+            // Some writers store the number negated; anything far outside the chart isn't a thread number.
+            var entry = BitConverter.ToInt32(data, ThreadTable + i * 4);
+            if (entry is < -MaxThreadNumber or > MaxThreadNumber)
+                throw new InvalidDataException("The file isn't a Janome JEF embroidery design (a thread number is out of range).");
+            table[i] = Math.Abs(entry);
+        }
 
-        List<List<List<(int X, int Y)>>> threads = [[]];
+        // One block of runs per thread actually stitched, with the table entry it is sewn in.
+        var blocks = new List<(int Entry, List<List<(int X, int Y)>> Runs)> { (0, []) };
+        var cursor = 1; // the table entry the next colour change reads
         List<(int X, int Y)>? run = null;
         int x = 0, y = 0;
-        var next = 1; // the entry of numbers the next colour change goes to
         for (var i = start; i + 2 <= data.Length; i += 2)
         {
             if (data[i] != 0x80)
@@ -131,7 +142,7 @@ internal static class JefEmbroidery
                 {
                     // A stitch starts at the needle's last position.
                     run = [(x, y)];
-                    threads[^1].Add(run);
+                    blocks[^1].Runs.Add(run);
                 }
                 x += dx;
                 y += dy;
@@ -151,31 +162,22 @@ internal static class JefEmbroidery
             }
             else if (command == 0x01)
             {
-                // A change to thread 0 stops the machine and goes on with the same thread (what pyembroidery does);
-                // the move a colour change carries is ignored there too.
-                if (next < numbers.Count && numbers[next] == 0)
-                    numbers.RemoveAt(next);
-                else
-                {
-                    next++;
-                    threads.Add([]);
-                }
+                // Each change reads the next table entry: 0 is a pause, after which the current thread carries on;
+                // any other entry starts a new thread. The bytes after the command don't move the needle.
+                var paused = cursor < table.Length && table[cursor] == 0;
+                if (!paused)
+                    blocks.Add((cursor, []));
+                cursor++;
             }
             else
             {
                 break; // a command no reader knows
             }
         }
-        // Empty threads go, with their numbers, so the colours stay with the threads that have stitches.
-        for (var t = threads.Count - 1; t >= 0; t--)
-        {
-            if (threads[t].Count > 0)
-                continue;
-            threads.RemoveAt(t);
-            if (t < numbers.Count)
-                numbers.RemoveAt(t);
-        }
-        return (threads, numbers);
+        // Threads without stitches are left out, so each colour stays with the thread sewn in it. A change past the
+        // end of the table has no chart number (0), and is drawn in a palette colour.
+        var stitched = blocks.Where(b => b.Runs.Count > 0).ToList();
+        return ([.. stitched.Select(b => b.Runs)], [.. stitched.Select(b => b.Entry < table.Length ? table[b.Entry] : 0)]);
     }
 
     /// <summary>The design as SVG at its real size (millimetres), each thread in its Janome chart colour.</summary>

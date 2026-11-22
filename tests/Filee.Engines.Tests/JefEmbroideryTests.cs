@@ -1,6 +1,6 @@
 // Janome JEF embroidery designs (issue #1716): the header's thread table and the stitch records decoded, drawn in the
 // threads' chart colours as SVG and rendered to PNG through the vector engine. The test designs are written here byte
-// by byte, as embroidery software writes them (the layout pyembroidery reads).
+// by byte, following the layout described in JefEmbroidery.
 
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
@@ -83,6 +83,22 @@ public class JefEmbroideryTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var run = Assert.Single(Assert.Single(JefEmbroidery.Read(Jef([1], [(-127, 127), (-1, -1)])).Threads));
 
         Assert.Equal([(0, 0), (-127, 127), (-128, 126)], run);
+    }
+
+    [Theory]
+    [InlineData(int.MinValue)]
+    [InlineData(int.MaxValue)]
+    public void A_thread_number_far_outside_the_chart_is_not_a_jef(int number)
+    {
+        var error = Assert.Throws<InvalidDataException>(() => JefEmbroidery.Read(Jef([number], Square(10))));
+
+        Assert.Contains("isn't a Janome JEF", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_negated_thread_number_is_read_as_its_number()
+    {
+        Assert.Equal([12], JefEmbroidery.Read(Jef([-12], Square(10))).Numbers);
     }
 
     [Fact]

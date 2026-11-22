@@ -128,7 +128,7 @@ app as its payload. Filee 1.x's installer was built with Inno Setup, which is no
 
 | Component | License | Project |
 |---|---|---|
-| Janome thread chart (the 78 thread colours in `Filee.Engines/Vector/JefEmbroidery.cs`, from `EmbThreadJef.py`) and the JEF layout its reader follows, from pyembroidery | MIT | https://github.com/EmbroidePy/pyembroidery |
+| Janome thread chart (the 78 thread colours in `Filee.Engines/Vector/JefEmbroidery.cs`, from `EmbThreadJef.py`), from pyembroidery | MIT | https://github.com/EmbroidePy/pyembroidery |
 
 ## Fonts and icons
 
