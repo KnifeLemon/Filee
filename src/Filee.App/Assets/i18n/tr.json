@@ -429,6 +429,8 @@
   "clip.music_hint": "Klibin altına bir dosyadan müzik koyun (A2): kaydırmak için sürükleyin, ses düzeyi için çizgisini sürükleyin",
   "clip.music_pick": "Klip için müzik",
   "clip.music_files": "Ses ve video dosyaları",
+  "clip.loop_music": "Müziği tekrarla",
+  "clip.loop_music_hint": "Klip bitene kadar müziği baştan yeniden çalar, sonra sesi azaltarak bitirir. Kapalı: müzik bitince durur.",
   "clip.no_music": "Bu dosyada müzik olarak kullanılacak ses yok",
   "clip.preparing": "Hazırlanıyor…",
   "clip.finding_silence": "Sessiz kısımlar aranıyor…",

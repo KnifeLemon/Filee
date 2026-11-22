@@ -1919,10 +1919,10 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 | TAR | 7-Zip | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
 | TAR.GZ | 7-Zip, in two stages | in-process (PAX TAR + GZipStream) |
 | TAR.BZ2, TAR.XZ | 7-Zip, in two stages | TAR in-process, compressed by 7-Zip |
-| TAR.7Z, TAR.Z | 7-Zip, in two stages | — |
+| TAR.7Z, TAR.Z, TAR.ZST (TZST) | 7-Zip, in two stages | — |
 | LZ, TAR.LZ (lzip) | Filee: each member rewritten as a .lzma file for 7-Zip's LZMA decoder, stopped at the size its trailer states, CRC checked | — |
 | GZ, BZ2, XZ | 7-Zip | 7-Zip; one file only (from another single-file format, or "Compress into one archive" with one file) |
-| LZMA, Z | 7-Zip | — |
+| LZMA, Z, ZST (Zstandard) | 7-Zip | — |
 | RAR 4/5, CAB, CPIO, DEB, RPM, DMG, ISO, IMG, LHA/LZH, ARJ | 7-Zip (an RPM's payload is unpacked until the files appear) | — |
 | Split archives (.001, .7z.001, .zip.001, .tar.001) | 7-Zip (combining .002, .003 … automatically) | — |
 | ALZ (ALZip) | Filee: store, deflate and ALZip's bzip2 variant | — |
@@ -1997,8 +1997,8 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   written); symbolic links are never unpacked and any link left afterwards is deleted; archives with more than
   1,000,000 entries or more data than the drive has free are refused (a listing without sizes still needs the 64 MB
   reserve); Filee's own readers also stop when data unpacks to more than the entry declares, and check CRCs.
-- **Single compressed streams** (GZ, BZ2, XZ, LZMA, Z, and the first stage of TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z) state
-  no size (bzip2) or one their author chose (gzip, modulo 4 GiB), so the listing can't be trusted: 7-Zip writes them
+- **Single compressed streams** (GZ, BZ2, XZ, LZMA, Z, ZST, and the first stage of TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z,
+  TAR.ZST) state no size (bzip2) or one their author chose (gzip, modulo 4 GiB), so the listing can't be trusted: 7-Zip writes them
   to its standard output (`x -so`) and Filee writes the file, stopping 7-Zip and deleting what was written once it
   passes the room on the drive less a tenth of the free space ("unpacks to more than …, but only … is free").
 - **Mark of the Web** (Windows): unpacked files get the archive's `Zone.Identifier` stream, so a ZIP a browser saved

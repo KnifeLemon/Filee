@@ -429,6 +429,8 @@
   "clip.music_hint": "Musik aus einer Datei unter den Clip legen (A2). Ziehen verschiebt sie; Ziehen an ihrer Linie ändert die Lautstärke",
   "clip.music_pick": "Musik für den Clip",
   "clip.music_files": "Audio- und Videodateien",
+  "clip.loop_music": "Musik wiederholen",
+  "clip.loop_music_hint": "Spielt die Musik wieder von vorn, bis der Clip endet, und blendet dann aus. Aus: Die Musik endet, wenn sie zu Ende ist.",
   "clip.no_music": "Diese Datei enthält keinen Ton, der als Musik verwendet werden kann",
   "clip.preparing": "Wird vorbereitet…",
   "clip.finding_silence": "Stille Abschnitte werden gesucht…",

@@ -73,7 +73,7 @@ internal sealed partial class DocxReader
         public string? NumId;
         public int? Ilvl;
         public List<(int Position, string Kind, string Leader)> Tabs = [];
-        public XElement? BorderLeft, BorderRight, BorderTop, BorderBottom;
+        public XElement? BorderLeft, BorderRight, BorderTop, BorderBottom, BorderBetween;
 
         public ParaProps Clone()
         {
@@ -132,6 +132,7 @@ internal sealed partial class DocxReader
                 BorderRight = borders.Element(W + "right") ?? BorderRight;
                 BorderTop = borders.Element(W + "top") ?? BorderTop;
                 BorderBottom = borders.Element(W + "bottom") ?? BorderBottom;
+                BorderBetween = borders.Element(W + "between") ?? BorderBetween;
             }
             SnapToGrid = Toggle(pPr, "snapToGrid") ?? SnapToGrid;
             if (pPr.Element(W + "outlineLvl") is { } outline && int.TryParse(Val(outline), out var level))
@@ -433,27 +434,44 @@ internal sealed partial class DocxReader
                int.TryParse(name.AsSpan(8), out var byName) && byName is >= 1 and <= 9 ? byName : 0;
     }
 
-    /// <summary>The lines of a paragraph's w:pBdr, or null when it has none ("nil" turns off a style's).</summary>
-    private static HBorders? ParagraphBorders(ParaProps p)
+    private static HBorder ParagraphBorder(XElement? edge)
     {
-        static HBorder Side(XElement? edge) => edge is null ? HBorder.None : Border(edge);
-        var borders = new HBorders(Side(p.BorderLeft), Side(p.BorderRight), Side(p.BorderTop), Side(p.BorderBottom));
-        return borders is { Left.Style: HBorderStyle.None, Right.Style: HBorderStyle.None, Top.Style: HBorderStyle.None, Bottom.Style: HBorderStyle.None }
-            ? null : borders;
+        var border = edge is null ? HBorder.None : Border(edge);
+        return border.Style == HBorderStyle.None ? HBorder.None : border;
     }
 
-    /// <summary>
-    /// Paragraphs with the same borders and indents side by side share one box in Word: no line between them. With 한글's
-    /// own way of saying so (connect) rhwp drew no bottom line at all, so the lines inside the box are left out.
-    /// </summary>
-    private static void JoinBorders(HParagraph previous, HParagraph next)
+    private static (HBorders? Borders, HInsets? Offsets) ParagraphBorders(ParaProps p)
     {
-        if (previous.Format.Borders is not { } above || next.Format.Borders is not { } below
-            || above.Left != below.Left || above.Right != below.Right || above.Bottom != below.Bottom
+        static int Space(XElement? edge, HBorder side, int fallback = 0) => side.Style == HBorderStyle.None
+            ? 0 : (Twips(edge, "space") is { } points ? HwpxUnits.FromPoints(Math.Clamp(points, 0, 31)) : fallback);
+
+        var borders = new HBorders(ParagraphBorder(p.BorderLeft), ParagraphBorder(p.BorderRight),
+            ParagraphBorder(p.BorderTop), ParagraphBorder(p.BorderBottom));
+        if (borders == HBorders.Empty && ParagraphBorder(p.BorderBetween) == HBorder.None)
+            return (null, null);
+        return (borders, new HInsets(Space(p.BorderLeft, borders.Left, 400), Space(p.BorderRight, borders.Right, 400),
+            Space(p.BorderTop, borders.Top), Space(p.BorderBottom, borders.Bottom)));
+    }
+
+    // Word joins matching adjacent borders. Write the intervening edge explicitly because rhwp loses the box's
+    // bottom line when we use the HWPX connect flag.
+    private void JoinBorders(HParagraph previous, HParagraph next, ParagraphBorderGroup? group)
+    {
+        if (group is null || next.PageBreakBefore || next.ColumnBreakBefore || next.ColumnsChange is not null
+            || !_paragraphStyles.TryGetValue(previous, out var original) || original.BorderGroup != group
+            || previous.Format.Borders is not { } above
             || previous.Format.Left != next.Format.Left || previous.Format.Right != next.Format.Right)
             return;
-        previous.Format = previous.Format with { Borders = above with { Bottom = HBorder.None } };
-        next.Format = next.Format with { Borders = below with { Top = HBorder.None } };
+        previous.Format = previous.Format with
+        {
+            Borders = above with { Bottom = group.Between },
+            BorderOffsets = previous.Format.BorderOffsets is { } aboveOffsets ? aboveOffsets with { Bottom = 0 } : null,
+        };
+        next.Format = next.Format with
+        {
+            Borders = group.Borders with { Top = HBorder.None },
+            BorderOffsets = group.Offsets is { } belowOffsets ? belowOffsets with { Top = 0 } : null,
+        };
     }
 
     /// <param name="fontSize">Font size of the paragraph (half points): one character of the *Chars indents.</param>
@@ -473,6 +491,7 @@ internal sealed partial class DocxReader
             "atLeast" => new HLineSpacing(HLineSpacingKind.AtLeast, HwpxUnits.FromTwips(line)),
             _ => new HLineSpacing(HLineSpacingKind.Percent, (int)Math.Round(line / 240.0 * WordLineToHwpPercent)),
         };
+        var (borders, offsets) = ParagraphBorders(p);
         return new HParaFormat(
             Align: p.Jc switch
             {
@@ -491,7 +510,8 @@ internal sealed partial class DocxReader
             KeepWithNext: p.KeepNext ?? false,
             KeepLines: p.KeepLines ?? false,
             WidowOrphan: p.WidowControl ?? true,
-            Borders: ParagraphBorders(p),
+            Borders: borders,
+            BorderOffsets: offsets,
             Tabs: p.Tabs.Count == 0 ? null : p.Tabs
                 .Where(t => t.Kind is not ("bar" or "num"))
                 .Select(t => new HTabStop(HwpxUnits.FromTwips(t.Position), t.Kind switch

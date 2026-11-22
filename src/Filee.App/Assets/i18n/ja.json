@@ -429,6 +429,8 @@
   "clip.music_hint": "ファイルの音楽をクリップの下に置く（A2）：ドラッグで移動、線をドラッグで音量",
   "clip.music_pick": "クリップの音楽",
   "clip.music_files": "音声・動画ファイル",
+  "clip.loop_music": "音楽をループ",
+  "clip.loop_music_hint": "クリップが終わるまで音楽を最初から繰り返し再生し、最後はフェードアウトします。オフ: 音楽が終わるとそこで止まります。",
   "clip.no_music": "このファイルには音楽に使える音声がありません",
   "clip.preparing": "準備中…",
   "clip.finding_silence": "無音を検出中…",

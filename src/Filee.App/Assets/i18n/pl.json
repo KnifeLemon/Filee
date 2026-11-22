@@ -438,6 +438,8 @@
   "clip.music_hint": "Podłóż muzykę z pliku pod klip (A2): przeciągaj ją, przeciągnij linię, by zmienić głośność",
   "clip.music_pick": "Muzyka do klipu",
   "clip.music_files": "Pliki dźwięku i wideo",
+  "clip.loop_music": "Zapętl muzykę",
+  "clip.loop_music_hint": "Odtwarza muzykę od początku, aż klip się skończy, a potem ją wycisza. Wyłączone: muzyka kończy się razem z utworem.",
   "clip.no_music": "Ten plik nie ma dźwięku do użycia jako muzyka",
   "clip.preparing": "Przygotowanie…",
   "clip.finding_silence": "Szukam ciszy…",

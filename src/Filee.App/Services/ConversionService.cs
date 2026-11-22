@@ -108,6 +108,11 @@ public sealed class ConversionService
             // "Next to the source" is the download folder, also when the original is only kept until converted.
             preset = fetcher.Apply(preset);
         }
+        else
+        {
+            // A file that came in through a shortcut is saved next to the shortcut, not next to its target (#1706).
+            preset = Filee.Core.Platform.ShortcutFolders.Shared.Apply(preset, files);
+        }
         var folders = files.Where(Directory.Exists).ToHashSet(Filee.Core.Platform.FileSystemPaths.Comparer);
         var job = _queue.Enqueue(files, preset, _loc.DisplayName(preset), fetcher, folders);
         if (toClipboard)

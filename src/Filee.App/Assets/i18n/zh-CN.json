@@ -438,6 +438,8 @@
   "clip.music_hint": "把文件中的音乐垫在片段下面（A2）：拖动来移动，拖动线条调音量",
   "clip.music_pick": "片段的音乐",
   "clip.music_files": "声音和视频文件",
+  "clip.loop_music": "循环播放音乐",
+  "clip.loop_music_hint": "从头重复播放音乐，直到片段结束，最后淡出。关闭时：音乐播完就停止。",
   "clip.no_music": "此文件没有可用作音乐的声音",
   "clip.preparing": "准备中…",
   "clip.finding_silence": "正在查找静音…",
