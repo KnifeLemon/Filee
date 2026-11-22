@@ -86,12 +86,27 @@ public sealed class ClipMusic
     /// <summary>Fade in and out at its ends (<see cref="FadeSeconds"/>).</summary>
     public bool Fade { get; set; } = true;
 
+    /// <summary>
+    /// Plays again from the file's start each time it ends, until the clip ends (#1432). The first time it plays from
+    /// <see cref="From"/>, so where it is in its file <c>t</c> seconds later is (<see cref="From"/> + t) mod
+    /// <see cref="Length"/>. Needs a known <see cref="Length"/>.
+    /// </summary>
+    public bool Loop { get; set; }
+
+    /// <summary><see cref="Loop"/>, for a file whose length is known.</summary>
+    [JsonIgnore]
+    public bool Repeats => Loop && double.IsFinite(Length) && Length >= ClipRange.MinLength;
+
     /// <summary><see cref="Volume"/> as written: 0 to 2, the default for a value that makes no sense.</summary>
     [JsonIgnore]
     public double PlayVolume => double.IsFinite(Volume) && Volume >= 0 ? Math.Min(Volume, 2) : DefaultVolume;
 
-    /// <summary>How long the music plays in a clip of <paramref name="clipLength"/> seconds: until it or the clip ends.</summary>
-    public double PlayLength(double clipLength) => Math.Max(0, Math.Min(Length - From, clipLength - Offset));
+    /// <summary>
+    /// How long the music plays in a clip of <paramref name="clipLength"/> seconds: until it or the clip ends, or until
+    /// the clip ends when it <see cref="Repeats"/>.
+    /// </summary>
+    public double PlayLength(double clipLength) =>
+        Math.Max(0, Repeats ? clipLength - Offset : Math.Min(Length - From, clipLength - Offset));
 
     public ClipMusic Clone() => (ClipMusic)MemberwiseClone();
 }
@@ -215,6 +230,8 @@ public sealed class ClipEdit
             // The music keeps its place against the pictures: what has played of it is left out.
             var played = Math.Max(0, seconds - music.Offset);
             music.From += played;
+            if (music.Repeats)
+                music.From %= music.Length;
             music.Offset = Math.Max(0, music.Offset - Math.Max(0, seconds));
             rest.Music = music;
         }

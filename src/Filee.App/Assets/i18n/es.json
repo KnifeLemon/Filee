@@ -427,6 +427,8 @@
   "clip.music_hint": "Poner música de un archivo bajo el clip (A2): arrástrala, arrastra su línea para el volumen",
   "clip.music_pick": "Música para el clip",
   "clip.music_files": "Archivos de sonido y vídeo",
+  "clip.loop_music": "Repetir música",
+  "clip.loop_music_hint": "Vuelve a reproducir la música desde el principio hasta que termina el clip y luego se desvanece. Desactivado: la música se detiene cuando termina.",
   "clip.no_music": "Este archivo no tiene sonido para usar como música",
   "clip.preparing": "Preparando…",
   "clip.finding_silence": "Buscando silencios…",

@@ -436,6 +436,8 @@
   "clip.music_hint": "Mettre la musique d'un fichier sous l'extrait (A2) : faites-la glisser, tirez sa ligne pour le volume",
   "clip.music_pick": "Musique pour l'extrait",
   "clip.music_files": "Fichiers son et vidéo",
+  "clip.loop_music": "Musique en boucle",
+  "clip.loop_music_hint": "Rejoue la musique depuis le début jusqu'à la fin du clip, puis baisse en fondu. Désactivé : la musique s'arrête à sa fin.",
   "clip.no_music": "Ce fichier n'a pas de son à utiliser comme musique",
   "clip.preparing": "Préparation…",
   "clip.finding_silence": "Recherche des silences…",

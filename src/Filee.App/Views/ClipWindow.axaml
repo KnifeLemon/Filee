@@ -33,6 +33,7 @@
     <StreamGeometry x:Key="Clip.FadeOut">M2 4v16h20z</StreamGeometry>
     <StreamGeometry x:Key="Clip.Silence">M2 11h2v2H2z M5.5 8h2v8h-2z M9 5h2v14H9z M17 8h2v8h-2z M20 11h2v2h-2z M12.6 11.3h2.8v1.4h-2.8z</StreamGeometry>
     <StreamGeometry x:Key="Clip.Music">M12,3V12.26C11.5,12.09 11,12 10.5,12C8,12 6,14 6,16.5C6,19 8,21 10.5,21C13,21 15,19 15,16.5V6H19V3H12Z</StreamGeometry>
+    <StreamGeometry x:Key="Clip.Loop">M17,17H7V14L3,18L7,22V19H19V13H17M7,7H17V10L21,6L17,2V5H5V11H7V7Z</StreamGeometry>
     <StreamGeometry x:Key="Clip.Muted">M12,4L9.91,6.09L12,8.18M4.27,3L3,4.27L7.73,9H3V15H7L12,20V13.27L16.25,17.53C15.58,18.04 14.83,18.46 14,18.7V20.77C15.38,20.45 16.63,19.82 17.68,18.96L19.73,21L21,19.73L12,10.73M19,12C19,12.94 18.8,13.82 18.46,14.64L19.97,16.15C20.62,14.91 21,13.5 21,12C21,7.72 18,4.14 14,3.23V5.29C16.89,6.15 19,8.83 19,12M16.5,12C16.5,10.23 15.5,8.71 14,7.97V10.18L16.45,12.63C16.5,12.43 16.5,12.21 16.5,12Z</StreamGeometry>
     <!-- Annotate's own brush (its slice icon), for the button that opens a frame there -->
     <StreamGeometry x:Key="Clip.Mark">M7 16C7.55 16 8 16.45 8 17C8 18.1 7.1 19 6 19C5.83 19 5.67 19 5.5 18.95C5.81 18.4 6 17.74 6 17C6 16.45 6.45 16 7 16M18.67 3C18.41 3 18.16 3.1 17.96 3.29L9 12.25L11.75 15L20.71 6.04C21.1 5.65 21.1 5 20.71 4.63L19.37 3.29C19.17 3.09 18.92 3 18.67 3M7 14C5.34 14 4 15.34 4 17C4 18.31 2.84 19 2 19C2.92 20.22 4.5 21 6 21C8.21 21 10 19.21 10 17C10 15.34 8.66 14 7 14Z</StreamGeometry>
@@ -413,6 +414,13 @@
                   <TextBlock Text="{DynamicResource clip.music}" FontSize="13" VerticalAlignment="Center" />
                 </StackPanel>
               </Button>
+              <ToggleButton Classes="tool" IsChecked="{Binding LoopMusic}" IsVisible="{Binding HasMusic}" Padding="10,8"
+                            ToolTip.Tip="{DynamicResource clip.loop_music_hint}" AutomationProperties.Name="{DynamicResource clip.loop_music}">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Loop}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <TextBlock Text="{DynamicResource clip.loop_music}" FontSize="13" VerticalAlignment="Center" />
+                </StackPanel>
+              </ToggleButton>
               <Button Classes="tool" Command="{Binding CloseGapsCommand}" IsVisible="{Binding HasGaps}" Padding="10,8"
                       ToolTip.Tip="{DynamicResource clip.close_gaps_hint}" AutomationProperties.Name="{DynamicResource clip.close_gaps}">
                 <StackPanel Orientation="Horizontal" Spacing="7">
