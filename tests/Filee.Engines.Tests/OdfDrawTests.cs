@@ -506,7 +506,7 @@ public sealed class OdfDrawTests : IDisposable
     // ───────────────────────── Capability check ─────────────────────────
 
     [Fact]
-    public void Charts_3d_scenes_and_other_objects_are_named_by_the_check()
+    public void Charts_and_other_objects_without_a_picture_are_named_by_the_check()
     {
         string Deck(string content, string? name = null, bool hidden = false, bool drawing = false)
         {
@@ -523,9 +523,10 @@ public sealed class OdfDrawTests : IDisposable
         }
         var chart = "<draw:frame svg:x=\"1cm\" svg:y=\"1cm\" svg:width=\"5cm\" svg:height=\"5cm\"><draw:object xlink:href=\"./Object 1\"/><draw:image xlink:href=\"./ObjectReplacements/Object 1\"/></draw:frame>";
         Assert.Equal("charts", OdfDrawReader.FirstUnsupported(Deck(chart), Token));
-        Assert.Equal("3D scenes", OdfDrawReader.FirstUnsupported(Deck("<dr3d:scene svg:x=\"1cm\" svg:y=\"1cm\" svg:width=\"5cm\" svg:height=\"5cm\"/>"), Token));
+        Assert.Null(OdfDrawReader.FirstUnsupported(Deck("<dr3d:scene svg:x=\"1cm\" svg:y=\"1cm\" svg:width=\"5cm\" svg:height=\"5cm\"/>"), Token));
         Assert.Equal("OLE objects", OdfDrawReader.FirstUnsupported(Deck("<draw:frame svg:width=\"5cm\" svg:height=\"5cm\"><draw:object-ole xlink:href=\"./Object 2\"/></draw:frame>"), Token));
-        Assert.Equal("shadows", OdfDrawReader.FirstUnsupported(ShadowDeck(), Token));
+        // Shadows are drawn.
+        Assert.Null(OdfDrawReader.FirstUnsupported(ShadowDeck(), Token));
         Assert.Null(OdfDrawReader.FirstUnsupported(Deck("<draw:rect svg:width=\"5cm\" svg:height=\"5cm\"/>"), Token));
         // On a hidden slide nothing is drawn, so nothing is missing.
         Assert.Null(OdfDrawReader.FirstUnsupported(Deck(chart, hidden: true), Token));

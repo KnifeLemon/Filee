@@ -1,6 +1,7 @@
-// Spreadsheets between XLSX, XLS, ODS, CSV and TSV without Excel or LibreOffice (XLS / XLT, XLSB, the XLSM / XLTX
-// variants and the OpenDocument template and flat file, OTS / FODS, are read, not written: OTS and FODS come from the
-// ODS through OdfVariantConverter).
+// Spreadsheets between XLSX, XLS, ODS, CSV and TSV without Excel or LibreOffice. XLS and its template XLT are written
+// by XlsWriter (BIFF8); XLSB, the XLSM / XLTX variants and the OpenDocument template and flat file, OTS / FODS, are
+// read, not written (OTS and FODS come from the ODS through OdfVariantConverter). The edges cost less than
+// LibreOffice's (25), which is left the formats only it reads.
 // XLSX / XLS / ODS → PDF are printed by SheetPrintConverter; CSV / TSV → PDF and every sheet → HWPX and HTML go
 // through the HWPX writer (sheets become 한글 tables), see HwpxConverter and SheetDocument.
 
@@ -14,7 +15,7 @@ namespace Filee.Engines.Office;
 public sealed class SpreadsheetConverter : IConverter
 {
     private static readonly string[] Sources = ["xlsx", "xlsm", "xltx", "xlsb", "xls", "xlt", "ods", "ots", "fods", "csv", "tsv"];
-    private static readonly string[] Targets = ["xlsx", "ods", "csv", "tsv"];
+    private static readonly string[] Targets = ["xlsx", "xls", "xlt", "ods", "csv", "tsv"];
 
     public string Id => "spreadsheet";
     public string DisplayName => "Spreadsheets (built-in)";
@@ -27,7 +28,7 @@ public sealed class SpreadsheetConverter : IConverter
             .Select(to => new ConversionEdge(from, to)))];
 
     public EngineStatus GetStatus() =>
-        EngineStatus.Available("XLSX, XLSB, XLS, ODS, OTS, FODS, CSV, TSV → XLSX, ODS, CSV, TSV",
+        EngineStatus.Available("XLSX, XLSB, XLS, ODS, OTS, FODS, CSV, TSV → XLSX, XLS, XLT, ODS, CSV, TSV",
             $"{EngineVersions.BuiltIn} · {EngineVersions.Library("ExcelDataReader", typeof(ExcelDataReader.ExcelReaderFactory))}");
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
@@ -43,7 +44,7 @@ public sealed class SpreadsheetConverter : IConverter
             return outputs;
         }, cancellationToken);
 
-    /// <summary>Writes a workbook as the step's XLSX, ODS, CSV or TSV (also the output of PdfTablesConverter and DocumentTablesConverter).</summary>
+    /// <summary>Writes a workbook as the step's XLSX, XLS, XLT, ODS, CSV or TSV (also the output of PdfTablesConverter and DocumentTablesConverter).</summary>
     internal static List<string> Write(Workbook book, ConversionStep step)
     {
         var outputs = new List<string>();
@@ -57,6 +58,15 @@ public sealed class SpreadsheetConverter : IConverter
                     else
                         OdsWriter.Write(book, path);
                     outputs.Add(path);
+                }
+                break;
+            case "xls" or "xlt":
+                // Excel 97–2003 holds 65,536 rows and 256 columns: the note says when the workbook didn't fit.
+                if (step.Output.Allocate(step.To) is { } xls)
+                {
+                    if (XlsWriter.Write(book, xls, template: step.To == "xlt"))
+                        step.Notice?.Invoke("notice.xls_limits");
+                    outputs.Add(xls);
                 }
                 break;
             default:

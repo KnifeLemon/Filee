@@ -429,7 +429,11 @@ public class TracingTests(EngineFixture fx) : IClassFixture<EngineFixture>
             foreach (var to in new[] { "svg", "svgz", "dxf", "dwg" })
                 Assert.DoesNotContain(planner.Plan(from, to)?.Steps ?? [], IsTracing);
         }
-        Assert.Null(builtIn.Plan(from, "svg"));
+        // Without optional engines, an SVG only comes from the built-in PDF → SVG writer, which keeps the vectors.
+        var svg = builtIn.Plan(from, "svg");
+        Assert.Equal(from is "pdf" or "ai" or "emf" or "wmf" or "docx", svg is not null);
+        if (svg is not null)
+            Assert.Equal("pdf-svg", svg.Steps[^1].Converter.Id);
     }
 
     [Fact]

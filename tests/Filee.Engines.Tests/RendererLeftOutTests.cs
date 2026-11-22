@@ -273,15 +273,16 @@ public sealed class RendererLeftOutTests(EngineFixture fx) : IClassFixture<Engin
         var notice = Assert.Single(await ConvertAsync(source, "pptx"));
 
         Assert.Equal(WithLibreOffice, notice.Key);
-        Assert.Equal([Part("charts", 1), Part("ink", 1), Part("objects_pictured", 2), Part("shapes", 1), Part("effects")], notice.Parts);
+        // The outer shadow is drawn.
+        Assert.Equal([Part("charts", 1), Part("ink", 1), Part("objects_pictured", 2), Part("shapes", 1)], notice.Parts);
         Assert.Equal(Key, Assert.Single(await ConvertAsync(source, "pptx", libreOffice: true)).Key);
     }
 
     [Fact]
     public async Task An_opendocument_presentation_names_what_the_slide_renderer_leaves_out_once_per_shape()
     {
-        // An OLE object without a picture on the master shows on both pages and is counted once; a 3D scene, a shadow
-        // and an object drawn from its replacement picture are on the first page.
+        // An OLE object without a picture on the master shows on both pages and is counted once; an empty 3D scene, a
+        // shadow (both drawn) and an object drawn from its replacement picture are on the first page.
         var builder = new OdpBuilder
         {
             ContentStyles = OdpBuilder.GraphicStyle("shadow", "draw:shadow=\"visible\" draw:fill=\"solid\""),
@@ -299,7 +300,7 @@ public sealed class RendererLeftOutTests(EngineFixture fx) : IClassFixture<Engin
         var notice = Assert.Single(await ConvertAsync(source, "odp"));
 
         Assert.Equal(WithLibreOffice, notice.Key);
-        Assert.Equal([Part("objects", 1), Part("shapes_left_out", 1), Part("objects_pictured", 1), Part("effects")], notice.Parts);
+        Assert.Equal([Part("objects", 1), Part("objects_pictured", 1)], notice.Parts);
     }
 
     [Fact]

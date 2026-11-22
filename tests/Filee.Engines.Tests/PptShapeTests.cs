@@ -275,13 +275,13 @@ public sealed class PptShapeTests(EngineFixture fx) : IClassFixture<EngineFixtur
     }
 
     [Fact]
-    public void A_shadow_is_kept_in_the_package_and_named_for_the_check()
+    public void A_shadow_is_kept_in_the_package_and_drawn()
     {
         var path = Save(Deck(Shape(3001, 1, (288, 288, 2016, 2016), [(0x0181, Rgb(0xFF0000)), .. Filled, (0x023F, 0x00020002), (0x0205, 50800), (0x0206, 50800)])));
         var shadow = Slide(path).Descendants(A + "outerShdw").Single();
         Assert.Equal("71842", (string?)shadow.Attribute("dist"));
         Assert.Equal("2700000", (string?)shadow.Attribute("dir")); // 45°: down and to the right
-        Assert.Equal("shadows and effects", Check(path));
-        Assert.Null(Check(Save(Deck(Shape(3001, 1, (288, 288, 2016, 2016), [(0x0181, Rgb(0xFF0000)), .. Filled])))));
+        // An outer shadow is drawn by the slide renderer.
+        Assert.Null(Check(path));
     }
 }

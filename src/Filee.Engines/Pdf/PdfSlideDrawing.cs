@@ -201,6 +201,12 @@ internal sealed record PdfType3Glyph(IReadOnlyList<PdfPaint> Paints, bool Inked)
 /// </summary>
 internal readonly record struct PdfGlyphOrder(double X, double Y, int Order, bool Turned = false);
 
+/// <summary>
+/// A glyph's text (painted or not) and where it starts and ends on its baseline, in slide coordinates, with its size in
+/// points (<see cref="PdfSlideDrawingProcessor.RecordsText"/>: PDF → SVG's text layer).
+/// </summary>
+internal readonly record struct PdfGlyphText(string Unicode, SKPoint Start, SKPoint End, double Size);
+
 /// <summary>What a page's drawing may still take, shared with the pattern cells and soft mask groups drawn for it.</summary>
 internal sealed class PdfDrawingBudget
 {
@@ -234,6 +240,9 @@ internal sealed class PdfSlideDrawing : IDisposable
 
     /// <summary>The glyphs as painted (at most <see cref="PdfSlideDrawingProcessor.MaxLetters"/>), for the backdrop of blends.</summary>
     public List<PdfPaintedGlyph> Letters { get; } = [];
+
+    /// <summary>The page's glyphs as text, when the processor records it (at most <see cref="PdfSlideDrawingProcessor.MaxGlyphs"/>).</summary>
+    public List<PdfGlyphText> Texts { get; } = [];
 
     /// <summary>Paths and pictures to dispose with the drawing.</summary>
     internal List<IDisposable> Owned { get; } = [];
@@ -304,6 +313,9 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
 
     /// <summary>The drawing is a Type 3 glyph's procedure: the text it shows is drawn among its paints.</summary>
     private readonly bool _glyphProcedure;
+
+    /// <summary>The page's glyphs are kept as text too (<see cref="PdfSlideDrawing.Texts"/>), invisible ones included.</summary>
+    internal bool RecordsText { get; init; }
     private readonly PdfDrawingBudget _budget;
     private readonly CropBox _cropBox;
     private readonly UserSpaceUnit _userSpaceUnit;
@@ -1135,6 +1147,14 @@ internal sealed class PdfSlideDrawingProcessor : BaseStreamProcessor<PdfSlideDra
             var along = transformationMatrix.Transform(textMatrix.Transform(renderingMatrix.Transform(new PdfPoint(1, 0))));
             var (dx, dy) = (along.X - origin.X, along.Y - origin.Y);
             _drawing.Glyphs.Add(new PdfGlyphOrder(origin.X, origin.Y, _order, dx <= 0 || Math.Abs(dy) > 0.02 * dx));
+            if (RecordsText)
+            {
+                // Invisible text too (an OCR layer): where it starts and ends on its baseline, as PdfPig's letters.
+                var width = double.IsFinite(characterBoundingBox.Width) ? characterBoundingBox.Width : 0;
+                var end = transformationMatrix.Transform(textMatrix.Transform(renderingMatrix.Transform(new PdfPoint(width, 0))));
+                _drawing.Texts.Add(new PdfGlyphText(unicode, _toSlide.MapPoint((float)origin.X, (float)origin.Y), _toSlide.MapPoint((float)end.X, (float)end.Y),
+                    pointSize));
+            }
             if (_drawing.Letters.Count < MaxLetters
                 && Letter(font, currentState, code, unicode, renderingMatrix, textMatrix, transformationMatrix, characterBoundingBox) is { } letter)
                 _drawing.Letters.Add(letter);

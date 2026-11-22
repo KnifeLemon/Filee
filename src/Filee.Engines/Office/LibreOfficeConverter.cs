@@ -2,7 +2,8 @@
 // don't handle (DOC, XLS, PPT, OpenDocument, ...) and the only reader of rarer ones: Works / WPS, WordPerfect, Lotus
 // Word Pro, AbiWord, Apple Pages / Numbers / Keynote, StarOffice, WPS Office, ClarisWorks / AppleWorks, MacWrite, T602,
 // Pocket Word, flat OpenDocument, Publisher, CorelDRAW, Visio, CGM. It also writes the OpenDocument templates, FODT,
-// XLT and EMF / WMF, and turns SVG into EMF / WMF / ODG and a PDF page into SVG.
+// EMF / WMF (XLS and XLT only from what only it reads: SpreadsheetConverter writes them from the rest), and turns
+// SVG into EMF / WMF / ODG and a PDF page into SVG.
 // Uses a selected installation, Filee's downloaded copy, or the system installation.
 //
 // Gotchas handled here:

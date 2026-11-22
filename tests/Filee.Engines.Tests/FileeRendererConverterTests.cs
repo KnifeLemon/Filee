@@ -277,8 +277,9 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
     [Theory]
     [InlineData("<p:graphicFrame><p:xfrm/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" r:id=\"rId9\"/></a:graphicData></a:graphic></p:graphicFrame>", "charts")]
     [InlineData("<p:sp><p:spPr><a:prstGeom prst=\"notAPreset\"/></p:spPr></p:sp>", "the preset shape notAPreset")]
-    [InlineData("<p:sp><p:spPr><a:prstGeom prst=\"rect\"/><a:effectLst><a:outerShdw blurRad=\"40000\"/></a:effectLst></p:spPr></p:sp>", "shadows and effects")]
-    [InlineData("<p:sp><p:spPr/><p:style><a:effectRef idx=\"3\"/></p:style></p:sp>", "shadows and effects")]
+    [InlineData("<p:sp><p:spPr><a:prstGeom prst=\"rect\"/><a:effectLst><a:innerShdw blurRad=\"40000\"/></a:effectLst></p:spPr></p:sp>", "shadows and effects")]
+    [InlineData("<p:sp><p:spPr><a:prstGeom prst=\"rect\"/><a:effectLst><a:outerShdw blurRad=\"40000\"/><a:glow rad=\"40000\"/></a:effectLst></p:spPr></p:sp>", null)]
+    [InlineData("<p:sp><p:spPr/><p:style><a:effectRef idx=\"3\"/></p:style></p:sp>", null)] // the theme's outer shadow is drawn
     [InlineData("<p:sp><p:spPr/><p:txBody><a:bodyPr vert=\"eaVert\"/></p:txBody></p:sp>", null)] // drawn with its CJK upright
     [InlineData("<p:sp><p:spPr/><p:txBody><a:bodyPr><a:prstTxWarp prst=\"textArchUp\"/></a:bodyPr></p:txBody></p:sp>", "WordArt text warp")]
     [InlineData("<p:sp><p:spPr><a:prstGeom prst=\"rect\"/><a:sp3d extrusionH=\"76200\"/></p:spPr></p:sp>", "3D effects")]

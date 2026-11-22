@@ -69,8 +69,9 @@ internal static class DrawingFormats
     [
         // Format id vsd is both .vsdx and binary .vsd: the binary one is left to LibreOffice Draw.
         new("vsd", VisioReader.Read, VisioReader.FirstUnsupported),
-        // OpenDocument drawings, packaged, templates and flat; charts, OLE objects and 3D scenes are left to LibreOffice
-        // Draw (a template through the ODG it becomes, OdfVariantConverter).
+        // OpenDocument drawings, packaged, templates and flat, with their charts, 3D scenes and objects' replacement
+        // pictures; objects without a picture Filee draws and Fontwork are left to LibreOffice Draw (a template through
+        // the ODG it becomes, OdfVariantConverter).
         new("odg", (path, token) => OdfDrawReader.Read(path, cancellationToken: token), path => OdfDrawReader.FirstUnsupported(path)),
         new("otg", (path, token) => OdfDrawReader.Read(path, cancellationToken: token), path => OdfDrawReader.FirstUnsupported(path)),
         new("fodg", (path, token) => OdfDrawReader.Read(path, cancellationToken: token), path => OdfDrawReader.FirstUnsupported(path)),

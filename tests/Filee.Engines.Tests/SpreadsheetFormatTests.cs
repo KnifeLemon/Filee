@@ -619,7 +619,7 @@ public class SpreadsheetFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
     {
         var engine = fx.Converters.OfType<SpreadsheetConverter>().Single();
         Assert.DoesNotContain(engine.Edges, e => e.From == e.To);
-        Assert.DoesNotContain(engine.Edges, e => e.To == "xls"); // XLS is read only; writing it needs LibreOffice
+        Assert.Contains(engine.Edges, e => e.From == "xlsx" && e.To == "xls"); // XlsWriter writes XLS and XLT
     }
 
     // ───────────────────────── LibreOffice cross-check ─────────────────────────

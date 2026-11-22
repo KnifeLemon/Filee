@@ -114,6 +114,19 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 File.ReadAllBytes(XlsbFuzzTests.PivotsAndShapeText().SaveXlsx(Path.Combine(fx.NewFolder(), "pivots.xlsx")))],
             (path, _) => SheetPrinter.ToPdf(XlsxReader.Read(path), SheetPrintSource.Of(path)));
 
+    /// <summary>XLS as Filee's own writer makes it (BIFF8 in a compound file), mutated byte by byte, read and printed.</summary>
+    [Fact]
+    public void SheetPrinter_prints_or_refuses_every_mutated_xls_from_the_writer() =>
+        Fuzz("xls-print", "xls", [XlsSeed(XlsWriterTests.Rich()), XlsSeed(XlsxReader.Read(SheetPrintTests.RichXlsx(fx.NewFolder())))],
+            (path, _) => SheetPrinter.ToPdf(XlsReader.Read(path), SheetPrintSource.Of(path)), FuzzHarness.Bytes);
+
+    private byte[] XlsSeed(Workbook book)
+    {
+        var path = Path.Combine(fx.NewFolder(), "seed.xls");
+        XlsWriter.Write(book, path, cancellationToken: TestContext.Current.CancellationToken);
+        return File.ReadAllBytes(path);
+    }
+
     [Fact]
     public void SheetPrinter_prints_or_refuses_every_mutated_ods() =>
         Fuzz("ods-print", "ods", [File.ReadAllBytes(SheetPrintTests.RichOds(fx.NewFolder())), File.ReadAllBytes(OdfChartTests.SpreadsheetWithChart(fx.NewFolder(), OdfChartBuilder.Columns()))],

@@ -9,7 +9,9 @@
 //                         pictures in frames, tables, groups; placement (svg:x / svg:y or draw:transform);
 //  * OdpWriter.Styles.cs  automatic and named styles: fills (solid, gradient, hatch, bitmap), lines (dashes, markers),
 //                         text frame settings, pictures (cropped, recoloured or mirrored ones drawn out once);
-//  * OdpWriter.Text.cs    paragraphs and spans, bullets and numbers as text:list with a list style, fields, links.
+//  * OdpWriter.Text.cs    paragraphs and spans, bullets and numbers as text:list with a list style, fields, links;
+//  * OdpWriter.Effects.cs shadows, glow and soft edges as attributes, reflections baked, 3D as extrusion attributes,
+//                         charts as ODF chart objects with their pictures.
 //
 // The model holds every slide as it is shown, the master's and the layout's shapes included. Shapes that start every
 // slide of a group of slides alike (the same drawing, the same styles) become that group's master page, drawn behind
@@ -40,6 +42,7 @@ internal sealed partial class OdpWriter : IDisposable
     private const string Namespaces =
         OdfNames.Namespaces + " " +
         "xmlns:presentation=\"urn:oasis:names:tc:opendocument:xmlns:presentation:1.0\" " +
+        "xmlns:dr3d=\"urn:oasis:names:tc:opendocument:xmlns:dr3d:1.0\" " +
         "xmlns:loext=\"urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0\"";
 
     /// <summary>Characters of XML written for one deck at most (content and styles together).</summary>
@@ -258,6 +261,7 @@ internal sealed partial class OdpWriter : IDisposable
             new("meta.xml", "text/xml", Text: meta),
         };
         parts.AddRange(_media.Parts);
+        parts.AddRange(_objects);
         return parts;
     }
 
