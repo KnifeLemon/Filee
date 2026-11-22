@@ -241,6 +241,13 @@ internal sealed class Jpeg2000Blocks
             var rows = Math.Min(4, h - y0);
             for (var x = 0; x < w; x++)
             {
+                if (rows == 4)
+                {
+                    // A column of four with no significant neighbour has nothing to code in this pass.
+                    var top = (y0 + 1) * stride + x + 1;
+                    if (((flags[top] | flags[top + stride] | flags[top + 2 * stride] | flags[top + 3 * stride]) & Neighbours) == 0)
+                        continue;
+                }
                 for (var dy = 0; dy < rows; dy++)
                 {
                     var y = y0 + dy;
@@ -273,6 +280,13 @@ internal sealed class Jpeg2000Blocks
             var rows = Math.Min(4, h - y0);
             for (var x = 0; x < w; x++)
             {
+                if (rows == 4)
+                {
+                    // A column of four with nothing significant has nothing to refine.
+                    var top = (y0 + 1) * stride + x + 1;
+                    if (((flags[top] | flags[top + stride] | flags[top + 2 * stride] | flags[top + 3 * stride]) & Significant) == 0)
+                        continue;
+                }
                 for (var dy = 0; dy < rows; dy++)
                 {
                     var y = y0 + dy;

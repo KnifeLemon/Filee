@@ -48,18 +48,18 @@ internal static class Jpeg2000Wavelet
         if (w <= 0 || h <= 0)
             return a;
         Interleave(level, low, level.Bands[0].Ints, level.Bands[1].Ints, level.Bands[2].Ints, a);
-        var buffer = new int[Math.Max(w, h) + 2 * Pad];
-        var line = new int[Math.Max(w, h)];
-        for (var y = 0; y < h; y++)
-            Line53(a.AsSpan(y * w, w), level.X0, buffer);
-        for (var x = 0; x < w; x++)
+        // Rows, then columns, each line on its own: on all cores for large levels.
+        var size = Math.Max(w, h) + 2 * Pad;
+        Lines(h, (long)w * h, () => new int[size], (y, buffer) => Line53(a.AsSpan(y * w, w), level.X0, buffer));
+        Lines(w, (long)w * h, () => new int[2 * size], (x, buffer) =>
         {
+            var column = buffer.AsSpan(size, h);
             for (var y = 0; y < h; y++)
-                line[y] = a[y * w + x];
-            Line53(line.AsSpan(0, h), level.Y0, buffer);
+                column[y] = a[y * w + x];
+            Line53(column, level.Y0, buffer);
             for (var y = 0; y < h; y++)
-                a[y * w + x] = line[y];
-        }
+                a[y * w + x] = column[y];
+        });
         return a;
     }
 
@@ -70,19 +70,36 @@ internal static class Jpeg2000Wavelet
         if (w <= 0 || h <= 0)
             return a;
         Interleave(level, low, level.Bands[0].Floats, level.Bands[1].Floats, level.Bands[2].Floats, a);
-        var buffer = new float[Math.Max(w, h) + 2 * Pad];
-        var line = new float[Math.Max(w, h)];
-        for (var y = 0; y < h; y++)
-            Line97(a.AsSpan(y * w, w), level.X0, buffer);
-        for (var x = 0; x < w; x++)
+        // Rows, then columns, each line on its own: on all cores for large levels.
+        var size = Math.Max(w, h) + 2 * Pad;
+        Lines(h, (long)w * h, () => new float[size], (y, buffer) => Line97(a.AsSpan(y * w, w), level.X0, buffer));
+        Lines(w, (long)w * h, () => new float[2 * size], (x, buffer) =>
         {
+            var column = buffer.AsSpan(size, h);
             for (var y = 0; y < h; y++)
-                line[y] = a[y * w + x];
-            Line97(line.AsSpan(0, h), level.Y0, buffer);
+                column[y] = a[y * w + x];
+            Line97(column, level.Y0, buffer);
             for (var y = 0; y < h; y++)
-                a[y * w + x] = line[y];
-        }
+                a[y * w + x] = column[y];
+        });
         return a;
+    }
+
+    /// <summary>Runs <paramref name="line"/> for each of <paramref name="count"/> lines, in parallel when the level is large.</summary>
+    private static void Lines<T>(int count, long samples, Func<T[]> buffer, Action<int, T[]> line)
+    {
+        if (samples < 1 << 16)
+        {
+            var own = buffer();
+            for (var i = 0; i < count; i++)
+                line(i, own);
+            return;
+        }
+        Parallel.For(0, count, buffer, (i, _, own) =>
+        {
+            line(i, own);
+            return own;
+        }, _ => { });
     }
 
     /// <summary>

@@ -398,8 +398,8 @@ internal static partial class Jpeg2000Decoder
 
         private void Blocks(TileComponent tc)
         {
-            var decoder = new Jpeg2000Blocks();
             var reversible = tc.Style.Reversible;
+            var jobs = new List<(Band Band, CodeBlock Block)>();
             foreach (var res in tc.Resolutions)
             {
                 foreach (var band in res.Bands)
@@ -417,21 +417,30 @@ internal static partial class Jpeg2000Decoder
                         continue;
                     foreach (var pb in precinct.Bands)
                     {
-                        var band = pb.Band;
                         foreach (var block in pb.Blocks)
                         {
-                            if (block.Segments.Count == 0)
-                                continue;
-                            _cancellationToken.ThrowIfCancellationRequested();
-                            var planes = band.Planes - block.ZeroPlanes;
-                            if (planes <= 0)
-                                continue;
-                            var (w, h) = (block.X1 - block.X0, block.Y1 - block.Y0);
-                            var values = decoder.Decode(_body, block, w, h, band.Orientation, tc.Style.BlockStyle, planes);
-                            Place(values, w, h, block, band, tc.Roi, reversible);
+                            if (block.Segments.Count > 0 && pb.Band.Planes - block.ZeroPlanes > 0)
+                                jobs.Add((pb.Band, block));
                         }
                     }
                 }
+            }
+            // Code-blocks are decoded independently, each into its own part of its band: on all cores.
+            var options = new ParallelOptions { CancellationToken = _cancellationToken };
+            try
+            {
+                Parallel.ForEach(jobs, options, () => new Jpeg2000Blocks(), (job, _, decoder) =>
+                {
+                    var (band, block) = job;
+                    var (w, h) = (block.X1 - block.X0, block.Y1 - block.Y0);
+                    var values = decoder.Decode(_body, block, w, h, band.Orientation, tc.Style.BlockStyle, band.Planes - block.ZeroPlanes);
+                    Place(values, w, h, block, band, tc.Roi, reversible);
+                    return decoder;
+                }, _ => { });
+            }
+            catch (AggregateException ex) when (ex.InnerExceptions.Count > 0)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex.InnerExceptions[0]).Throw();
             }
         }
 

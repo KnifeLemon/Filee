@@ -2616,8 +2616,9 @@ each paragraph keeps its place on the page instead of joining a document's flow.
   OpenJPEG: its lossless files decode to the same pixels, lossy ones within one level. Left out: Part 2 and HTJ2K
   (Part 15) coding, more than 30 bit-planes a coefficient. Limits (`Jpeg2000Limits`): pixels and samples
   (`error.document_too_large`), components, tiles, layers, code-blocks, packets and visits of the progression
-  (`error.document_too_complex`); in a PDF at most `MaxGraphicsPixels` (25 million) pixels a picture. It is several
-  times slower than OpenJPEG: a 2400 × 1800 RGB picture takes about 3 s lossy (10:1) and 15 s lossless here.
+  (`error.document_too_complex`); in a PDF at most `MaxGraphicsPixels` (25 million) pixels a picture. Code-blocks
+  and wavelet lines are decoded on all cores; a 2400 × 1800 RGB picture takes 2–5 s (lossy or lossless, measured on
+  a machine busy with other builds), slower than OpenJPEG.
 - **Not rebuilt yet**: form fields and annotations, text inside pattern cells, vertical CJK writing. PDF → DOCX stays the route for a document that
   should flow.
 
