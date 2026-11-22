@@ -684,7 +684,7 @@ Built in (`Vector/Tracing`), no Potrace or other program: Filee's own code, writ
 steps (no code of Potrace, AutoTrace or VTracer is used). Every raster format ImageMagick reads (PNG, JPG, BMP, GIF,
 WEBP, TIFF, HEIC, PSD, RAW, DICOM, …) is traced, and other raster images through PNG (ICNS, APNG). Only raster images are traced:
 PDF, EPS, PS, AI, EMF/WMF, CDR, documents and videos are never redrawn from a rendering, so without a real vector
-route they have no SVG target (PDF → SVG, for example, needs LibreOffice). The first frame or page is used, turned upright, in sRGB. The SVG has the picture's pixel size
+route they have no SVG target (PDF → SVG, for example, is Filee's own vector writer, `Pdf/PdfSvgWriter.cs`, with LibreOffice as the fallback). The first frame or page is used, turned upright, in sRGB. The SVG has the picture's pixel size
 (`width`/`height`/`viewBox` in pixels), so it lines up with the original.
 
 - **Black and white** (*Line art to SVG*: logos, signatures, scans): pixels darker than Otsu's threshold are ink

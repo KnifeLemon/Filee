@@ -96,9 +96,11 @@ public class LibreOfficeFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
         // SVG → ODG: the drawing engine's own SVG reader, LibreOffice for a file it checks off (OdgWriterTests).
         Assert.Equal("drawing", Assert.Single(planner.Plan("svg", "odg")!.Steps).Converter.Id);
         Assert.Equal("libreoffice", Assert.Single(planner.Plan("svg", "odg", withoutChecked: true)!.Steps).Converter.Id);
-        Assert.Equal("libreoffice", Assert.Single(planner.Plan("pdf", "svg")!.Steps).Converter.Id);
+        // PDF → SVG is Filee's own (PdfSvgTests); LibreOffice's edge stays the fallback.
+        Assert.Equal("pdf-svg", Assert.Single(planner.Plan("pdf", "svg")!.Steps).Converter.Id);
+        Assert.Contains(LibreOffice.Edges, e => e is { From: "pdf", To: "svg" });
         // EPS goes through Ghostscript's PDF: Draw would only show the EPS preview picture.
-        Assert.Equal(["ghostscript", "libreoffice"], planner.Plan("eps", "svg")!.Steps.Select(s => s.Converter.Id));
+        Assert.Equal(["ghostscript", "pdf-svg"], planner.Plan("eps", "svg")!.Steps.Select(s => s.Converter.Id));
         Assert.DoesNotContain(LibreOffice.Edges, e => e.From is "eps" or "ps");
     }
 
@@ -167,10 +169,13 @@ public class LibreOfficeFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
         var pdf = await ConvertAsync(fodt, "pdf");
         using (var document = PdfDocument.Open(pdf))
             Assert.Equal(2, document.NumberOfPages);
-        var page = await File.ReadAllTextAsync(await ConvertAsync(pdf, "svg"), TestContext.Current.CancellationToken);
+        // LibreOffice as the fallback, without Filee's own PDF → SVG (which writes every page, PdfSvgTests).
+        var fallback = new ConverterCatalog(fx.Converters.Where(c => c.Id != "pdf-svg")) { Priority = fx.Catalog.Priority };
+        var first = await fx.ConvertAsync([pdf], new Preset { TargetFormat = "svg" }, fallback);
+        var page = await File.ReadAllTextAsync(first.Outputs.Single(), TestContext.Current.CancellationToken);
         Assert.Contains("Page one", page);
         Assert.DoesNotContain("Page two", page);
-        var second = await fx.ConvertAsync([pdf], new Preset { TargetFormat = "svg", Pdf = { PageRange = "2" } });
+        var second = await fx.ConvertAsync([pdf], new Preset { TargetFormat = "svg", Pdf = { PageRange = "2" } }, fallback);
         Assert.Contains("Page two", await File.ReadAllTextAsync(second.Outputs.Single(), TestContext.Current.CancellationToken));
     }
 
