@@ -70,16 +70,30 @@ public interface IPlatformServices
     /// <summary>
     /// <paramref name="paths"/> with every shortcut replaced by what it points to, for files that come into Filee
     /// (drops, the file manager's menu and selection). A broken shortcut stays, so it is reported as unsupported.
+    /// Where each shortcut was goes into <see cref="ShortcutFolders.Shared"/>, so its results are saved next to it.
     /// </summary>
-    IReadOnlyList<string> ResolveShortcuts(IReadOnlyList<string> paths) => ResolveShortcuts(paths, ShortcutTarget);
+    IReadOnlyList<string> ResolveShortcuts(IReadOnlyList<string> paths) =>
+        ResolveShortcuts(paths, ShortcutTarget, ShortcutFolders.Shared);
 
     /// <summary>
     /// Replaces each path by <paramref name="target"/>'s answer, if any, keeping the order. A shortcut and its target
-    /// brought in together, or two shortcuts to one file, give that file once.
+    /// brought in together, or two shortcuts to one file, give that file once. <paramref name="folders"/> learns the
+    /// folder of each shortcut; a file brought in as itself (also next to a shortcut to it) is saved next to itself.
     /// </summary>
-    static IReadOnlyList<string> ResolveShortcuts(IReadOnlyList<string> paths, Func<string, string?> target)
+    static IReadOnlyList<string> ResolveShortcuts(IReadOnlyList<string> paths, Func<string, string?> target,
+        ShortcutFolders? folders = null)
     {
         var resolved = paths.Select(p => target(p) ?? p).ToList();
+        if (folders is not null)
+        {
+            for (var i = 0; i < paths.Count; i++)
+            {
+                if (!ReferenceEquals(resolved[i], paths[i]))
+                    folders.Note(paths[i], resolved[i]);
+            }
+            foreach (var path in paths.Where((p, i) => ReferenceEquals(resolved[i], p)))
+                folders.Forget(path);
+        }
         return resolved.SequenceEqual(paths) ? paths : [.. resolved.Distinct(FileSystemPaths.Comparer)];
     }
 

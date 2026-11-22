@@ -28,6 +28,8 @@ ko: 비스듬히 스캔하거나 찍은 페이지로 만든 검색 가능한 PDF
 en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT with their text
 ko: 클립 자르기에서 음악을 클립이 끝날 때까지 반복할 수 있어요
 en: Cut a clip can loop its music until the clip ends
+ko: 바로 가기를 변환하면 결과가 대상 파일 옆이 아니라 바로 가기 옆에 저장돼요
+en: A shortcut's results are saved next to the shortcut, not next to the file it points to
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -51,6 +53,10 @@ en: Cut a clip can loop its music until the clip ends
   "Recognize text". PDFs with visible text read as before.
 - **rustyfiles** counts as a file manager for gestures (#1714): with the default *File managers and desktop* scope, a
   Ctrl + drag out of rustyfiles opens the donut, as in Explorer (Windows).
+- **A shortcut's results are saved next to the shortcut** (#1706). Converting a desktop shortcut (`.lnk`, or a Finder
+  alias on macOS) converts the file it points to, as before, but "next to the original" now means next to the
+  shortcut: a program's icon taken from its desktop shortcut lands on the desktop, not in the program's folder.
+  The same file dropped as itself is still saved next to itself.
 
 - **Cut a clip can loop its music** (#1432). With music on A2, **Loop music** next to **Music** plays the song again
   from its start each time it ends, until the clip ends, and fades it out with the clip. Off, the music stops when the
