@@ -71,6 +71,7 @@ public static class EngineRegistry
         new OdfVariantConverter(),
         new PdfTextConverter(),
         new PdfSlidesConverter(),
+        new PdfSvgConverter(),
         new PdfTablesConverter(),
         new PdfPostScriptConverter(loggers?.CreateLogger<PdfPostScriptConverter>()),
         new DocumentTablesConverter(),
