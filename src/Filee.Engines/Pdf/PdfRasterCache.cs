@@ -10,8 +10,8 @@
 // glyphs are drawn from their procedures (PdfType3Glyph), up to MaxType3Paints of their paints a page, then from
 // their text like the others.
 //
-// Pictures PdfPig can't decode are read with Filee's own decoders where they exist (PdfOwnPicture: JBIG2, JPEG behind
-// other filters).
+// Pictures PdfPig can't decode are read with Filee's own decoders where they exist (PdfOwnPicture: JBIG2, JPEG 2000,
+// JPEG behind other filters).
 
 using Filee.Engines.Cad;
 using SkiaSharp;

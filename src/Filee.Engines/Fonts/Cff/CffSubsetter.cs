@@ -8,6 +8,10 @@
 // in its program: with a name in the charset (name-keyed fonts; new names go into the String INDEX) or a CID
 // (CID-keyed fonts, drawn with the first font dictionary). The charset and FDSelect are written again in format 0; the
 // rest is copied as Subset copies it.
+//
+// Advances / SetAdvances read and set the advance widths the charstrings carry (the optional first operand of the
+// first stack-clearing operator, against the font dictionary's defaultWidthX / nominalWidthX), for PDF/A's rule that
+// a program's widths match the PDF's. A glyph whose width a subroutine would give is left alone.
 
 using System.Buffers.Binary;
 
@@ -173,6 +177,100 @@ internal static class CffSubsetter
             LocalSubrs = [.. parts.Privates.Select(p => p.Subrs)],
             Replace = replace,
         });
+    }
+
+    /// <summary>
+    /// Each glyph's advance width in the font's units, as its charstring gives it (defaultWidthX when it gives none);
+    /// null where a subroutine comes before the first stack-clearing operator (the width can't be told without running it).
+    /// </summary>
+    public static double?[] Advances(byte[] cff)
+    {
+        var font = CffFont.Parse(cff);
+        var parts = ReadParts(cff, font);
+        var advances = new double?[font.GlyphCount];
+        for (var gid = 0; gid < font.GlyphCount; gid++)
+        {
+            var dict = parts.Privates[Math.Min(font.FontDictIndex(gid), parts.Privates.Length - 1)].Dict;
+            if (WidthOperand(font.CharStrings[gid]) is var (has, value, _))
+                advances[gid] = has ? Value(dict, OpNominalWidthX) + value : Value(dict, OpDefaultWidthX);
+        }
+        return advances;
+    }
+
+    /// <summary>
+    /// The font with the advance widths of <paramref name="advances"/> (glyph → width in the font's units) written
+    /// into their charstrings; glyphs whose width a subroutine gives are left as they are.
+    /// </summary>
+    /// <exception cref="InvalidDataException">The font is damaged or laid out in a way this can't rewrite.</exception>
+    public static byte[] SetAdvances(byte[] cff, IReadOnlyDictionary<int, double> advances)
+    {
+        var font = CffFont.Parse(cff);
+        var parts = ReadParts(cff, font);
+        var charStrings = (byte[][])font.CharStrings.Clone();
+        foreach (var (gid, width) in advances)
+        {
+            if (gid < 0 || gid >= charStrings.Length || WidthOperand(charStrings[gid]) is not var (has, _, end))
+                continue;
+            var nominal = Value(parts.Privates[Math.Min(font.FontDictIndex(gid), parts.Privates.Length - 1)].Dict, OpNominalWidthX);
+            charStrings[gid] = [.. Type2Number((int)Math.Round(width - nominal)), .. charStrings[gid].AsSpan(has ? end : 0)];
+        }
+        return Write(cff, parts with { Global = font.GlobalSubrs, CharStrings = charStrings, LocalSubrs = [.. parts.Privates.Select(p => p.Subrs)] });
+    }
+
+    /// <summary>
+    /// Whether a charstring starts with a width operand, its value and where it ends; null when a subroutine call
+    /// (or anything but numbers) comes before the first stack-clearing operator.
+    /// </summary>
+    private static (bool Has, double Value, int End)? WidthOperand(byte[] code)
+    {
+        var count = 0;
+        var (first, firstEnd) = (0.0, 0);
+        var at = 0;
+        while (at < code.Length && count <= 48)
+        {
+            int b = code[at];
+            double value;
+            if (b == 28 && at + 2 < code.Length)
+            {
+                value = (short)(code[at + 1] << 8 | code[at + 2]);
+                at += 3;
+            }
+            else if (b is >= 32 and <= 246)
+            {
+                value = b - 139;
+                at++;
+            }
+            else if (b is >= 247 and <= 250 && at + 1 < code.Length)
+            {
+                value = (b - 247) * 256 + code[at + 1] + 108;
+                at += 2;
+            }
+            else if (b is >= 251 and <= 254 && at + 1 < code.Length)
+            {
+                value = -(b - 251) * 256 - code[at + 1] - 108;
+                at += 2;
+            }
+            else if (b == 255 && at + 4 < code.Length)
+            {
+                value = BinaryPrimitives.ReadInt32BigEndian(code.AsSpan(at + 1)) / 65536.0;
+                at += 5;
+            }
+            else
+            {
+                // An operator: the stack-clearing ones tell whether a width came first.
+                bool? has = b switch
+                {
+                    1 or 3 or 18 or 23 or 19 or 20 or 21 => count % 2 == 1, // stems, hint masks, rmoveto
+                    4 or 22 => count > 1, // vmoveto, hmoveto
+                    14 => count is 1 or 5, // endchar (a seac accent takes four)
+                    _ => null,
+                };
+                return has is { } width ? (width, first, firstEnd) : null;
+            }
+            if (count++ == 0)
+                (first, firstEnd) = (value, at);
+        }
+        return null;
     }
 
     /// <summary>A Type 2 charstring integer.</summary>
