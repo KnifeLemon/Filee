@@ -242,6 +242,7 @@
   "notice.geo_gpx_lossy": "GPX는 점·경로·트랙과 몇 가지 항목만 담아요. 다른 속성은 빠졌고 면은 트랙으로 바뀌었어요",
   "notice.geo_text_cut": "Shapefile 필드 길이(254바이트)보다 긴 글자는 잘렸어요",
   "notice.geo_columns_dropped": "Shapefile은 열을 255개까지만 담아서 나머지는 뺐어요",
+  "notice.xls_limits": "Excel 97–2003 통합 문서는 행 65,536개, 열 256개, 셀당 32,767자까지만 담아서 넘친 부분은 뺐어요",
   "notice.geo_rows_without_location": "위치를 읽을 수 없는 행은 도형 없이 저장했어요",
   "notice.geo_field_names": "Shapefile 필드 이름은 10자까지라서 일부를 줄였어요",
   "notice.geo_shapefile_split": "Shapefile은 한 종류의 도형만 담아서 점·선·면을 파일로 나눠 저장했어요",

@@ -242,6 +242,7 @@
   "notice.geo_gpx_lossy": "GPX 只能儲存點、路線和軌跡及少數字段，其他屬性已省略，面變成了軌跡",
   "notice.geo_text_cut": "部分文字超過 Shapefile 欄位長度（254 位元組），已被截斷",
   "notice.geo_columns_dropped": "Shapefile 最多 255 欄，多出的欄已省略",
+  "notice.xls_limits": "Excel 97–2003 活頁簿最多 65,536 列、256 欄，每個儲存格最多 32,767 個字元，超出的部分已省略",
   "notice.geo_rows_without_location": "部分列無法讀出位置，已不帶形狀儲存",
   "notice.geo_field_names": "Shapefile 欄位名最多 10 個字元，部分名稱已縮短",
   "notice.geo_shapefile_split": "Shapefile 只能儲存一種形狀，因此點、線、面被分別存成了多個檔案",

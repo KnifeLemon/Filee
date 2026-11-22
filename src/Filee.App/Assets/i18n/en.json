@@ -242,6 +242,7 @@
   "notice.geo_gpx_lossy": "GPX holds only points, routes and tracks with a few fields: other attributes were left out and polygons became tracks",
   "notice.geo_text_cut": "Some text was longer than a Shapefile field allows (254 bytes) and was cut",
   "notice.geo_columns_dropped": "A Shapefile holds 255 columns at most: the rest were left out",
+  "notice.xls_limits": "An Excel 97–2003 workbook holds 65,536 rows, 256 columns and 32,767 characters a cell at most: what didn't fit was left out",
   "notice.geo_rows_without_location": "Some rows have no usable location and were kept without a shape",
   "notice.geo_field_names": "Shapefile field names are 10 characters at most: some were shortened",
   "notice.geo_shapefile_split": "A Shapefile holds one kind of shape, so points, lines and polygons were saved as separate files",

@@ -236,6 +236,7 @@
   "notice.geo_gpx_lossy": "GPX hanya menampung titik, rute, dan trek dengan beberapa bidang: atribut lain tidak disertakan dan poligon diubah menjadi trek",
   "notice.geo_text_cut": "Beberapa teks lebih panjang dari yang diizinkan bidang Shapefile (254 bita) dan telah dipotong",
   "notice.geo_columns_dropped": "Shapefile menampung paling banyak 255 kolom: kolom sisanya tidak disertakan",
+  "notice.xls_limits": "Buku kerja Excel 97–2003 menampung paling banyak 65.536 baris, 256 kolom, dan 32.767 karakter per sel: yang tidak muat tidak disertakan",
   "notice.geo_rows_without_location": "Beberapa baris tidak memiliki koordinat yang dapat digunakan dan disimpan tanpa bentuk",
   "notice.geo_field_names": "Nama bidang Shapefile maksimal 10 karakter: beberapa nama telah dipersingkat",
   "notice.geo_shapefile_split": "Shapefile hanya menampung satu jenis bentuk, sehingga titik, garis, dan poligon disimpan sebagai file terpisah",

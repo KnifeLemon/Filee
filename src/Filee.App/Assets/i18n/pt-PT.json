@@ -242,6 +242,7 @@
   "notice.geo_gpx_lossy": "O GPX só guarda pontos, rotas e trajetos com alguns campos: os restantes atributos foram omitidos e os polígonos passaram a trajetos",
   "notice.geo_text_cut": "Algum texto excedia o limite de um campo Shapefile (254 bytes) e foi cortado",
   "notice.geo_columns_dropped": "Um Shapefile admite, no máximo, 255 colunas: as restantes foram omitidas",
+  "notice.xls_limits": "Um livro do Excel 97–2003 admite, no máximo, 65 536 linhas, 256 colunas e 32 767 caracteres por célula: o que não coube foi omitido",
   "notice.geo_rows_without_location": "Algumas linhas não têm uma localização utilizável e foram mantidas sem geometria",
   "notice.geo_field_names": "Os nomes dos campos Shapefile admitem, no máximo, 10 carateres: alguns foram abreviados",
   "notice.geo_shapefile_split": "Um Shapefile guarda apenas um tipo de geometria, pelo que os pontos, linhas e polígonos foram guardados em ficheiros separados",
