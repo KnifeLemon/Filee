@@ -4223,7 +4223,7 @@ Filee's download in `engines/7zip` (`7z.exe` on Windows, `7zz` elsewhere), never
 (`EngineEnvironment.UsesSystemCopy`: its version and switches are unknown, and the Engines page doesn't show it). Filee's download is the official x64 MSI unpacked with `msiexec /a` down to `7z.exe`,
 `7z.dll`, the licence and the readme on Windows, and 7-Zip's own `tar.xz` builds on Linux and macOS, pinned in
 `engines.json`. When it is there, 7-Zip is asked again when an in-process reader meets something it lacks (an
-unknown 7z or RAR method, a GNU sparse file, an interleaved ISO file, a Quantum CAB, an LHA method or ARJ volume
+unknown 7z or RAR method, a GNU sparse file, a Quantum CAB, an LHA method or ARJ volume
 Filee doesn't read, an NTFS or APFS volume) or damage it can't get past, and 7z archives with a method Filee doesn't
 decode (PPMd, RISC-V, …; see below) go to it first. Without it, such an archive is refused with
 `error.archive_needs_7zip` ("Install 7-Zip in Settings → Engines", with the missing feature as the detail; the
@@ -4364,7 +4364,7 @@ paths leaving the folder, bombs, entry floods) are final and never retried. Sett
   7-Zip installed also (refused with the "install 7-Zip" error): NTFS, APFS, HFSX and HFS volumes in disk images, DMGs with only a resource fork (no XML block list), UDF discs
   that use what DiscUtils.Udf lacks (virtual and sparable partitions, extended allocation descriptors), Quantum CABs
   and cabinet sets, LHA methods other than -lh0-, -lz4- and -lh4- to
-  -lh7-, multi-volume ARJ, GNU sparse files in TARs, interleaved ISO files, the El Torito boot image of an ISO (7-Zip
+  -lh7-, multi-volume ARJ, GNU sparse files in TARs, the El Torito boot image of an ISO (7-Zip
   shows it as `[BOOT]`; Filee's ISO reader leaves it out).
 - The ALZ and EGG readers are Filee's own code, written from the format descriptions of unalz (zlib licence), the
   `unalz` Rust crate, EggDotNet and unegg (MIT). ALZip's bzip2 has no `BZh` header, starts every block with `DLZ\x01`
