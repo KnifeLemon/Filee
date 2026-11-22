@@ -49,7 +49,7 @@ internal enum UprightGlyphs
 internal static class VerticalText
 {
     /// <summary>Where the ideographic em box's middle is above the baseline, in em.</summary>
-    private const float EmBoxMiddle = 0.38f;
+    internal const float EmBoxMiddle = 0.38f;
 
     /// <summary>How far the ideographic comma and full stop move up and right in vertical text, in em.</summary>
     private const float PunctuationShift = 0.6f;

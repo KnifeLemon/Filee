@@ -107,10 +107,7 @@ internal static class SlideOutput
             return;
         using var paint = new SKPaint { Color = run.Color, IsAntialias = true, Style = SKPaintStyle.Fill };
         canvas.Save();
-        if (run.Clip is { } clip)
-            canvas.ClipRect(clip);
-        if (run.Transform is { } transform)
-            canvas.Concat(in transform);
+        run.Prepare(canvas);
         canvas.DrawPath(outlines, paint);
         canvas.Restore();
     }

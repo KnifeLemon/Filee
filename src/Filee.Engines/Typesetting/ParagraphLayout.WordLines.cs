@@ -21,14 +21,17 @@
 // - "At least" (w:lineRule="atLeast") is at least the line single spacing gives the fonts, not the font size: "at least
 //   12 pt" keeps 12 pt Times New Roman's 13.8 pt.
 // - "Exactly" (w:lineRule="exact") and "at least" stand the text on the line's bottom: the baseline is the line's height
-//   less the descent of its fonts (as single spacing measures them), so the room an exact line has over its text goes
-//   above the text, and an exact line too small for its text loses the tops of its glyphs, which Word cuts off at the
-//   line's top (here they reach into the line above: the layout doesn't clip). ECMA-376 17.3.1.33 says only that an
-//   exact line is that high whatever its content, "clipped as necessary", and an at-least line that high unless its
-//   content needs more. Where an at-least line's extra room goes isn't measured in Word: it stands on the bottom as an
-//   exact line of that height does (its minimum is the line's height then). A multiple's extra room goes below.
-// - Line heights aren't rounded (13.799 pt for 12 pt Times New Roman): whether Word rounds them to twips or pixels
-//   isn't measured (no Word PDF of many such lines).
+//   less the descent of its fonts (as single spacing measures them). An exact line too small for its text and objects
+//   cuts off what reaches above its top (LineBox.ClipTop: glyphs, inline pictures and shading, also turned into vertical
+//   text or a turned text box), as ECMA-376 17.3.1.33 (line) says: "positioned at the bottom of the line (i.e. clipped
+//   from the top down)". The room an exact line has over its text goes above the text, as Word users see it ("exactly"
+//   puts its space above the text, "multiple" below); the standard says the text is centred in a line too large for it
+//   (17.3.1.33, and Part 4's noExtraLineSpacing, "do not center content on lines with exact line height", which then
+//   puts the room below), and MS-OI29500 notes no difference for Word. Not measured in a Word PDF either way, nor where
+//   an at-least line's extra room goes (the same rules in the standard; here it stands on the bottom as an exact line
+//   of that height does). A multiple's extra room goes below.
+// - Line heights aren't rounded (13.799 pt for 12 pt Times New Roman): the standard says nothing of it, and whether Word
+//   rounds them to twips or pixels isn't measured (no Word PDF of many such lines).
 // - Word's document grid (HLineHeight.GridPitch, set for the body's paragraphs that snap to it): a line's text takes
 //   whole grid lines, the text in their middle; the multiple is of that height.
 //
