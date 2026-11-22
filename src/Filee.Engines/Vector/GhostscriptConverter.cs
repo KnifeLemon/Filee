@@ -137,17 +137,19 @@ public sealed class GhostscriptConverter : IConverter, IImageTransformer, IPdfAr
     /// Rewrites a PDF as PDF/A-2b. Colours become RGB to match the sRGB output intent the standard asks for, fonts are
     /// embedded, and what PDF/A doesn't allow is left out rather than the file refused (policy 1). A tagged PDF loses its
     /// tags (pdfwrite doesn't carry them), which part B doesn't need. Ghostscript reads a copy whose visible annotations
-    /// print (<see cref="PdfAInput"/>): PDF/A leaves out every annotation that doesn't.
+    /// print (<see cref="PdfAInput"/>): PDF/A leaves out every annotation that doesn't. Printing annotations of a type
+    /// that some of them have no appearance for are drawn into the page (<see cref="PreservedAnnotationTypes"/>).
     /// </summary>
     /// <returns>Whether <paramref name="input"/> had form fields, which the PDF/A no longer has; null when that
     /// couldn't be read.</returns>
     internal static async Task<bool?> ConvertToPdfAAsync(string gs, string input, string output, string workDirectory, CancellationToken cancellationToken)
     {
         var scratch = NewScratch(workDirectory);
-        var intent = Path.Combine(scratch, "pdfa.ps");
-        await File.WriteAllTextAsync(intent, OutputIntent(ColorProfiles.SRGB.ToByteArray()), Encoding.ASCII, cancellationToken);
-        var target = Path.Combine(scratch, "out.pdf");
         var prepared = PdfAInput(input, scratch, cancellationToken);
+        var intent = Path.Combine(scratch, "pdfa.ps");
+        var script = OutputIntent(ColorProfiles.SRGB.ToByteArray()) + PreserveAnnotations(PreservedAnnotationTypes(prepared.WithoutAppearance));
+        await File.WriteAllTextAsync(intent, script, Encoding.ASCII, cancellationToken);
+        var target = Path.Combine(scratch, "out.pdf");
         await RunAsync(gs, PdfAArguments(), target, prepared.Copy ?? input, cancellationToken, progress: null, prelude: intent);
         File.Move(target, output, overwrite: true);
         return prepared.HasFormFields;
@@ -159,6 +161,36 @@ public sealed class GhostscriptConverter : IConverter, IImageTransformer, IPdfAr
     /// </summary>
     internal static Pdf.PdfAPreparation PdfAInput(string input, string folder, CancellationToken cancellationToken) =>
         Pdf.PdfPrintableAnnotations.Prepare(input, folder, cancellationToken);
+
+    /// <summary>
+    /// The annotation types Ghostscript 10 keeps as annotations when it writes a PDF (its default; every other type is
+    /// drawn into the page or left out), measured with pdfwrite in PDF/A mode.
+    /// </summary>
+    internal static readonly IReadOnlyList<string> DefaultPreservedAnnotationTypes =
+    [
+        "/Text", "/Link", "/FreeText", "/Line", "/Square", "/Circle", "/PolyLine", "/Highlight", "/Underline", "/Squiggly",
+        "/StrikeOut", "/Stamp", "/Ink", "/FileAttachment", "/Sound", "/Movie", "/TrapNet",
+    ];
+
+    /// <summary>
+    /// The annotation types Ghostscript should keep for PDF/A: its default ones but those that some printing annotation
+    /// has no appearance stream for (#1566), so annotations of those types are drawn into the page with their look
+    /// instead of copied without the appearance PDF/A wants. Null when Ghostscript's default can stay. Flattening goes by
+    /// type, so an annotation with an appearance is drawn too when another of its type has none: it keeps its look and
+    /// loses only what it does as an annotation.
+    /// </summary>
+    internal static IReadOnlyList<string>? PreservedAnnotationTypes(IReadOnlySet<string> withoutAppearance) =>
+        DefaultPreservedAnnotationTypes.Any(withoutAppearance.Contains)
+            ? [.. DefaultPreservedAnnotationTypes.Where(type => !withoutAppearance.Contains(type))]
+            : null;
+
+    /// <summary>
+    /// PostScript that sets the annotation types Ghostscript keeps (pdfwrite's <c>PreserveAnnotTypes</c>), for the end of
+    /// the PDF/A prelude; "" for its default. Only names from <see cref="DefaultPreservedAnnotationTypes"/> come here,
+    /// never one read from the PDF.
+    /// </summary>
+    internal static string PreserveAnnotations(IReadOnlyList<string>? types) =>
+        types is null ? "" : $"/PreserveAnnotTypes [{string.Join(' ', types)}] def\n";
 
     internal static List<string> PdfAArguments() =>
         ["-sDEVICE=pdfwrite", "-dPDFA=2", "-dPDFACompatibilityPolicy=1", "-sColorConversionStrategy=RGB", "-dAutoRotatePages=/None"];

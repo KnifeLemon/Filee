@@ -1127,6 +1127,12 @@ file became and once on a merged PDF, so the box means the same whichever engine
   output intent; the profile is Magick.NET's sRGB, written into the prelude as a hex string so safe mode needn't read
   a file. Colours become RGB, fonts are embedded, what PDF/A forbids is left out (policy 1), and a tagged PDF loses its
   tags (part B doesn't need them).
+- **Annotations** (`PdfPrintableAnnotations`): Ghostscript reads a copy in which visible annotations print, since PDF/A
+  keeps only printing ones. PDF/A also wants an appearance stream on every annotation but links, popups and zero-size
+  ones, which Ghostscript doesn't make (#1566): when a printing annotation has none, the prelude ends with
+  `/PreserveAnnotTypes` set to Ghostscript's default types without that annotation's type, so annotations of that type
+  are drawn into the page with their look and the rest (links included) stay annotations. This goes by type: a
+  highlight with an appearance next to one without is drawn into the page too.
 - **Without Ghostscript**: a preset whose files are all PDFs is greyed out with the usual engine reason. Other files
   are converted and the PDF is left as it is, with `notice.pdfa_needs_ghostscript` in the result, unless LibreOffice
   made it PDF/A.

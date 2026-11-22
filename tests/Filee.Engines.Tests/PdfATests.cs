@@ -2,7 +2,8 @@
 // trips (skipped when Ghostscript isn't installed): PDF → PDF/A, a picture → PDF/A, and a PDF/A from Skia kept as it is.
 // Annotations without the print flag (#1496): which get it in the copy Ghostscript reads, what else the copy keeps, when
 // no copy is made, and that links and document information come through to the PDF/A. Form fields: which PDFs count as
-// having them, their appearances kept as page content and what archiving reports. Every input is made in the test.
+// having them, their appearances kept as page content and what archiving reports. Annotations without an appearance
+// stream (#1566): which types are found, and that Ghostscript draws them into the page. Every input is made in the test.
 
 using System.Text;
 using System.Xml.Linq;
@@ -672,7 +673,10 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(new PdfAPreparation(null, false), PdfPrintableAnnotations.Prepare(input, fx.NewFolder(), Ct));
     }
 
-    /// <summary>Two pages with links of every kind and markup, none of which says it prints.</summary>
+    /// <summary>
+    /// Two pages with links of every kind and markup, none of which says it prints. The markup has appearance streams,
+    /// so it stays an annotation (markup without one is drawn into the page, see #1566's tests).
+    /// </summary>
     private static string LinkedLetter(string folder) =>
         RawPdf.Write(Path.Combine(folder, "linked.pdf"),
         [
@@ -686,10 +690,13 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
             "<< /Type /Annot /Subtype /Link /Rect [72 670 200 690] /Dest [4 0 R /XYZ 72 500 1.5] >>",
             "<< /Type /Annot /Subtype /Link /Rect [72 640 200 660] /F 0 /A << /S /URI /URI (https://example.com/zero) >> >>",
             "<< /Type /Annot /Subtype /Link /Rect [72 610 200 630] /F 8 /A << /S /URI /URI (https://example.com/nozoom) >> >>",
-            "<< /Type /Annot /Subtype /Highlight /Rect [70 590 280 710] /QuadPoints [72 700 272 700 72 600 272 600] /C [1 1 0] >>",
+            "<< /Type /Annot /Subtype /Highlight /Rect [70 590 280 710] /QuadPoints [72 700 272 700 72 600 272 600] /C [1 1 0] /AP << /N 15 0 R >> >>",
             "<< /Type /Annot /Subtype /Link /Rect [400 100 500 120] /A << /S /URI /URI (https://example.com/shared) >> >>",
-            "<< /Type /Annot /Subtype /Ink /Rect [300 300 400 400] /InkList [[300 300 350 380 400 320]] /C [1 0 0] >>",
-            "<< /Type /Annot /Subtype /Line /Rect [300 450 400 500] /L [300 460 400 490] /C [0 0 1] >>",
+            "<< /Type /Annot /Subtype /Ink /Rect [300 300 400 400] /InkList [[300 300 350 380 400 320]] /C [1 0 0] /AP << /N 16 0 R >> >>",
+            "<< /Type /Annot /Subtype /Line /Rect [300 450 400 500] /L [300 460 400 490] /C [0 0 1] /AP << /N 17 0 R >> >>",
+            RawPdf.Stream("/Type /XObject /Subtype /Form /BBox [70 590 280 710]", "1 1 0 rg 72 600 200 100 re f"),
+            RawPdf.Stream("/Type /XObject /Subtype /Form /BBox [300 300 400 400]", "1 0 0 RG 300 300 m 350 380 l 400 320 l S"),
+            RawPdf.Stream("/Type /XObject /Subtype /Form /BBox [300 450 400 500]", "0 0 1 RG 300 460 m 400 490 l S"),
         ]);
 
     private static string? Uri(PdfDictionary annotation) =>
@@ -732,6 +739,123 @@ public class PdfATests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(1, PageIndex(after, destination.Elements[0]));
         Assert.Equal("/XYZ", destination.Elements[1].ToString());
         Assert.Equal([72, 500, 1.5], destination.Elements.Skip(2).Select(Number));
+    }
+
+    // ---- Annotations without an appearance stream (#1566): PDF/A wants one, so Ghostscript draws their types into the page ----
+
+    private static IEnumerable<string> Sorted(IReadOnlySet<string> types) => types.Order(StringComparer.Ordinal);
+
+    [Fact]
+    public void Printing_annotations_without_an_appearance_are_found_by_type()
+    {
+        var input = OnePage(Path.Combine(fx.NewFolder(), "appearances.pdf"),
+        [
+            Annot("Highlight", "highlight", "/QuadPoints [100 120 200 120 100 100 200 100]"),
+            Annot("FreeText", "freetext", "/F 4 /DA (/Helv 12 Tf 0 g) /Contents (Note)"),
+            Annot("Square", "square", "/AP << /N 25 0 R >>"),
+            Annot("Text", "text-states", "/AS /Off /AP << /N << /Off 25 0 R >> >>"), // appearance states count
+            Annot("Ink", "ink-ap-without-n", "/InkList [[100 100 200 120]] /AP << /D 25 0 R >>"), // only a down appearance
+            UriLink("link"), Annot("Popup", "popup"), Annot("Widget", "widget", "/FT /Tx /T (field)"),
+            Annot("Circle", "hidden", "/F 2"), Annot("Polygon", "noview", "/F 36"),
+            "<< /Type /Annot /Subtype /Caret /Rect [100 100 100 120] /NM (zero-width) >>",
+            "<< /Type /Annot /Subtype /Stamp /Rect [100 100 200 100] /NM (zero-height) >>",
+            Annot("Line", "odd-flags", "/F 0.5 /L [100 100 200 120]"), // left alone, as for the print flag
+        ], extra: Enumerable.Repeat("null", 7).Append(RawPdf.Stream("/Type /XObject /Subtype /Form /BBox [0 0 100 20]", "0 0 1 rg 0 0 100 20 re f")).ToList());
+
+        var prepared = PdfPrintableAnnotations.Prepare(input, fx.NewFolder(), Ct);
+
+        Assert.NotNull(prepared.Copy);
+        Assert.Equal(["/FreeText", "/Highlight", "/Ink"], Sorted(prepared.WithoutAppearance));
+    }
+
+    [Fact]
+    public void Annotations_without_an_appearance_are_found_when_no_copy_is_needed()
+    {
+        var input = OnePage(Path.Combine(fx.NewFolder(), "printing.pdf"),
+            [Annot("Highlight", "highlight", "/F 4 /QuadPoints [100 120 200 120 100 100 200 100]"), UriLink("link", "/F 4")]);
+        var folder = fx.NewFolder();
+
+        var prepared = PdfPrintableAnnotations.Prepare(input, folder, Ct);
+
+        Assert.Null(prepared.Copy);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(folder));
+        Assert.Equal(["/Highlight"], Sorted(prepared.WithoutAppearance));
+        var read = GhostscriptConverter.PdfAInput(input, fx.NewFolder(), Ct);
+        Assert.Equal((prepared.Copy, prepared.HasFormFields), (read.Copy, read.HasFormFields));
+        Assert.Equal(["/Highlight"], Sorted(read.WithoutAppearance));
+    }
+
+    [Fact]
+    public void Without_the_copy_only_annotations_that_printed_already_count()
+    {
+        var input = OnePage(Path.Combine(fx.NewFolder(), "mixed.pdf"),
+        [
+            Annot("Highlight", "printing", "/F 4 /QuadPoints [100 120 200 120 100 100 200 100]"),
+            Annot("Square", "not-printing"), // Ghostscript leaves it out of the PDF/A when it reads the PDF itself
+        ]);
+        var folder = fx.NewFolder();
+        Directory.CreateDirectory(Path.Combine(folder, "printable.pdf")); // where the copy would go
+
+        var prepared = PdfPrintableAnnotations.Prepare(input, folder, Ct);
+
+        Assert.Null(prepared.Copy);
+        Assert.Equal(["/Highlight"], Sorted(prepared.WithoutAppearance));
+        Assert.Equal(["/Highlight", "/Square"], Sorted(PdfPrintableAnnotations.Prepare(input, fx.NewFolder(), Ct).WithoutAppearance));
+    }
+
+    [Fact]
+    public void Ghostscript_keeps_its_default_annotation_types_but_those_without_an_appearance()
+    {
+        Assert.Null(GhostscriptConverter.PreservedAnnotationTypes(new HashSet<string>()));
+        Assert.Null(GhostscriptConverter.PreservedAnnotationTypes(new HashSet<string> { "/Caret", "/Polygon" })); // drawn by default
+        Assert.Equal("", GhostscriptConverter.PreserveAnnotations(null));
+
+        var types = GhostscriptConverter.PreservedAnnotationTypes(new HashSet<string> { "/Highlight", "/FreeText", "/Caret" });
+
+        Assert.NotNull(types);
+        Assert.Equal(GhostscriptConverter.DefaultPreservedAnnotationTypes.Except(["/Highlight", "/FreeText"]), types);
+        Assert.Contains("/Link", types);
+        Assert.Equal($"/PreserveAnnotTypes [{string.Join(' ', types)}] def\n", GhostscriptConverter.PreserveAnnotations(types));
+        Assert.True(GhostscriptConverter.PreserveAnnotations(types).All(char.IsAscii));
+    }
+
+    /// <summary>
+    /// A page with a highlight and a free text note without appearances, a square with one, and a link, none printing.
+    /// </summary>
+    private static string MarkupWithoutAppearances(string folder) =>
+        OnePage(Path.Combine(folder, "markup.pdf"),
+        [
+            "<< /Type /Annot /Subtype /Highlight /Rect [70 590 280 710] /QuadPoints [72 700 272 700 72 600 272 600] /C [1 1 0] /NM (highlight) >>",
+            "<< /Type /Annot /Subtype /FreeText /Rect [300 600 500 640] /DA (/Helv 12 Tf 0 g) /Contents (Typed note) /NM (freetext) >>",
+            "<< /Type /Annot /Subtype /Square /Rect [300 300 400 400] /C [1 0 0] /AP << /N 9 0 R >> /NM (square) >>",
+            UriLink("link"),
+        ], extra: [RawPdf.Stream("/Type /XObject /Subtype /Form /BBox [300 300 400 400]", "1 0 0 RG 301 301 98 98 re S")]);
+
+    [Fact]
+    public async Task Markup_without_an_appearance_is_drawn_into_the_pdf_a_and_links_stay()
+    {
+        Assert.SkipUnless(GhostscriptInstalled, GhostscriptMissing);
+        var dir = fx.NewFolder();
+        var source = MarkupWithoutAppearances(dir);
+        var bytes = File.ReadAllBytes(source);
+
+        var job = await fx.ConvertAsync([source], BuiltInData.CreatePresets().Single(p => p.Id == BuiltInData.PdfAId));
+
+        AssertDone(job);
+        var output = job.Outputs.Single();
+        Assert.Equal(bytes, File.ReadAllBytes(source));
+        Assert.True(GhostscriptConverter.DeclaresPdfA(output));
+        AssertOutputIntent(output);
+        using var document = PdfReader.Open(output, PdfDocumentOpenMode.Import);
+        var annotations = Annotations(document.Pages[0]);
+        Assert.Equal(["/Link", "/Square"], annotations.Select(a => a.Elements.GetName("/Subtype")).Order(StringComparer.Ordinal));
+        Assert.Equal("https://example.com/link", Uri(annotations.Single(a => a.Elements.GetName("/Subtype") == "/Link")));
+        // ISO 19005-2 6.3.3: every annotation kept but links has a normal appearance.
+        Assert.All(annotations.Where(a => a.Elements.GetName("/Subtype") != "/Link"),
+            a => Assert.IsAssignableFrom<PdfDictionary>(V(Assert.IsAssignableFrom<PdfDictionary>(V(a.Elements["/AP"])).Elements["/N"])));
+        // The note's text is on the page now, drawn by Ghostscript from the annotation.
+        using var pig = PigDocument.Open(output);
+        Assert.Contains("Typednote", Words(pig.GetPage(1).Text), StringComparison.Ordinal);
     }
 
     private const string Xmp = """

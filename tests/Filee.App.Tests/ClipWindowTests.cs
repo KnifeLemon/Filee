@@ -672,13 +672,18 @@ public class ClipWindowTests
             Pump();
             Assert.InRange(vm.Music!.Offset, 4.7, 5.3);
 
+            // Loop music (#1432) is a switch shown with the music.
+            Assert.False(vm.LoopMusic);
+            vm.LoopMusic = true;
+            Assert.True(vm.Music!.Loop);
+
             // Playing plays it too; saving writes it.
             Press(window, Key.Space);
             WaitFor(() => frames.Played.Count == 1 && !vm.IsPlaying);
             Assert.Equal("song.mp3", Path.GetFileName(frames.Played[0].Music!.Path));
             Press(window, Key.Enter);
             var music = Assert.Single(exports).Preset.Media.Clip!.Music!;
-            Assert.Equal((0.4, 40.0), (music.Volume, music.Length));
+            Assert.Equal((0.4, 40.0, true), (music.Volume, music.Length, music.Loop));
         });
     }
 
