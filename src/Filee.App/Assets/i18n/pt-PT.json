@@ -1171,7 +1171,7 @@
   "presets.hardware_encoding": "Utilizar aceleração por hardware (chip gráfico)",
   "presets.hardware_encoding_hint": "Codifica H.264, HEVC e AV1 no chip gráfico.\nMuito mais rápido e com menor consumo de energia.\nQualidade ligeiramente inferior para o mesmo tamanho de ficheiro.\nSem um chip compatível (o AV1 exige um chip recente), o vídeo é codificado da forma habitual.",
   "presets.turn_upright": "Endireitar vídeos do telemóvel",
-  "presets.turn_upright_hint": "Codifica novamente vídeos verticais do telemóvel para que sejam reproduzidos direitos em televisores e leitores que os mostram de lado.\nUsa a mesma qualidade da predefinição, mas demora mais tempo.\nVídeos sem indicação de rotação não são afetados.",
+  "presets.turn_upright_hint": "Codifica novamente vídeos verticais do telemóvel para que sejam reproduzidos direitos em televisores e leitores que os mostram de lado.\nGuarda em alta qualidade (os vídeos HEVC continuam em HEVC), mas demora mais tempo.\nVídeos sem indicação de rotação não são afetados.",
   "presets.caption_video": "Gerar legendas (Whisper)",
   "presets.caption_video_hint": "Transcreve a fala de vídeos e áudios para um ficheiro de legendas SRT usando Whisper. Com o formato TXT, só o texto falado é escrito, sem tempos.",
   "presets.spoken_language": "Idioma falado",

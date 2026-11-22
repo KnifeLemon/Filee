@@ -80,8 +80,9 @@ en: Video presets can turn vertical phone videos upright without lowering the qu
 
 - **Turn phone videos upright** (#1586). A video preset can now turn vertical phone videos upright without lowering
   their quality (*Turn phone videos upright* in the video card, off by default). Videos saved with a rotation note are
-  encoded again at the preset's quality so the picture itself stands upright on TVs and players that ignore the note;
-  videos without a rotation note are still copied as usual.
+  encoded again so the picture itself stands upright on TVs and players that ignore the note: at High quality (Small
+  stays Small), and an HEVC video stays HEVC with the default codec, so an iPhone's 10-bit HDR video keeps its 10 bits
+  and colour tags. Videos without a rotation note are still copied as usual.
 
 ## 2.5.0
 

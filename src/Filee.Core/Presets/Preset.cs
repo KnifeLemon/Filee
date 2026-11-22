@@ -1508,9 +1508,10 @@ public sealed class MediaOptions
     public bool HardwareEncoding { get; set; }
 
     /// <summary>
-    /// Encode a video saved with a rotation note (phones record portrait video this way) again at the preset's quality
-    /// so its picture itself stands upright and plays upright on TVs and players that ignore the note (#1586). Videos
-    /// without a rotation note are still copied as usual. Off by default (and for presets saved before it existed), so
+    /// Encode a video saved with a rotation note (phones record portrait video this way) again so its picture itself
+    /// stands upright and plays upright on TVs and players that ignore the note (#1586), at High quality and, with the
+    /// default codec, in HEVC for an HEVC video (MediaEncoding.UprightOptions). Videos without a rotation note are
+    /// still copied as usual. Off by default (and for presets saved before it existed), so
     /// results never change without the user asking for it.
     /// </summary>
     public bool TurnUpright { get; set; }
