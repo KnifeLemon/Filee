@@ -166,7 +166,7 @@ public class MediaToolRealTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Clips_with_newlines_in_paths_fall_back_to_encoding_without_splicing_directives()
     {
-            Assert.SkipUnless(!OperatingSystem.IsWindows(), "POSIX filenames with line breaks are not valid on Windows.");
+        Assert.SkipUnless(!OperatingSystem.IsWindows(), "POSIX filenames with line breaks are not valid on Windows.");
         SkipUnlessInstalled();
         var folder = fx.NewFolder();
         string[] h264 = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac"];
