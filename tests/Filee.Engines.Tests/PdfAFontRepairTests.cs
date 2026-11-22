@@ -411,6 +411,186 @@ public class PdfAFontRepairTests(EngineFixture fx) : IClassFixture<EngineFixture
         Assert.NotEmpty(font.Outline(font.GlyphOfName("A")));
     }
 
+    // ---- OpenType programs, and Type 1 / CFF widths
+
+    /// <summary>
+    /// An OpenType program with CFF outlines (FontFile3 /OpenType) under a simple Type 1 font whose encoding names
+    /// "zzz", which it lacks, and gives "A" a width its program doesn't have; and a CID-keyed one under a CIDFontType0
+    /// drawing a CID it lacks and one whose W width its program doesn't have.
+    /// </summary>
+    private static string OpenTypePage(string folder, out int lackingCid, out int presentCid)
+    {
+        static PdfName N(string name) => PostScriptPdfBuilder.Name(name);
+        static PdfItem I(double value) => PostScriptPdfBuilder.Number(value);
+        using var b = new PostScriptPdfBuilder();
+        var nameKeyed = FontBytes("FileeTest-NameKeyed.otf");
+        var simple = b.SimpleFont("Type1", "FileeTestNameKeyed", b.Dictionary(("Type", N("Encoding")), ("Differences", b.Array(I(65), N("A"), N("zzz")))),
+            b.Descriptor("FileeTestNameKeyed", 4, "FontFile3", b.Stream(nameKeyed, false, ("Subtype", N("OpenType")))), c => c == 66 ? 333 : 777);
+
+        var cid = FontBytes("FileeTest-CID.otf");
+        var charset = Filee.Engines.Fonts.Cff.CffFont.Parse(Filee.Engines.Fonts.SfntFont.Read(cid).Require("CFF ")).Charset!;
+        lackingCid = charset.Max() + 5;
+        presentCid = charset[1];
+        var cidFont = b.Object(("Type", N("Font")), ("Subtype", N("CIDFontType0")), ("BaseFont", N("FileeTest")),
+            ("CIDSystemInfo", b.Dictionary(("Registry", new PdfString("Adobe")), ("Ordering", new PdfString("Identity")), ("Supplement", I(0)))),
+            ("FontDescriptor", b.Descriptor("FileeTest", 4, "FontFile3", b.Stream(cid, false, ("Subtype", N("OpenType")))).Reference!),
+            ("DW", I(1000)), ("W", b.Array(I(presentCid), b.Numbers(777), I(lackingCid), b.Numbers(555))));
+        var composite = b.Object(("Type", N("Font")), ("Subtype", N("Type0")), ("BaseFont", N("FileeTest")),
+            ("Encoding", N("Identity-H")), ("DescendantFonts", b.Array(cidFont.Reference!)));
+        var content = $"BT /F1 40 Tf 40 700 Td (AB) Tj ET\nBT /F2 40 Tf 40 600 Td <{presentCid:X4}{lackingCid:X4}> Tj ET\n";
+        b.Page(612, 792, content, b.Resources(("Font", "F1", simple), ("Font", "F2", composite)));
+        return b.Save(folder, "opentype.pdf");
+    }
+
+    /// <summary>A CFF glyph's advance in 1/1000 em, and the OpenType program's hmtx advance in 1/1000 em.</summary>
+    private static (double Cff, double Hmtx) Advances(byte[] openType, int glyph)
+    {
+        var sfnt = Filee.Engines.Fonts.SfntFont.Read(openType);
+        var cff = sfnt.Require("CFF ");
+        var matrix = Filee.Engines.Fonts.Cff.CffFont.Parse(cff).FontMatrices[0][0];
+        var unitsPerEm = Filee.Engines.Fonts.FontTables.UnitsPerEm(sfnt.Require("head"));
+        var hmtx = sfnt.Require("hmtx");
+        var metrics = Filee.Engines.Fonts.FontTables.NumberOfMetrics(sfnt.Require("hhea"));
+        var advance = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(hmtx.AsSpan(Math.Min(glyph, metrics - 1) * 4));
+        return (Filee.Engines.Fonts.Cff.CffSubsetter.Advances(cff)[glyph]!.Value * matrix * 1000, advance * 1000.0 / unitsPerEm);
+    }
+
+    [Fact]
+    public void Opentype_cff_programs_get_the_glyphs_they_lack_and_the_dictionarys_widths()
+    {
+        var path = OpenTypePage(fx.NewFolder(), out var lackingCid, out var presentCid);
+
+        Assert.Equal(PdfArchiveOutcome.Archived, Archive(path, PdfATestFonts.None));
+
+        PdfA2bChecks.Assert2b(path);
+        using var document = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        // Name-keyed: "zzz" added with its width, "A" given the dictionary's 777 in its charstring and in hmtx.
+        var simple = Program(Font(document), "/FontFile3");
+        var program = Filee.Engines.Pdf.PostScript.CffProgram.Read(simple);
+        Assert.True(program.GlyphOfName("zzz") > 0);
+        Assert.Empty(program.Outline(program.GlyphOfName("zzz")));
+        Assert.NotEmpty(program.Outline(program.GlyphOfName("A")));
+        var (cffA, hmtxA) = Advances(simple, program.GlyphOfName("A"));
+        Assert.InRange(cffA, 776, 778);
+        Assert.InRange(hmtxA, 776, 778);
+        var (cffZ, hmtxZ) = Advances(simple, program.GlyphOfName("zzz"));
+        Assert.InRange(cffZ, 332, 334);
+        Assert.InRange(hmtxZ, 332, 334);
+        var file = (PdfDictionary)V(((PdfDictionary)V(Font(document).Elements["/FontDescriptor"])!).Elements["/FontFile3"])!;
+        Assert.Equal("/OpenType", file.Elements.GetName("/Subtype"));
+        // CID-keyed: the lacking CID added, the present one at 777.
+        var cidFont = (PdfDictionary)V(((PdfArray)V(Font(document, "F2").Elements["/DescendantFonts"])!).Elements[0])!;
+        var cidProgram = Program(cidFont, "/FontFile3");
+        var cid = Filee.Engines.Pdf.PostScript.CffProgram.Read(cidProgram);
+        Assert.True(cid.GlyphOfCid(lackingCid) > 0);
+        Assert.InRange(Advances(cidProgram, cid.GlyphOfCid(presentCid)).Cff, 776, 778);
+        Assert.InRange(Advances(cidProgram, cid.GlyphOfCid(lackingCid)).Hmtx, 554, 556);
+    }
+
+    [Fact]
+    public void Type_1_and_cff_advances_follow_the_dictionarys_widths()
+    {
+        static PdfName N(string name) => PostScriptPdfBuilder.Name(name);
+        static PdfItem I(double value) => PostScriptPdfBuilder.Number(value);
+        var folder = fx.NewFolder();
+        string path;
+        using (var b = new PostScriptPdfBuilder())
+        {
+            // Codes 65 and 66 both draw "A": the program takes 65's width, the dictionary 65's for 66 too.
+            var type1 = b.Type1File(PostScriptPdfBuilder.Type1Program("FileeTestType1"));
+            var type1Font = b.SimpleFont("Type1", "FileeTestType1", b.Dictionary(("BaseEncoding", N("WinAnsiEncoding")), ("Differences", b.Array(I(65), N("A"), N("A")))),
+                b.Descriptor("FileeTestType1", 32, "FontFile", type1), c => c == 65 ? 700 : c == 66 ? 720 : 620);
+            var nameKeyed = Filee.Engines.Fonts.SfntFont.Read(FontBytes("FileeTest-NameKeyed.otf")).Require("CFF ");
+            var cffFont = b.SimpleFont("Type1", "FileeTestNameKeyed", b.Dictionary(("Type", N("Encoding")), ("Differences", b.Array(I(65), N("A")))),
+                b.Descriptor("FileeTestNameKeyed", 4, "FontFile3", b.Stream(nameKeyed, false, ("Subtype", N("Type1C")))), _ => 650);
+            b.Page(612, 792, "BT /F1 40 Tf 40 700 Td (AB) Tj ET\nBT /F2 40 Tf 40 600 Td (A) Tj ET\n", b.Resources(("Font", "F1", type1Font), ("Font", "F2", cffFont)));
+            path = b.Save(folder, "widths.pdf");
+        }
+        double Before(int font)
+        {
+            using var before = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+            return font == 1
+                ? Filee.Engines.Pdf.PostScript.Type1Program.Read(Program(Font(before), "/FontFile")).Outline("A")!.Value.Width
+                : Filee.Engines.Fonts.Cff.CffSubsetter.Advances(Program(Font(before, "F2"), "/FontFile3"))[1]!.Value;
+        }
+        Assert.NotInRange(Before(1), 699, 701);
+
+        Assert.Equal(PdfArchiveOutcome.Archived, Archive(path, PdfATestFonts.None));
+
+        PdfA2bChecks.Assert2b(path);
+        using var document = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        var type1Program = Filee.Engines.Pdf.PostScript.Type1Program.Read(Program(Font(document), "/FontFile"));
+        Assert.Equal(700, type1Program.Outline("A")!.Value.Width, 0.5);
+        Assert.NotEmpty(type1Program.Outline("A")!.Value.Contours);
+        var widths = (PdfArray)V(Font(document).Elements["/Widths"])!;
+        var first = Font(document).Elements.GetInteger("/FirstChar");
+        Assert.Equal(700, Number(widths.Elements[66 - first]), 0.5);
+        var cff = Program(Font(document, "F2"), "/FontFile3");
+        var cffProgram = Filee.Engines.Pdf.PostScript.CffProgram.Read(cff);
+        Assert.Equal(650, Filee.Engines.Fonts.Cff.CffSubsetter.Advances(cff)[cffProgram.GlyphOfName("A")]!.Value, 0.5);
+        Assert.NotEmpty(cffProgram.Outline(cffProgram.GlyphOfName("A")));
+    }
+
+    // ---- the CMap files PdfPig carries
+
+    [Fact]
+    public void Pdfpig_still_carries_the_cmap_files_filee_reads_widths_from()
+    {
+        string[] needed = ["UniKS-UCS2-H", "UniKS-UCS2-V", "UniKS-UTF16-H", "UniJIS-UCS2-H", "UniJIS-UTF16-V", "UniGB-UCS2-H", "UniGB-UTF16-H", "UniCNS-UCS2-H", "UniCNS-UTF16-V"];
+        var missing = needed.Where(n => !PdfPredefinedCMaps.Available.Contains(n)).ToList();
+        // Should this fail after a PdfPig upgrade: its CMap resources moved or went, and PDF/A's widths of Unicode
+        // CMap fonts fall back to the rule without them. PdfPredefinedCMaps must look where they are now.
+        Assert.True(missing.Count == 0,
+            $"PdfPig ({typeof(UglyToad.PdfPig.PdfDocument).Assembly.GetName().Version}) no longer carries the CMap files {string.Join(", ", missing)} " +
+            "as resources named UglyToad.PdfPig.Resources.CMap.<name> (or *.CMap.<name>): update PdfPredefinedCMaps.");
+        Assert.All(needed, n => Assert.NotNull(PdfPredefinedCMaps.Cids(n)));
+    }
+
+    [Fact]
+    public void A_missing_or_moved_cmap_file_falls_back_without_failing()
+    {
+        PdfPredefinedCMaps.Open.Value = _ => null;
+        try
+        {
+            Assert.Null(PdfPredefinedCMaps.Cids("UniKS-UCS2-H"));
+            Assert.Null(PdfPredefinedCMaps.Cids("UniKS-UCS2-V"));
+            // A CMap found elsewhere (here: in the test) is read like PdfPig's, its usecmap followed.
+            PdfPredefinedCMaps.Open.Value = name => name switch
+            {
+                "Test-H" => new MemoryStream("begincmap 1 begincidrange <0020> <007e> 1 endcidrange endcmap"u8.ToArray()),
+                "Test-V" => new MemoryStream("/Test-H usecmap 1 begincidchar <0041> 9000 endcidchar"u8.ToArray()),
+                _ => null,
+            };
+            Assert.Equal(34, PdfPredefinedCMaps.Cids("Test-H")!['A']);
+            Assert.Equal(9000, PdfPredefinedCMaps.Cids("Test-V")!['A']);
+            Assert.Equal(35, PdfPredefinedCMaps.Cids("Test-V")!['B']);
+        }
+        finally
+        {
+            PdfPredefinedCMaps.Open.Value = null;
+        }
+        Assert.Equal(34, PdfPredefinedCMaps.Cids("UniKS-UCS2-H")!['A']);
+    }
+
+    /// <summary>A Unicode CMap font whose CMap file is missing is still archived, with the rule Filee uses without it.</summary>
+    [Fact]
+    public void A_unicode_cmap_font_without_its_cmap_file_is_archived_by_the_fallback_rule()
+    {
+        string[] families = ["Malgun Gothic", "Noto Sans CJK KR", "Noto Sans KR", "NanumGothic", "Gulim", "Batang"];
+        Assert.SkipUnless(families.Any(f => SystemFonts.Instance.Family(f).Count > 0), $"None of {string.Join(", ", families)} is installed");
+        var path = PredefinedPage(Path.Combine(fx.NewFolder(), "cjk-missing.pdf"), "가A", "UniKS-UCS2-H", "HYGoThic-Medium", "Korea1", "[34 [640]]");
+        PdfPredefinedCMaps.Open.Value = _ => null;
+        try
+        {
+            Assert.Equal(PdfArchiveOutcome.Archived, Archive(path, SystemFonts.Instance));
+        }
+        finally
+        {
+            PdfPredefinedCMaps.Open.Value = null;
+        }
+        PdfA2bChecks.Assert2b(path);
+    }
+
     [Fact]
     public void A_predefined_cmap_whose_codes_are_not_unicode_is_still_refused()
     {

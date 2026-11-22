@@ -21,11 +21,16 @@
 //
 // - The same for Type 1 programs (FontFile: an empty charstring under the glyph name the code's encoding gives, in the
 //   encrypted part, written as the font's own charstrings are), name-keyed CFF ones (FontFile3 /Type1C) and CID-keyed
-//   CFF ones of CIDFontType0 fonts with an Identity encoding (FontFile3 /CIDFontType0C: the CID added to the charset).
-//   A code whose encoding names no glyph gets a name of its own ("g65") through the Encoding's Differences. The
-//   descriptor's CharSet lists the new names; a CIDSet, which would have to list the new CIDs, is left out (PDF/A-2
-//   doesn't ask for one). Only when every use of the font was followed; OpenType (FontFile3 /OpenType) programs and
-//   CFF programs whose widths or glyphs the dictionary doesn't match otherwise are left as they are.
+//   CFF ones of CIDFontType0 fonts with an Identity encoding (FontFile3 /CIDFontType0C: the CID added to the charset),
+//   and OpenType programs (FontFile3 /OpenType): with TrueType outlines as TrueType ones, with CFF outlines as CFF
+//   ones, their hmtx, maxp and hhea following. A code whose encoding names no glyph gets a name of its own ("g65")
+//   through the Encoding's Differences. The descriptor's CharSet lists the new names; a CIDSet, which would have to
+//   list the new CIDs, is left out (PDF/A-2 doesn't ask for one). Only when every use of the font was followed.
+// - 6.2.11.5 widths of Type 1 and CFF programs: where a drawn glyph's advance (hsbw / sbw of a Type 1 charstring, the
+//   width operand or defaultWidthX of a CFF one) differs from the dictionary's width by more than 1/1000 em, the
+//   advance is written into the charstring (and hmtx of an OpenType program). A glyph two codes draw with different
+//   widths keeps the first, and the dictionary takes it for the other; a CFF glyph whose width a subroutine gives is
+//   left as it is.
 //
 // A program that can't be read is left as it is (the PDF/A then shows the problem as before).
 
@@ -77,16 +82,25 @@ internal static partial class PdfAFonts
         }
     }
 
-    /// <summary>The TrueType program of a font's descriptor, read; null when it has none or it is damaged.</summary>
+    /// <summary>
+    /// The TrueType program of a font's descriptor (FontFile2, or FontFile3 /OpenType with TrueType outlines), read;
+    /// null when it has none or it is damaged.
+    /// </summary>
     private static (PdfDictionary Descriptor, SfntFont Program)? TrueTypeProgram(PdfDictionary font)
     {
-        if (Resolve(font.Elements["/FontDescriptor"]) is not PdfDictionary descriptor
-            || Resolve(descriptor.Elements["/FontFile2"]) is not PdfDictionary { Stream: not null } file)
+        if (Resolve(font.Elements["/FontDescriptor"]) is not PdfDictionary descriptor)
+            return null;
+        var file = Resolve(descriptor.Elements["/FontFile2"]) as PdfDictionary;
+        if (file?.Stream is null && Resolve(descriptor.Elements["/FontFile3"]) is PdfDictionary { Stream: not null } openType && Name(openType, "/Subtype") == "/OpenType")
+            file = openType;
+        if (file?.Stream is null)
             return null;
         var bytes = file.Stream.UnfilteredValue;
         if (bytes.Length == 0 || bytes.Length > PdfFontUses.MaxStreamSize * 8L)
             return null;
         var sfnt = SfntFont.Read(bytes);
+        if (sfnt.HasCffOutlines)
+            return null; // CFF outlines: RepairType1 / RepairCidCff
         _ = sfnt.Require("head");
         _ = sfnt.Require("hhea");
         _ = sfnt.Require("hmtx");
@@ -306,9 +320,12 @@ internal static partial class PdfAFonts
     // ---- Type 1 and CFF programs
 
     /// <summary>
-    /// A simple Type 1 font (FontFile, or a bare CFF FontFile3 /Type1C) whose drawn codes name glyphs its program
-    /// lacks: an empty glyph under that name, with the code's width, is added to the program. A code that names no
-    /// glyph (or .notdef) gets a name of its own in the Encoding's Differences first.
+    /// A simple Type 1 font (FontFile, a bare CFF FontFile3 /Type1C, or an OpenType FontFile3 /OpenType with CFF
+    /// outlines) whose program's advances differ from the dictionary's widths, or whose drawn codes name glyphs the
+    /// program lacks: the advances are set to the dictionary's widths, and an empty glyph under each lacking name,
+    /// with the code's width, is added. A code that names no glyph (or .notdef) gets a name of its own in the
+    /// Encoding's Differences first. A glyph two codes draw with different widths keeps the first, and the dictionary
+    /// takes it for the other.
     /// </summary>
     private static void RepairType1(PdfDocument document, PdfDictionary font, HashSet<int> used)
     {
@@ -320,20 +337,33 @@ internal static partial class PdfAFonts
         byte[] bytes;
         string?[] builtIn;
         Func<string, bool> has;
+        Func<string, double?> advance; // glyph space
         double scale; // 1/1000 em → glyph space
+        SfntFont? openType = null;
+        CffProgram? cffProgram = null;
         if (type1File?.Stream is not null)
         {
             bytes = type1File.Stream.UnfilteredValue;
             var program = Type1Program.Read(bytes);
             (builtIn, has, scale) = (program.Encoding, program.HasGlyph, 0.001 / program.FontMatrix[0]);
+            advance = name => program.Outline(name)?.Width;
         }
-        else if (cffFile?.Stream is not null && Name(cffFile, "/Subtype") == "/Type1C")
+        else if (cffFile?.Stream is not null && Name(cffFile, "/Subtype") is "/Type1C" or "/OpenType")
         {
             bytes = cffFile.Stream.UnfilteredValue;
-            var program = CffProgram.Read(bytes);
+            if (Name(cffFile, "/Subtype") == "/OpenType")
+            {
+                openType = SfntFont.Read(bytes);
+                if (!openType.HasCffOutlines)
+                    return;
+                bytes = openType.Require("CFF ");
+            }
+            var program = cffProgram = CffProgram.Read(bytes);
             if (program.IsCid)
                 return;
+            var cffAdvances = CffSubsetter.Advances(bytes);
             (builtIn, has, scale) = (program.BuiltInEncoding(), name => program.GlyphOfName(name) >= 0, 0.001 / CffFont.Parse(bytes).FontMatrices[0][0]);
+            advance = name => program.GlyphOfName(name) is var g and >= 0 && g < cffAdvances.Length ? cffAdvances[g] : null;
         }
         else
         {
@@ -349,6 +379,31 @@ internal static partial class PdfAFonts
         double Width(int code) => array is not null && code - first >= 0 && code - first < array.Elements.Count
             && PdfObjects.Number(array.Elements[code - first]) is { } w ? w : missing;
 
+        // 6.2.11.5: the program's advance of each drawn glyph against the dictionary's width.
+        var shown = new Dictionary<string, double>(StringComparer.Ordinal); // name → width the glyph ends up with (1/1000 em)
+        var advances = new Dictionary<string, double>(StringComparer.Ordinal); // name → new advance (glyph space)
+        var dictionaryWidths = new Dictionary<int, double>(); // code → width the dictionary takes instead
+        foreach (var code in used.Where(c => c is >= 0 and < 256).Order())
+        {
+            if (names[code] is not { } name || name == ".notdef" || !has(name) || advance(name) is not { } glyphAdvance || !double.IsFinite(glyphAdvance))
+                continue;
+            var width = Width(code);
+            if (shown.TryGetValue(name, out var earlier))
+            {
+                if (Math.Abs(earlier - width) > WidthSlack)
+                    dictionaryWidths[code] = earlier;
+                continue;
+            }
+            if (Math.Abs(width - glyphAdvance / scale) <= WidthSlack)
+            {
+                shown[name] = glyphAdvance / scale;
+                continue;
+            }
+            advances[name] = width * scale;
+            shown[name] = width;
+        }
+
+        // 6.2.11.4.1 / 6.2.11.8: glyphs the program lacks.
         var glyphs = new List<(string Name, double Width)>();
         var widths = new Dictionary<string, double>(StringComparer.Ordinal);
         var renamed = new Dictionary<int, string>();
@@ -368,31 +423,57 @@ internal static partial class PdfAFonts
             if (widths.TryAdd(name, Width(code)))
                 glyphs.Add((name, Width(code) * scale));
         }
-        if (glyphs.Count == 0)
+        if (glyphs.Count == 0 && advances.Count == 0 && dictionaryWidths.Count == 0)
             return;
 
-        var copy = DescriptorCopy(document, descriptor);
-        if (type1File is not null)
+        if (glyphs.Count > 0 || advances.Count > 0)
         {
-            var rewritten = Type1Program.AddEmptyGlyphs(bytes, glyphs, (int)PdfObjects.Number(type1File, "/Length1", 0), (int)PdfObjects.Number(type1File, "/Length2", 0));
-            var file = new PdfDictionary(document);
-            file.CreateStream(rewritten.Data);
-            file.Elements.SetInteger("/Length1", rewritten.Length1);
-            file.Elements.SetInteger("/Length2", rewritten.Length2);
-            file.Elements.SetInteger("/Length3", rewritten.Length3);
-            file.Stream.Zip();
-            document.Internals.AddObject(file);
-            copy.Elements["/FontFile"] = file.Reference;
+            var copy = DescriptorCopy(document, descriptor);
+            if (type1File is not null)
+            {
+                var (data, length1, length2) = (bytes, (int)PdfObjects.Number(type1File, "/Length1", 0), (int)PdfObjects.Number(type1File, "/Length2", 0));
+                Type1Program.Rewritten? rewritten = null;
+                if (advances.Count > 0 && Type1Program.SetWidths(data, advances, length1, length2) is { } set)
+                    (rewritten, data, length1, length2) = (set, set.Data, set.Length1, set.Length2);
+                if (glyphs.Count > 0)
+                    rewritten = Type1Program.AddEmptyGlyphs(data, glyphs, length1, length2);
+                if (rewritten is not null)
+                {
+                    var file = new PdfDictionary(document);
+                    file.CreateStream(rewritten.Data);
+                    file.Elements.SetInteger("/Length1", rewritten.Length1);
+                    file.Elements.SetInteger("/Length2", rewritten.Length2);
+                    file.Elements.SetInteger("/Length3", rewritten.Length3);
+                    file.Stream.Zip();
+                    document.Internals.AddObject(file);
+                    copy.Elements["/FontFile"] = file.Reference;
+                }
+            }
+            else
+            {
+                var count = cffProgram!.GlyphCount;
+                var changed = advances.ToDictionary(p => cffProgram.GlyphOfName(p.Key), p => p.Value);
+                var cff = changed.Count > 0 ? CffSubsetter.SetAdvances(bytes, changed) : bytes;
+                if (glyphs.Count > 0)
+                    cff = CffSubsetter.AddGlyphs(cff, [.. glyphs.Select(g => new CffSubsetter.NewGlyph(g.Name, 0, g.Width))]);
+                copy.Elements["/FontFile3"] = openType is null
+                    ? CffStream(document, cff, "/Type1C")
+                    : CffStream(document, OpenTypeWithCff(openType, cff, [.. changed.Keys, .. Enumerable.Range(count, glyphs.Count)]), "/OpenType");
+            }
+            // CharSet lists every glyph of the program when it is there.
+            if (glyphs.Count > 0 && Resolve(copy.Elements["/CharSet"]) is PdfString charSet)
+                copy.Elements["/CharSet"] = new PdfString(charSet.Value + string.Concat(glyphs.Select(g => "/" + g.Name)));
+            font.Elements["/FontDescriptor"] = copy.Reference;
         }
-        else
+
+        // Codes whose glyph another code set to its own width: the dictionary takes the glyph's.
+        if (dictionaryWidths.Count > 0 && array is not null)
         {
-            var cff = CffSubsetter.AddGlyphs(bytes, [.. glyphs.Select(g => new CffSubsetter.NewGlyph(g.Name, 0, g.Width))]);
-            copy.Elements["/FontFile3"] = CffStream(document, cff, "/Type1C");
+            var rewrittenWidths = new PdfArray(document);
+            for (var i = 0; i < array.Elements.Count; i++)
+                rewrittenWidths.Elements.Add(dictionaryWidths.TryGetValue(first + i, out var w) ? Number(Math.Round(w, 3)) : array.Elements[i]);
+            font.Elements["/Widths"] = rewrittenWidths;
         }
-        // CharSet lists every glyph of the program when it is there.
-        if (Resolve(copy.Elements["/CharSet"]) is PdfString charSet)
-            copy.Elements["/CharSet"] = new PdfString(charSet.Value + string.Concat(glyphs.Select(g => "/" + g.Name)));
-        font.Elements["/FontDescriptor"] = copy.Reference;
 
         // Codes with a name of their own: the Encoding names them (every name it gave, so nothing else changes).
         if (renamed.Count > 0)
@@ -422,35 +503,124 @@ internal static partial class PdfAFonts
 
     /// <summary>
     /// A CIDFontType0 with an Identity encoding (codes are CIDs) whose CID-keyed CFF program (FontFile3
-    /// /CIDFontType0C) lacks CIDs it draws: an empty glyph with the CID's width is added for each.
+    /// /CIDFontType0C, or /OpenType with CFF outlines) disagrees with the W / DW widths of CIDs it draws, or lacks
+    /// some: their advances are set to the dictionary's, and an empty glyph with the CID's width is added for each
+    /// lacking one.
     /// </summary>
     private static void RepairCidCff(PdfDocument document, PdfDictionary cidFont, HashSet<int> used)
     {
         if (Resolve(cidFont.Elements["/FontDescriptor"]) is not PdfDictionary descriptor
-            || Resolve(descriptor.Elements["/FontFile3"]) is not PdfDictionary { Stream: not null } file || Name(file, "/Subtype") != "/CIDFontType0C")
+            || Resolve(descriptor.Elements["/FontFile3"]) is not PdfDictionary { Stream: not null } file || Name(file, "/Subtype") is not ("/CIDFontType0C" or "/OpenType"))
             return;
         var bytes = file.Stream.UnfilteredValue;
+        SfntFont? openType = null;
+        if (Name(file, "/Subtype") == "/OpenType")
+        {
+            openType = SfntFont.Read(bytes);
+            if (!openType.HasCffOutlines)
+                return;
+            bytes = openType.Require("CFF ");
+        }
         if (bytes.Length == 0 || bytes.Length > PdfFontUses.MaxStreamSize * 8L)
             return;
         var parsed = CffFont.Parse(bytes);
         if (!parsed.IsCid || parsed.Charset is null)
             return;
-        var present = new HashSet<int>(parsed.Charset.Select(c => (int)c));
+        var glyphOfCid = new Dictionary<int, int>();
+        for (var gid = 0; gid < parsed.Charset.Length; gid++)
+            glyphOfCid.TryAdd(parsed.Charset[gid], gid);
         var widths = CidWidths(cidFont);
         var standard = PdfObjects.Number(cidFont, "/DW", 1000);
         var scale = 0.001 / parsed.FontMatrices[0][0];
         if (!double.IsFinite(scale) || scale <= 0)
             return;
+        // 6.2.11.5: each drawn CID's advance against W / DW.
+        var programAdvances = CffSubsetter.Advances(bytes);
+        var changed = new Dictionary<int, double>();
+        foreach (var cid in used.Where(c => c is >= 0 and < MaxCids).Order())
+        {
+            if (!glyphOfCid.TryGetValue(cid, out var gid) || gid >= programAdvances.Length || programAdvances[gid] is not { } glyphAdvance)
+                continue;
+            var width = widths.TryGetValue(cid, out var w) ? w : standard;
+            if (Math.Abs(width - glyphAdvance / scale) > WidthSlack)
+                changed[gid] = width * scale;
+        }
         // CID 0 is .notdef itself: nothing to add for it.
-        var lacking = used.Where(cid => cid is > 0 and < MaxCids && !present.Contains(cid)).Order()
+        var lacking = used.Where(cid => cid is > 0 and < MaxCids && !glyphOfCid.ContainsKey(cid)).Order()
             .Select(cid => new CffSubsetter.NewGlyph(null, cid, (widths.TryGetValue(cid, out var w) ? w : standard) * scale)).ToList();
-        if (lacking.Count == 0)
+        if (lacking.Count == 0 && changed.Count == 0)
             return;
-        var cff = CffSubsetter.AddGlyphs(bytes, lacking);
+        var cff = changed.Count > 0 ? CffSubsetter.SetAdvances(bytes, changed) : bytes;
+        if (lacking.Count > 0)
+            cff = CffSubsetter.AddGlyphs(cff, lacking);
         var copy = DescriptorCopy(document, descriptor);
-        copy.Elements["/FontFile3"] = CffStream(document, cff, "/CIDFontType0C");
-        copy.Elements.Remove("/CIDSet"); // it would have to list the new CIDs; PDF/A-2 lets it be left out
+        copy.Elements["/FontFile3"] = openType is null
+            ? CffStream(document, cff, "/CIDFontType0C")
+            : CffStream(document, OpenTypeWithCff(openType, cff, [.. changed.Keys, .. Enumerable.Range(parsed.GlyphCount, lacking.Count)]), "/OpenType");
+        if (lacking.Count > 0)
+            copy.Elements.Remove("/CIDSet"); // it would have to list the new CIDs; PDF/A-2 lets it be left out
         cidFont.Elements["/FontDescriptor"] = copy.Reference;
+    }
+
+    /// <summary>
+    /// An OpenType program with CFF outlines given a new CFF table: the glyphs it added (after the old last one) and
+    /// <paramref name="glyphs"/> get their advances from it in hmtx (one metric a glyph), maxp, hhea, post (names
+    /// dropped: version 3) and vmtx follow; hdmx and LTSH, which list every glyph, are dropped.
+    /// </summary>
+    private static byte[] OpenTypeWithCff(SfntFont sfnt, byte[] cff, IReadOnlyCollection<int> glyphs)
+    {
+        var count = sfnt.GlyphCount;
+        var parsed = CffFont.Parse(cff);
+        var total = parsed.GlyphCount;
+        var advances = CffSubsetter.Advances(cff);
+        var unitsPerEm = FontTables.UnitsPerEm(sfnt.Require("head"));
+        var toUnits = parsed.FontMatrices[0][0] * unitsPerEm;
+        var hhea = sfnt.Require("hhea");
+        var hmtx = sfnt.Require("hmtx");
+        var metrics = FontTables.NumberOfMetrics(hhea);
+        if (unitsPerEm == 0 || metrics == 0 || hmtx.Length < metrics * 4 || hhea.Length < 36 || total < count)
+            throw new InvalidDataException("The font's metrics are damaged.");
+        var table = new byte[total * 4];
+        var widest = 0;
+        for (var glyph = 0; glyph < total; glyph++)
+        {
+            int advance = 0;
+            short bearing = 0;
+            if (glyph < count)
+            {
+                advance = BinaryPrimitives.ReadUInt16BigEndian(hmtx.AsSpan(Math.Min(glyph, metrics - 1) * 4));
+                var at = glyph < metrics ? glyph * 4 + 2 : metrics * 4 + (glyph - metrics) * 2;
+                bearing = at + 2 <= hmtx.Length ? BinaryPrimitives.ReadInt16BigEndian(hmtx.AsSpan(at)) : (short)0;
+            }
+            if ((glyph >= count || glyphs.Contains(glyph)) && advances[glyph] is { } width)
+                advance = (int)Math.Clamp(Math.Round(width * toUnits), 0, ushort.MaxValue);
+            BinaryPrimitives.WriteUInt16BigEndian(table.AsSpan(glyph * 4), (ushort)advance);
+            BinaryPrimitives.WriteInt16BigEndian(table.AsSpan(glyph * 4 + 2), bearing);
+            widest = Math.Max(widest, advance);
+        }
+        sfnt.Tables["CFF "] = cff;
+        sfnt.Tables["hmtx"] = table;
+        var header = (byte[])hhea.Clone();
+        BinaryPrimitives.WriteUInt16BigEndian(header.AsSpan(10), (ushort)widest);
+        BinaryPrimitives.WriteUInt16BigEndian(header.AsSpan(34), (ushort)total);
+        sfnt.Tables["hhea"] = header;
+        var maxp = (byte[])sfnt.Require("maxp").Clone();
+        BinaryPrimitives.WriteUInt16BigEndian(maxp.AsSpan(4), (ushort)total);
+        sfnt.Tables["maxp"] = maxp;
+        if (total > count)
+        {
+            if (sfnt["post"] is { Length: >= 32 } post && BinaryPrimitives.ReadUInt32BigEndian(post) != 0x00030000)
+            {
+                var plain = post.AsSpan(0, 32).ToArray();
+                BinaryPrimitives.WriteUInt32BigEndian(plain, 0x00030000);
+                sfnt.Tables["post"] = plain;
+            }
+            sfnt.Tables.Remove("hdmx");
+            sfnt.Tables.Remove("LTSH");
+            if (sfnt["vmtx"] is { } vmtx)
+                sfnt.Tables["vmtx"] = [.. vmtx, .. new byte[2 * (total - count)]];
+        }
+        return sfnt.Write();
     }
 
     /// <summary>A FontFile3 stream of a CFF program.</summary>
@@ -672,20 +842,27 @@ internal static partial class PdfAFonts
         return result;
     }
 
-    /// <summary>The changed program as a new FontFile2 in a copy of the descriptor (the old one may be shared).</summary>
+    /// <summary>
+    /// The changed program as a new FontFile2 (FontFile3 /OpenType when it came as one) in a copy of the descriptor
+    /// (the old one may be shared).
+    /// </summary>
     private static void ReplaceProgram(PdfDocument document, PdfDictionary font, PdfDictionary descriptor, SfntFont sfnt, int flags)
     {
         var bytes = sfnt.Write();
         var file = new PdfDictionary(document);
         file.CreateStream(bytes);
-        file.Elements.SetInteger("/Length1", bytes.Length);
+        var openType = descriptor.Elements["/FontFile2"] is null;
+        if (openType)
+            file.Elements.SetName("/Subtype", "/OpenType");
+        else
+            file.Elements.SetInteger("/Length1", bytes.Length);
         file.Stream.Zip();
         document.Internals.AddObject(file);
         var copy = new PdfDictionary(document);
         foreach (var key in descriptor.Elements.Keys)
             copy.Elements[key] = descriptor.Elements[key];
         copy.Elements.SetInteger("/Flags", flags);
-        copy.Elements["/FontFile2"] = file.Reference;
+        copy.Elements[openType ? "/FontFile3" : "/FontFile2"] = file.Reference;
         copy.Elements.Remove("/CIDSet"); // the CIDs present may have changed; PDF/A-2 lets it be left out
         document.Internals.AddObject(copy);
         font.Elements["/FontDescriptor"] = copy.Reference;
