@@ -1371,6 +1371,8 @@
   "theme.system_font_hint": "Shows text in your system's own font, like other apps. Filee's built-in fonts still draw any script it lacks.",
   "theme.reduce_motion": "Reduce animations",
   "theme.reduce_motion_hint": "Recommended for older PCs. Turns off transitions and the donut's bounce.",
+  "theme.tick_dial_progress": "Tick-dial progress indicator",
+  "theme.tick_dial_progress_hint": "Shows 60 ticks around the progress disc instead of a continuous arc.",
   "theme.window_size": "Window size",
   "theme.window_size_smaller": "Smaller",
   "theme.window_size_larger": "Larger",

@@ -146,6 +146,32 @@ public class DonutProgressTests
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void Tick_dial_states_render()
+    {
+        var (window, donut) = Create();
+        donut.UseTickDialProgress = true;
+
+        donut.BeginProgress("PDF → WEBP");
+        donut.SetProgress(0.73);
+        Run(donut, () => false, 1.2);
+        Save(window, "progress-tickdial-running.png");
+
+        donut.CompleteProgress(DonutProgressOutcome.Succeeded, () => { });
+        Run(donut, () => donut.ShownOutcome is not null);
+        Run(donut, () => false, 0.4);
+        Save(window, "progress-tickdial-success.png");
+
+        donut.BeginProgress("WEBP");
+        donut.SetProgress(0.5);
+        Run(donut, () => false, 1.0);
+        donut.CompleteProgress(DonutProgressOutcome.Failed, () => { });
+        Run(donut, () => donut.ShownOutcome is not null);
+        Run(donut, () => false, 0.4);
+        Save(window, "progress-tickdial-failed.png");
+        window.Close();
+    }
+
     private static void Save(Window window, string name)
     {
         Dispatcher.UIThread.RunJobs();

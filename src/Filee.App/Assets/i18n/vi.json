@@ -1371,6 +1371,8 @@
   "theme.system_font_hint": "Hiển thị chữ bằng phông chữ của hệ thống, giống các ứng dụng khác. Những chữ viết mà phông đó không có vẫn được vẽ bằng phông chữ có sẵn của Filee.",
   "theme.reduce_motion": "Giảm hiệu ứng động",
   "theme.reduce_motion_hint": "Khuyên dùng cho máy tính cũ. Tắt hiệu ứng chuyển tiếp và hiệu ứng nảy của vòng tròn.",
+  "theme.tick_dial_progress": "Vòng tiến trình dạng mặt đồng hồ (tick-dial)",
+  "theme.tick_dial_progress_hint": "Hiển thị 60 vạch khấc quanh đĩa tròn tiến trình thay cho một cung tròn liền mạch.",
   "theme.window_size": "Kích thước cửa sổ",
   "theme.window_size_smaller": "Nhỏ hơn",
   "theme.window_size_larger": "Lớn hơn",

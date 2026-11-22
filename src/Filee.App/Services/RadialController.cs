@@ -814,7 +814,13 @@ public sealed class RadialController(
         _progressJob = job;
         viewModel.ProgressJob = job;
         _lastRingJob = job;
-        donut.BeginProgress();
+        var label = job.Job.Sources.Count == 1
+            ? (Path.GetExtension(job.Job.Sources[0]).TrimStart('.').ToUpperInvariant() is { Length: > 0 } ext &&
+               !string.Equals(ext, job.Job.PresetDisplayName, StringComparison.OrdinalIgnoreCase)
+                ? $"{ext} → {job.Job.PresetDisplayName}"
+                : job.Job.PresetDisplayName)
+            : job.Job.PresetDisplayName;
+        donut.BeginProgress(label);
         donut.SetProgress(job.Progress / 100);
         job.PropertyChanged += OnProgressJobChanged;
         _handOffTimer = DispatcherTimer.RunOnce(() =>

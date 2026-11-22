@@ -78,6 +78,9 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     /// </summary>
     [ObservableProperty] private double _donutOpacity = 1;
 
+    /// <summary>Visual style of the conversion progress indicator (#1747).</summary>
+    [ObservableProperty] private bool _useTickDialProgress;
+
     /// <summary>
     /// Background of the window while the donut is hidden: practically invisible, but not fully transparent, so
     /// Windows still delivers the drag to this window and the files can arrive.
@@ -559,5 +562,6 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         GroupRingSpread = DonutSettings.ClampGroupRingSpread(store.Settings.Donut.GroupRingSpread);
         FlipKey = store.Settings.Donut.EffectiveFlipKey(store.Settings.Triggers);
         FlipWithWheel = store.Settings.Donut.FlipWithWheel;
+        UseTickDialProgress = store.Settings.Theme.UseTickDialProgress;
     }
 }

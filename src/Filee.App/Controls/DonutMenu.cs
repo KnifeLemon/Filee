@@ -118,6 +118,10 @@ public sealed partial class DonutMenu : Control
     public static readonly StyledProperty<CornerRadius> CornerRadiusProperty =
         AvaloniaProperty.Register<DonutMenu, CornerRadius>(nameof(CornerRadius));
 
+    /// <summary>Visual style of the progress indicator: classic continuous arc vs 60-tick clock dial (#1747).</summary>
+    public static readonly StyledProperty<bool> UseTickDialProgressProperty =
+        AvaloniaProperty.Register<DonutMenu, bool>(nameof(UseTickDialProgress), false);
+
     public static readonly StyledProperty<IBrush?> SliceBrushProperty =
         AvaloniaProperty.Register<DonutMenu, IBrush?>(nameof(SliceBrush), Brushes.White);
     public static readonly StyledProperty<IBrush?> SliceBorderBrushProperty =
@@ -182,7 +186,7 @@ public sealed partial class DonutMenu : Control
             IsEditModeProperty, SliceBrushProperty, SliceBorderBrushProperty, CenterBrushProperty, AccentBrushProperty,
             OnAccentBrushProperty, ForegroundProperty, SecondaryForegroundProperty, SuccessBrushProperty, CornerRadiusProperty,
             CenterHintProperty, CenterHintWheelProperty, ShowCaptionsProperty, LabelScaleProperty, DefaultShowProperty,
-            GroupRingSizeProperty, GroupRingSpreadProperty);
+            GroupRingSizeProperty, GroupRingSpreadProperty, UseTickDialProgressProperty);
         ItemsProperty.Changed.AddClassHandler<DonutMenu>((d, _) => d.OnItemsChanged());
         HeldGroupIdProperty.Changed.AddClassHandler<DonutMenu>((d, _) => d.OnHeldGroupChanged());
     }
@@ -208,6 +212,9 @@ public sealed partial class DonutMenu : Control
     public string? CenterTitle { get => GetValue(CenterTitleProperty); set => SetValue(CenterTitleProperty, value); }
     public string? CenterSubtitle { get => GetValue(CenterSubtitleProperty); set => SetValue(CenterSubtitleProperty, value); }
     public string? CenterNotice { get => GetValue(CenterNoticeProperty); set => SetValue(CenterNoticeProperty, value); }
+
+    /// <summary>Visual style of the conversion progress indicator (#1747).</summary>
+    public bool UseTickDialProgress { get => GetValue(UseTickDialProgressProperty); set => SetValue(UseTickDialProgressProperty, value); }
 
     /// <summary>Settings editor mode: shows ✎ on hover, raises drag and edit events instead of invoking slices.</summary>
     public bool IsEditMode { get => GetValue(IsEditModeProperty); set => SetValue(IsEditModeProperty, value); }

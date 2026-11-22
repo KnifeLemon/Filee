@@ -12,6 +12,7 @@
 using Avalonia;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Styling;
 using Filee.App.Services;
 
 namespace Filee.App.Controls;
@@ -59,6 +60,7 @@ public sealed partial class DonutMenu
     private double _handOffClock = -1;
     private Action? _progressDone;
     private bool _ringHover;
+    private string? _progressLabel;
 
     public IBrush? SuccessBrush { get => GetValue(SuccessBrushProperty); set => SetValue(SuccessBrushProperty, value); }
 
@@ -81,9 +83,10 @@ public sealed partial class DonutMenu
     public event EventHandler? ProgressClicked;
 
     /// <summary>Switches to progress mode: collapses the slices into the centre and shows the progress ring.</summary>
-    public void BeginProgress()
+    public void BeginProgress(string? label = null)
     {
         ResetProgress();
+        _progressLabel = label;
         _progressMode = true;
         _closing = false;
         _closeCallback = null;
@@ -158,6 +161,7 @@ public sealed partial class DonutMenu
         _handOffClock = -1;
         _progressDone = null;
         _ringHover = false;
+        _progressLabel = null;
     }
 
     private void FinishProgress()
@@ -323,7 +327,6 @@ public sealed partial class DonutMenu
         var plateRadius = RingRadius + RingStroke + 2;
         DrawPlateShadow(context, center, plateRadius);
         context.DrawEllipse(CenterBrush, BorderPen(), center, plateRadius, plateRadius);
-        context.DrawEllipse(null, new Pen(WithOpacity(SecondaryForeground, 0.22), RingStroke), center, RingRadius, RingRadius);
 
         var arcBrush = _outcome switch
         {
@@ -332,15 +335,35 @@ public sealed partial class DonutMenu
             _ => AccentBrush,
         };
         var sweep = _outcome == DonutProgressOutcome.Failed ? Math.Max(_shownProgress, 0.02) : _shownProgress;
-        DrawArc(context, center, RingRadius, sweep, new Pen(arcBrush, RingStroke, lineCap: PenLineCap.Round));
+
+        if (UseTickDialProgress)
+        {
+            DrawTickDial(context, center, sweep, arcBrush);
+        }
+        else
+        {
+            context.DrawEllipse(null, new Pen(WithOpacity(SecondaryForeground, 0.22), RingStroke), center, RingRadius, RingRadius);
+            DrawArc(context, center, RingRadius, sweep, new Pen(arcBrush, RingStroke, lineCap: PenLineCap.Round));
+        }
 
         var badge = _outcome is null ? 0 : Math.Max(0, _badge.Value);
         if (badge < 0.98)
         {
             using (context.PushOpacity(1 - Math.Clamp(badge, 0, 1)))
             {
-                var percent = MakeText($"{Math.Round(_shownProgress * 100):0}%", bold, 15, Foreground, RingRadius * 1.6);
-                DrawCentered(context, percent, center.X, center.Y - percent.Height / 2);
+                if (UseTickDialProgress && !string.IsNullOrWhiteSpace(_progressLabel))
+                {
+                    var percent = MakeText($"{Math.Round(_shownProgress * 100):0}%", bold, 13, Foreground, RingRadius * 1.5);
+                    DrawCentered(context, percent, center.X, center.Y - percent.Height + 1);
+
+                    var label = MakeText(_progressLabel, regular, 9, SecondaryForeground, RingRadius * 1.5);
+                    DrawCentered(context, label, center.X, center.Y + 3);
+                }
+                else
+                {
+                    var percent = MakeText($"{Math.Round(_shownProgress * 100):0}%", bold, 15, Foreground, RingRadius * 1.6);
+                    DrawCentered(context, percent, center.X, center.Y - percent.Height / 2);
+                }
             }
         }
 
@@ -349,6 +372,54 @@ public sealed partial class DonutMenu
 
         if (_ringHover && _outcome is null && _handOffClock < 0)
             DrawCancelButton(context, CancelButtonCenter(center));
+    }
+
+    /// <summary>
+    /// Draws a 60-tick clock dial progress indicator (#1747).
+    /// </summary>
+    private void DrawTickDial(DrawingContext context, Point center, double sweep, IBrush? arcBrush)
+    {
+        const int tickCount = 60;
+        const double innerR = RingRadius - 3.5;
+        const double outerR = RingRadius + 3.5;
+        const double tickStroke = 1.75;
+
+        var activeTicks = (int)Math.Round(sweep * tickCount);
+        if (sweep > 0.001 && activeTicks == 0)
+            activeTicks = 1;
+        activeTicks = Math.Clamp(activeTicks, 0, tickCount);
+
+        var brush = arcBrush ?? AccentBrush ?? Brushes.MediumPurple;
+        var unlitPen = new Pen(WithOpacity(SecondaryForeground, 0.24), tickStroke, lineCap: PenLineCap.Round);
+        var activePen = new Pen(brush, tickStroke, lineCap: PenLineCap.Round);
+
+        var isDark = ActualThemeVariant == ThemeVariant.Dark;
+        IBrush frontBrush = brush;
+        if (brush is ISolidColorBrush solid)
+        {
+            var c = solid.Color;
+            var frontColor = isDark
+                ? Color.FromArgb(c.A, (byte)Math.Min(255, c.R + (255 - c.R) * 0.52), (byte)Math.Min(255, c.G + (255 - c.G) * 0.52), (byte)Math.Min(255, c.B + (255 - c.B) * 0.52))
+                : Color.FromArgb(c.A, (byte)(c.R * 0.45), (byte)(c.G * 0.45), (byte)(c.B * 0.45));
+            frontBrush = new SolidColorBrush(frontColor);
+        }
+        var frontPen = new Pen(frontBrush, tickStroke, lineCap: PenLineCap.Round);
+
+        for (var i = 0; i < tickCount; i++)
+        {
+            var angle = i * 2 * Math.PI / tickCount;
+            var p1 = DonutGeometry.PointAt(center, innerR, angle);
+            var p2 = DonutGeometry.PointAt(center, outerR, angle);
+            if (i < activeTicks)
+            {
+                var pen = (i == activeTicks - 1 && _outcome is null) ? frontPen : activePen;
+                context.DrawLine(pen, p1, p2);
+            }
+            else
+            {
+                context.DrawLine(unlitPen, p1, p2);
+            }
+        }
     }
 
     /// <summary>✓ (success) or ! (failure) popping in the centre of the ring.</summary>

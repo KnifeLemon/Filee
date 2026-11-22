@@ -55,6 +55,12 @@ public sealed class ThemeSettings
     public bool? ReduceMotion { get; set; }
 
     /// <summary>
+    /// Uses a 60-tick clock dial progress indicator instead of a smooth arc during conversions (#1747).
+    /// Off as before it existed; a missing value reads as off, so it needs no schema step.
+    /// </summary>
+    public bool UseTickDialProgress { get; set; }
+
+    /// <summary>
     /// Draws the UI in the system's own font (Segoe UI on Windows, San Francisco on macOS, fontconfig's default on
     /// Linux) instead of the embedded Noto fonts, which still draw what it lacks. Off as before it existed; a missing
     /// value reads as off, so it needs no schema step.

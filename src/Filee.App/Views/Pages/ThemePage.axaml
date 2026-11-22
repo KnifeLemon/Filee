@@ -279,6 +279,14 @@
             <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.reduce_motion_hint}" Margin="28,0,0,0" />
           </StackPanel>
         </Border>
+
+        <!-- Tick-dial conversion progress ring (#1747) -->
+        <Border Classes="card">
+          <StackPanel Spacing="4">
+            <CheckBox Content="{DynamicResource theme.tick_dial_progress}" IsChecked="{Binding UseTickDialProgress}" FontWeight="SemiBold" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.tick_dial_progress_hint}" Margin="28,0,0,0" />
+          </StackPanel>
+        </Border>
         <!-- Window size: the zoom of every Filee window (UiZoom), saved by itself. Ctrl + wheel and the keys change it too. -->
         <Border Classes="card">
           <StackPanel Spacing="8">

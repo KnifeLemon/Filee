@@ -48,6 +48,7 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
         DonutCaptions = store.Settings.Donut.ShowCaptions;
         ReduceMotion = theme.ReduceMotion ?? platform.PrefersReducedMotion;
         UseSystemFont = theme.UseSystemFont;
+        UseTickDialProgress = theme.UseTickDialProgress;
         PreviewItems =
         [
             new DonutItem { Id = "a", Label = "PNG" },
@@ -109,6 +110,7 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _cornerRadius;
     [ObservableProperty] private bool _reduceMotion;
     [ObservableProperty] private bool _useSystemFont;
+    [ObservableProperty] private bool _useTickDialProgress;
 
     /// <summary>
     /// The donut toolbar's opacity in percent: the one setting Donut toolbar → Edit Donut Size → Opacity edits too
@@ -249,6 +251,7 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
     partial void OnCornerRadiusChanged(double value) => Save(t => t.CornerRadius = Math.Round(value));
     partial void OnReduceMotionChanged(bool value) => Save(t => t.ReduceMotion = value);
     partial void OnUseSystemFontChanged(bool value) => Save(t => t.UseSystemFont = value);
+    partial void OnUseTickDialProgressChanged(bool value) => Save(t => t.UseTickDialProgress = value);
 
     partial void OnDonutOpacityChanged(double value)
     {
