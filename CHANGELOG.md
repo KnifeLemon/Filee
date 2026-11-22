@@ -24,6 +24,8 @@ ko: GitHub에서 업데이트 파일을 받지 못하면 Filee 다운로드 서�
 en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't answer
 ko: 모양 정보가 없는 주석(형광펜, 메모 등)이 있는 PDF도 PDF/A 검사를 통과해요
 en: PDFs with highlights or notes that carry no appearance now pass PDF/A checks
+ko: Word 문서를 PDF로 바꿀 때 머리글 아래 줄과 문단 사이 구분선이 그대로 나와요
+en: Word documents converted to PDF keep the line under the page header and the lines between paragraphs
 ko: 비스듬히 스캔하거나 찍은 페이지로 만든 검색 가능한 PDF도 TXT로 변환하면 텍스트가 나와요
 en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT with their text
 ko: 클립 자르기에서 음악을 클립이 끝날 때까지 반복할 수 있어요
@@ -43,6 +45,11 @@ en: Cut a clip can loop its music until the clip ends
   so the server can only hand out the real installer. The log says where each file came from.
   It helps from the update after this version on: on such a network, this version itself still comes from
   [filee.sh](https://filee.sh/).
+
+- **Word → PDF keeps more paragraph lines** (#1700). In a DOCX, a bottom border on a paragraph in the page header
+  (the rule under a résumé's contact details) was missing from the PDF, and so was the line Word draws between
+  paragraphs that share one border (a "between" border). Both now come out in their colors, and the space Word
+  keeps between a paragraph and its bottom border is kept too, so headings with a rule are spaced as in Word.
 
 - **Searchable PDFs of pages scanned at an angle convert to text** (#1538). A PDF made with Searchable PDF from a page
   scanned or photographed a few degrees askew failed to convert to TXT with "The PDF contains no text", although other
