@@ -26,6 +26,8 @@ ko: 모양 정보가 없는 주석(형광펜, 메모 등)이 있는 PDF도 PDF/A
 en: PDFs with highlights or notes that carry no appearance now pass PDF/A checks
 ko: 비스듬히 스캔하거나 찍은 페이지로 만든 검색 가능한 PDF도 TXT로 변환하면 텍스트가 나와요
 en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT with their text
+ko: 클립 자르기에서 음악을 클립이 끝날 때까지 반복할 수 있어요
+en: Cut a clip can loop its music until the clip ends
 ko: 바로 가기를 변환하면 결과가 대상 파일 옆이 아니라 바로 가기 옆에 저장돼요
 en: A shortcut's results are saved next to the shortcut, not next to the file it points to
 -->
@@ -43,6 +45,7 @@ en: A shortcut's results are saved next to the shortcut, not next to the file it
   so the server can only hand out the real installer. The log says where each file came from.
   It helps from the update after this version on: on such a network, this version itself still comes from
   [filee.sh](https://filee.sh/).
+
 - **Searchable PDFs of pages scanned at an angle convert to text** (#1538). A PDF made with Searchable PDF from a page
   scanned or photographed a few degrees askew failed to convert to TXT with "The PDF contains no text", although other
   PDF readers select its text: Tesseract writes each line along its slanted baseline, and Filee only read level text.
@@ -54,6 +57,10 @@ en: A shortcut's results are saved next to the shortcut, not next to the file it
   alias on macOS) converts the file it points to, as before, but "next to the original" now means next to the
   shortcut: a program's icon taken from its desktop shortcut lands on the desktop, not in the program's folder.
   The same file dropped as itself is still saved next to itself.
+
+- **Cut a clip can loop its music** (#1432). With music on A2, **Loop music** next to **Music** plays the song again
+  from its start each time it ends, until the clip ends, and fades it out with the clip. Off, the music stops when the
+  song ends, as before. Several songs one after another on A2 are not there yet.
 
 ## 2.5.0
 
