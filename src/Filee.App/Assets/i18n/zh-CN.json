@@ -333,6 +333,8 @@
   "engine.pdf-tables.description": "把 PDF 中用线条画出的表格转换为 Excel 工作簿，每个表格一个工作表，数字和日期为真正的数值。",
   "engine.pdf-ps.name": "PostScript 生成器（内置）",
   "engine.pdf-ps.description": "无需 Ghostscript 即可把 PDF 转换为 PostScript 和 EPS：文字保留字体，图形保持矢量。含透明效果的页面会变成图片。",
+  "engine.pdf-svg.name": "PDF 转 SVG（内置）",
+  "engine.pdf-svg.description": "无需 LibreOffice，将 PDF 页面转换为 SVG，每页一个文件：图形和渐变保持矢量，文字外观不变且仍可选中。",
   "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "把文档（DOCX, DOC, ODT, RTF, HWP, HWPX）和网页（HTML、MHTML）中的表格转换为 Excel 工作簿，每个表格一个工作表，数字和日期为真正的数值。",
   "engine.email.name": "E-mail (built-in)",

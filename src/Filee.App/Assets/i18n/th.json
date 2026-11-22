@@ -326,6 +326,8 @@
   "engine.pdf-tables.description": "แปลงตารางที่วาดด้วยเส้นใน PDF เป็นสมุดงาน Excel ตารางละหนึ่งชีต โดยตัวเลขและวันที่เป็นค่าจริง",
   "engine.pdf-ps.name": "ตัวเขียน PostScript (ในตัว)",
   "engine.pdf-ps.description": "แปลง PDF เป็น PostScript และ EPS โดยไม่ต้องใช้ Ghostscript ข้อความใช้ฟอนต์เดิม ภาพวาดยังเป็นเวกเตอร์ หน้าที่มีความโปร่งใสจะกลายเป็นรูปภาพ",
+  "engine.pdf-svg.name": "PDF เป็น SVG (ในตัว)",
+  "engine.pdf-svg.description": "แปลงหน้า PDF เป็น SVG โดยไม่ต้องใช้ LibreOffice หน้าละหนึ่งไฟล์ ภาพวาดและไล่สียังเป็นเวกเตอร์ ข้อความดูเหมือนเดิมทุกอย่างและยังเลือกได้",
   "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "แปลงตารางในเอกสาร (DOCX, DOC, ODT, RTF, HWP, HWPX) และหน้าเว็บ (HTML, MHTML) เป็นสมุดงาน Excel ตารางละหนึ่งชีต โดยตัวเลขและวันที่เป็นค่าจริง",
   "engine.email.name": "E-mail (built-in)",

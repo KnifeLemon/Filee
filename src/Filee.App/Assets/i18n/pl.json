@@ -333,6 +333,8 @@
   "engine.pdf-tables.description": "Zamienia tabele narysowane liniami w PDF na skoroszyt Excel, każdą na osobnym arkuszu, z liczbami i datami jako prawdziwymi wartościami.",
   "engine.pdf-ps.name": "Generator PostScript (wbudowany)",
   "engine.pdf-ps.description": "Zamienia PDF na PostScript i EPS bez Ghostscripta: tekst zachowuje czcionki, rysunki pozostają wektorowe. Strony z przezroczystością stają się obrazami.",
+  "engine.pdf-svg.name": "PDF do SVG (wbudowany)",
+  "engine.pdf-svg.description": "Zamienia strony PDF na SVG bez LibreOffice, jeden plik na stronę: rysunki i gradienty pozostają wektorowe, a tekst wygląda dokładnie tak samo i nadal można go zaznaczać.",
   "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "Zamienia tabele z dokumentów (DOCX, DOC, ODT, RTF, HWP, HWPX) i stron internetowych (HTML, MHTML) na skoroszyt Excel, każdą na osobnym arkuszu, z liczbami i datami jako prawdziwymi wartościami.",
   "engine.email.name": "E-mail (built-in)",

@@ -333,6 +333,8 @@
   "engine.pdf-tables.description": "Converte as tabelas delimitadas por linhas num PDF num livro do Excel, com uma folha por tabela e valores numéricos e de data.",
   "engine.pdf-ps.name": "Gerador PostScript (motor integrado)",
   "engine.pdf-ps.description": "Converte PDFs em PostScript e EPS sem o Ghostscript: o texto mantém os tipos de letra e os desenhos continuam vetoriais. As páginas com transparência passam a imagens.",
+  "engine.pdf-svg.name": "PDF para SVG (motor integrado)",
+  "engine.pdf-svg.description": "Converte páginas de PDF em SVG sem o LibreOffice, um ficheiro por página: desenhos e gradientes mantêm-se vetoriais, e o texto mantém o aspeto exato e continua selecionável.",
   "engine.document-tables.name": "Tabelas de documentos (motor integrado)",
   "engine.document-tables.description": "Converte as tabelas de documentos (DOCX, DOC, ODT, RTF, HWP, HWPX) e de páginas web (HTML, MHTML) num livro do Excel, com uma folha por tabela e valores numéricos e de data.",
   "engine.email.name": "E-mail (motor integrado)",

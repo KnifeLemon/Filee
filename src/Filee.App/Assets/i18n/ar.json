@@ -326,6 +326,8 @@
   "engine.pdf-tables.description": "يحوّل الجداول المرسومة بخطوط في ملف PDF إلى مصنف Excel، لكل جدول ورقة، مع الأرقام والتواريخ كقيم حقيقية.",
   "engine.pdf-ps.name": "كاتب PostScript (مدمج)",
   "engine.pdf-ps.description": "يحوّل ملفات PDF إلى PostScript وEPS دون Ghostscript: يحتفظ النص بخطوطه وتبقى الرسوم متجهة. الصفحات التي فيها شفافية تصبح صورًا.",
+  "engine.pdf-svg.name": "PDF إلى SVG (مدمج)",
+  "engine.pdf-svg.description": "يحوّل صفحات PDF إلى SVG دون LibreOffice، ملف لكل صفحة: تبقى الرسوم والتدرجات متجهية، ويحتفظ النص بمظهره تمامًا ويظل قابلًا للتحديد.",
   "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "يحوّل جداول المستندات (DOCX, DOC, ODT, RTF, HWP, HWPX) وصفحات الويب (HTML وMHTML) إلى مصنف Excel، لكل جدول ورقة، مع الأرقام والتواريخ كقيم حقيقية.",
   "engine.email.name": "E-mail (built-in)",

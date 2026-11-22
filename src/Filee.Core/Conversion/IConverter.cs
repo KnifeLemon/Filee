@@ -19,8 +19,9 @@ namespace Filee.Core.Conversion;
 /// tracing may follow ICNS → PNG, but must never redraw a PDF, a vector drawing or a video frame that became a PNG.
 /// </param>
 /// <param name="NotForImageSources">
-/// The opposite: never used in routes that start from a raster image. PDF → SVG through LibreOffice keeps a PDF's
-/// vectors, but a photo that became a PDF would only come back as a picture inside an SVG, so images are traced.
+/// The opposite: never used in routes that start from a raster image. PDF → SVG (the built-in writer, or LibreOffice)
+/// keeps a PDF's vectors, but a photo that became a PDF would only come back as a picture inside an SVG, so images
+/// are traced.
 /// </param>
 /// <param name="DirectOnly">
 /// The edge is a route of its own only: the file being converted is a <paramref name="From"/> file and

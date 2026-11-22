@@ -326,6 +326,8 @@
   "engine.pdf-tables.description": "PDF में रेखाओं से बनी तालिकाओं को Excel वर्कबुक में बदलता है, हर तालिका एक शीट, संख्याओं और तारीखों को असली मानों के रूप में।",
   "engine.pdf-ps.name": "PostScript लेखक (अंतर्निहित)",
   "engine.pdf-ps.description": "Ghostscript के बिना PDF को PostScript और EPS में बदलता है: टेक्स्ट अपने फ़ॉन्ट रखता है, चित्र वेक्टर रहते हैं। पारदर्शिता वाले पेज चित्र बन जाते हैं।",
+  "engine.pdf-svg.name": "PDF से SVG (अंतर्निहित)",
+  "engine.pdf-svg.description": "LibreOffice के बिना PDF पेजों को SVG में बदलता है, हर पेज की एक फ़ाइल: चित्र और ग्रेडिएंट वेक्टर रहते हैं, टेक्स्ट बिल्कुल वैसा ही दिखता है और चुना भी जा सकता है।",
   "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "दस्तावेज़ों (DOCX, DOC, ODT, RTF, HWP, HWPX) और वेब पेजों (HTML, MHTML) की तालिकाओं को Excel वर्कबुक में बदलता है, हर तालिका एक शीट, संख्याओं और तारीखों को असली मानों के रूप में।",
   "engine.email.name": "E-mail (built-in)",

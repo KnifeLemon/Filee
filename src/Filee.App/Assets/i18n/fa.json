@@ -340,6 +340,8 @@
   "engine.pdf-tables.description": "تبدیل جداول خط‌کشی‌شده در PDF به کارپوشه Excel، هر جدول در یک برگه، همراه با اعداد و تاریخ‌ها به عنوان مقادیر واقعی.",
   "engine.pdf-ps.name": "نویسنده PostScript (داخلی)",
   "engine.pdf-ps.description": "بدون Ghostscript فایل‌های PDF را به PostScript و EPS تبدیل می‌کند: متن قلم‌های خود را نگه می‌دارد و طرح‌ها وکتور می‌مانند. صفحه‌های دارای شفافیت به تصویر تبدیل می‌شوند.",
+  "engine.pdf-svg.name": "PDF به SVG (داخلی)",
+  "engine.pdf-svg.description": "صفحه‌های PDF را بدون LibreOffice به SVG تبدیل می‌کند، برای هر صفحه یک فایل: طرح‌ها و گرادیان‌ها برداری می‌مانند و متن دقیقاً همان شکل را دارد و همچنان قابل انتخاب است.",
   "engine.document-tables.name": "جداول سند (داخلی)",
   "engine.document-tables.description": "تبدیل جداول اسناد (DOCX, DOC, ODT, RTF, HWP, HWPX) و صفحات وب (HTML، MHTML) به کارپوشه Excel، هر جدول در یک برگه، همراه با اعداد و تاریخ‌ها به عنوان مقادیر واقعی.",
   "engine.email.name": "ایمیل (داخلی)",

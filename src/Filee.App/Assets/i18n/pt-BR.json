@@ -333,6 +333,8 @@
   "engine.pdf-tables.description": "Transforma as tabelas desenhadas com linhas de um PDF em uma pasta de trabalho do Excel, uma planilha por tabela, com números e datas como valores reais.",
   "engine.pdf-ps.name": "Gerador PostScript (mecanismo integrado)",
   "engine.pdf-ps.description": "Converte PDFs em PostScript e EPS sem o Ghostscript: o texto mantém as fontes e os desenhos continuam vetoriais. Páginas com transparência viram imagens.",
+  "engine.pdf-svg.name": "PDF para SVG (mecanismo integrado)",
+  "engine.pdf-svg.description": "Converte páginas de PDF em SVG sem o LibreOffice, um arquivo por página: desenhos e degradês continuam vetoriais, e o texto mantém a aparência exata e ainda pode ser selecionado.",
   "engine.document-tables.name": "Tabelas de documentos (mecanismo integrado)",
   "engine.document-tables.description": "Transforma as tabelas de documentos (DOCX, DOC, ODT, RTF, HWP, HWPX) e de páginas da web (HTML, MHTML) em uma pasta de trabalho do Excel, uma planilha por tabela, com números e datas como valores reais.",
   "engine.email.name": "E-mail (mecanismo integrado)",

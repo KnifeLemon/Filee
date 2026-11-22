@@ -333,6 +333,8 @@
   "engine.pdf-tables.description": "Превращает таблицы PDF, нарисованные линиями, в книгу Excel — по листу на таблицу, с числами и датами как настоящими значениями.",
   "engine.pdf-ps.name": "Генератор PostScript (встроенный)",
   "engine.pdf-ps.description": "Преобразует PDF в PostScript и EPS без Ghostscript: текст сохраняет шрифты, рисунки остаются векторными. Страницы с прозрачностью становятся изображениями.",
+  "engine.pdf-svg.name": "PDF в SVG (встроенный)",
+  "engine.pdf-svg.description": "Преобразует страницы PDF в SVG без LibreOffice, по одному файлу на страницу: рисунки и градиенты остаются векторными, текст выглядит точно так же и по-прежнему выделяется.",
   "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "Превращает таблицы документов (DOCX, DOC, ODT, RTF, HWP, HWPX) и веб-страниц (HTML, MHTML) в книгу Excel — по листу на таблицу, с числами и датами как настоящими значениями.",
   "engine.email.name": "E-mail (built-in)",

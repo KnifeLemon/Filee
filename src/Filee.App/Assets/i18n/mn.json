@@ -325,6 +325,8 @@
   "engine.pdf-tables.description": "PDF дотор зураасаар зурсан хүснэгтүүдийг тоо болон огноог бодит утгаар нь хадгалан тус бүр нь нэг хуудастай Excel файл болгоно.",
   "engine.pdf-ps.name": "PostScript бичигч (суурилагдсан)",
   "engine.pdf-ps.description": "PDF-ийг Ghostscript-гүйгээр PostScript болон EPS болгоно: текст фонтоо хадгалж, зураас вектороороо үлдэнэ. Тунгалаг хэсэгтэй хуудсууд зураг болно.",
+  "engine.pdf-svg.name": "PDF-ээс SVG (суурилагдсан)",
+  "engine.pdf-svg.description": "LibreOffice-гүйгээр PDF хуудсуудыг SVG болгоно, хуудас бүрт нэг файл: зураг болон градиент вектор хэвээр, текст яг адилхан харагдаж сонгох боломжтой хэвээр байна.",
   "engine.document-tables.name": "Баримтын хүснэгт (суурилагдсан)",
   "engine.document-tables.description": "Баримт (DOCX, DOC, ODT, RTF, HWP, HWPX) болон вэб хуудасны (HTML, MHTML) хүснэгтүүдийг тоо болон огноог бодит утгаар нь хадгалан тус бүр нь нэг хуудастай Excel файл болгоно.",
   "engine.email.name": "Имэйл (суурилагдсан)",

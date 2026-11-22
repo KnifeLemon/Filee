@@ -333,6 +333,8 @@
   "engine.pdf-tables.description": "Transforme les tableaux tracés avec des lignes d'un PDF en classeur Excel, une feuille par tableau, avec les nombres et les dates en vraies valeurs.",
   "engine.pdf-ps.name": "Générateur PostScript (intégré)",
   "engine.pdf-ps.description": "Convertit les PDF en PostScript et EPS sans Ghostscript : le texte garde ses polices, les dessins restent vectoriels. Les pages avec de la transparence deviennent des images.",
+  "engine.pdf-svg.name": "PDF vers SVG (intégré)",
+  "engine.pdf-svg.description": "Convertit les pages PDF en SVG sans LibreOffice, un fichier par page : dessins et dégradés restent vectoriels, le texte garde son aspect exact et reste sélectionnable.",
   "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "Transforme les tableaux des documents (DOCX, DOC, ODT, RTF, HWP, HWPX) et des pages web (HTML, MHTML) en classeur Excel, une feuille par tableau, avec les nombres et les dates en vraies valeurs.",
   "engine.email.name": "E-mail (built-in)",

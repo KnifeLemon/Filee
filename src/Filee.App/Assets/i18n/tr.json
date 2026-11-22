@@ -326,6 +326,8 @@
   "engine.pdf-tables.description": "PDF'deki çizgilerle oluşturulmuş tabloları, her biri ayrı çalışma sayfasında olacak şekilde Excel'e dönüştürür; sayı ve tarihler gerçek değerler olarak tutulur.",
   "engine.pdf-ps.name": "PostScript oluşturucu (yerleşik)",
   "engine.pdf-ps.description": "PDF'leri Ghostscript olmadan PostScript ve EPS'ye dönüştürür: metin yazı tiplerini korur, çizimler vektör kalır. Saydamlık içeren sayfalar resme dönüşür.",
+  "engine.pdf-svg.name": "PDF'den SVG'ye (yerleşik)",
+  "engine.pdf-svg.description": "PDF sayfalarını LibreOffice olmadan SVG'ye dönüştürür, her sayfa için bir dosya: çizimler ve degradeler vektör kalır, metin aynı görünür ve hâlâ seçilebilir.",
   "engine.document-tables.name": "Belge tabloları (yerleşik)",
   "engine.document-tables.description": "Belgelerdeki (DOCX, DOC, ODT, RTF, HWP, HWPX) ve web sayfalarındaki (HTML, MHTML) tabloları, her biri ayrı çalışma sayfasında olacak şekilde Excel'e dönüştürür; sayı ve tarihler gerçek değerler olarak tutulur.",
   "engine.email.name": "E-posta (yerleşik)",

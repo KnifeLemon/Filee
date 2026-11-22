@@ -333,6 +333,8 @@
   "engine.pdf-tables.description": "Chuyển các bảng kẻ bằng đường kẻ trong PDF thành sổ làm việc Excel, mỗi bảng một trang tính, số và ngày là giá trị thực.",
   "engine.pdf-ps.name": "Trình ghi PostScript (tích hợp)",
   "engine.pdf-ps.description": "Chuyển PDF sang PostScript và EPS mà không cần Ghostscript: chữ giữ nguyên phông, hình vẽ vẫn là vector. Các trang có độ trong suốt sẽ thành ảnh.",
+  "engine.pdf-svg.name": "PDF sang SVG (tích hợp)",
+  "engine.pdf-svg.description": "Chuyển các trang PDF sang SVG mà không cần LibreOffice, mỗi trang một tệp: hình vẽ và dải màu vẫn là vector, chữ giữ nguyên hình dạng và vẫn chọn được.",
   "engine.document-tables.name": "Bảng tài liệu (tích hợp)",
   "engine.document-tables.description": "Chuyển các bảng trong tài liệu (DOCX, DOC, ODT, RTF, HWP, HWPX) và trang web (HTML, MHTML) thành sổ làm việc Excel, mỗi bảng một trang tính, số và ngày là giá trị thực.",
   "engine.email.name": "Email (tích hợp)",

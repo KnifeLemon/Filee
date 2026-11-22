@@ -326,6 +326,8 @@
   "engine.pdf-tables.description": "Überträgt Tabellen mit eingezeichneten Linien aus einer PDF in eine Excel-Arbeitsmappe, jeweils auf ein eigenes Blatt. Zahlen und Datumsangaben bleiben echte Werte.",
   "engine.pdf-ps.name": "PostScript-Writer (integriert)",
   "engine.pdf-ps.description": "Wandelt PDFs ohne Ghostscript in PostScript und EPS um: Text behält seine Schriften, Zeichnungen bleiben Vektoren. Seiten mit Transparenz werden zu Bildern.",
+  "engine.pdf-svg.name": "PDF zu SVG (integriert)",
+  "engine.pdf-svg.description": "Wandelt PDF-Seiten ohne LibreOffice in SVG um, eine Datei pro Seite: Zeichnungen und Verläufe bleiben Vektoren, Text sieht genau gleich aus und lässt sich weiterhin markieren.",
   "engine.document-tables.name": "Dokumenttabellen (integriert)",
   "engine.document-tables.description": "Überträgt die Tabellen aus Dokumenten (DOCX, DOC, ODT, RTF, HWP, HWPX) und Webseiten (HTML, MHTML) in eine Excel-Arbeitsmappe, jeweils auf ein eigenes Blatt. Zahlen und Datumsangaben bleiben echte Werte.",
   "engine.email.name": "E-Mail (integriert)",

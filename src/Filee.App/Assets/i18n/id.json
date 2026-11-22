@@ -326,6 +326,8 @@
   "engine.pdf-tables.description": "Mengubah tabel bergaris dalam PDF menjadi buku kerja Excel, masing-masing tabel satu lembar, dengan angka dan tanggal sebagai nilai data asli.",
   "engine.pdf-ps.name": "Penulis PostScript (bawaan)",
   "engine.pdf-ps.description": "Mengubah PDF menjadi PostScript dan EPS tanpa Ghostscript: teks tetap memakai fontnya, gambar tetap vektor. Halaman dengan transparansi menjadi gambar.",
+  "engine.pdf-svg.name": "PDF ke SVG (bawaan)",
+  "engine.pdf-svg.description": "Mengubah halaman PDF menjadi SVG tanpa LibreOffice, satu file per halaman: gambar dan gradien tetap vektor, teks tampak persis sama dan tetap bisa dipilih.",
   "engine.document-tables.name": "Tabel dokumen (bawaan)",
   "engine.document-tables.description": "Mengubah tabel dalam dokumen (DOCX, DOC, ODT, RTF, HWP, HWPX) dan halaman web (HTML, MHTML) menjadi buku kerja Excel, masing-masing tabel satu lembar, dengan angka dan tanggal sebagai nilai data asli.",
   "engine.email.name": "Email (bawaan)",
