@@ -168,7 +168,11 @@ public sealed record ConversionStep(
     string? OriginalSourcePath = null,
     bool Caption = false,
     bool Translate = false,
-    Action<LeftOutNotice>? LeftOut = null);
+    Action<LeftOutNotice>? LeftOut = null)
+{
+    /// <summary>The converter that will consume this step's output, if the route continues.</summary>
+    public string? NextConverterId { get; init; }
+}
 
 /// <summary>One kind of thing an engine left out of a document or drew only approximately, and how many.</summary>
 /// <param name="Key">

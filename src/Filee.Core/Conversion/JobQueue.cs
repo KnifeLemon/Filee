@@ -1064,7 +1064,10 @@ public sealed partial class JobQueue : IAsyncDisposable
                             {
                                 file.LeftOut = leftOut;
                                 Notify(job);
-                            });
+                            })
+                        {
+                            NextConverterId = isLast ? null : route.Steps[s + 1].Converter.Id,
+                        };
                         outputs.AddRange(await step.Converter.ConvertAsync(stepInfo, progress, ct));
                     }
                     finally

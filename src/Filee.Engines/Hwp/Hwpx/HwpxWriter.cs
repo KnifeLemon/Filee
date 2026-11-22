@@ -32,12 +32,14 @@ internal sealed partial class HwpxWriter
     private readonly List<(string Id, string SourcePath, string Extension)> _images = [];
     private readonly StringBuilder _plainText = new();
     private readonly XElement _templateSection;
+    private readonly bool _rhwpPdf;
     private int _nextObjectId = 1_000_000;
 
-    private HwpxWriter(XDocument header, XDocument section)
+    private HwpxWriter(XDocument header, XDocument section, bool rhwpPdf)
     {
         _head = header.Root ?? throw new InvalidDataException("header.xml has no root element.");
         _templateSection = section.Root ?? throw new InvalidDataException("section0.xml has no root element.");
+        _rhwpPdf = rhwpPdf;
         InitializeHeader();
     }
 
@@ -52,8 +54,10 @@ internal sealed partial class HwpxWriter
     /// <summary>Writes <paramref name="document"/> as an HWPX file.</summary>
     /// <param name="outputPath">HWPX file to create (replaced atomically).</param>
     /// <param name="template">Reference HWPX supplying styles and the default page; the built-in blank.hwpx when null.</param>
+    /// <param name="rhwpPdf">rhwp draws this HWPX into a PDF next: room under bottom rules is kept in the flow.</param>
     /// <param name="cancellationToken">Stops the pictures written (an EMF / WMF is drawn record by record).</param>
-    public static void Write(HDocument document, string outputPath, Stream? template = null, CancellationToken cancellationToken = default)
+    public static void Write(HDocument document, string outputPath, Stream? template = null, bool rhwpPdf = false,
+        CancellationToken cancellationToken = default)
     {
         Nesting.Limit(document); // the writer recurses per table, text box and note level
         using var templateStream = template ?? OpenBuiltInTemplate();
@@ -64,7 +68,7 @@ internal sealed partial class HwpxWriter
 
         var writer = new HwpxWriter(
             XDocument.Parse(ReadEntry(reference, "Contents/header.xml")),
-            XDocument.Parse(ReadEntry(reference, "Contents/section0.xml")));
+            XDocument.Parse(ReadEntry(reference, "Contents/section0.xml")), rhwpPdf);
 
         writer._collapseSpacing = document.CollapseParagraphSpacing;
         var sections = document.Sections.Count > 0 ? document.Sections : [new HSection()];
