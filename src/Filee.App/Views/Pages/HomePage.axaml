@@ -189,7 +189,7 @@
                       </Button>
                     </StackPanel>
                     <!-- The card's X: forgets this conversion, leaving its files where they are. -->
-                    <Button Classes="ghost" Padding="8,5" Command="{Binding RemoveFromHistoryCommand}"
+                    <Button Classes="ghost danger" Padding="8,5" Command="{Binding RemoveFromHistoryCommand}"
                             ToolTip.Tip="{DynamicResource home.remove_from_history}"
                             AutomationProperties.Name="{DynamicResource home.remove_from_history}">
                       <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Close}" />
