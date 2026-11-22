@@ -569,11 +569,36 @@ internal static partial class MediaEncoding
     /// a picture written before 0, as in a file whose own times start there.
     /// </summary>
     internal static List<string> FrameAt(string input, double seconds, SeekPoint seek, string output, int maxHeight, VideoStreamInfo? video) =>
+        OneFrame(input, seconds, seek, output, (video is null ? "" : SquarePixels(video)) + $"scale=w=-2:h='trunc(min(ih,{Math.Max(16, maxHeight)})/2)*2'",
+            ["-c:v", "mjpeg", "-q:v", "3"]);
+
+    /// <summary>
+    /// The frame at <paramref name="seconds"/> as a PNG at the size the video is shown at (square pixels, turned
+    /// upright), for "Mark this frame": found as the window's picture at that time is (<see cref="FrameAt"/>), so it is
+    /// the same frame. An HDR frame becomes ordinary colours (<see cref="LivePhotoWriter.ToneMap"/>, without its last
+    /// step to 4:2:0, which would halve the colour detail of a picture going to RGB) when <paramref name="toneMap"/> is
+    /// set (FFmpeg has zscale); otherwise its colours are written as decoded and look washed out.
+    /// </summary>
+    internal static List<string> StillAt(string input, double seconds, SeekPoint seek, string output, VideoStreamInfo video, bool toneMap) =>
+        OneFrame(input, seconds, seek, output, (toneMap ? StillToneMap : "") + SquarePixels(video) + "format=rgb24", ["-c:v", "png"]);
+
+    /// <summary>
+    /// <see cref="LivePhotoWriter.ToneMap"/> for a still: the same chain without <c>format=yuv420p</c>. Measured 18 Nov
+    /// 2026 on SMPTE bars in PQ HEVC (Ubuntu's FFmpeg 6.1): levels 0-255 either way, colour kept (mean saturation
+    /// 72.46 against 71.92).
+    /// </summary>
+    internal static readonly string StillToneMap = LivePhotoWriter.ToneMap.Replace("format=yuv420p,", "", StringComparison.Ordinal);
+
+    /// <summary>
+    /// The first frame shown at or after <paramref name="seconds"/>, read from <paramref name="seek"/> and through
+    /// <paramref name="filters"/>, as one picture: what <see cref="FrameAt"/> and <see cref="StillAt"/> share, so the
+    /// window's picture and a marked frame are found the same way.
+    /// </summary>
+    private static List<string> OneFrame(string input, double seconds, SeekPoint seek, string output, string filters, string[] codec) =>
     [
         .. Common, .. seek.Input, "-i", input, "-map", "0:V:0",
-        "-vf", $"settb=AVTB,trim=start={seek.Time(seconds)},setpts=PTS-STARTPTS,"
-            + (video is null ? "" : SquarePixels(video)) + $"scale=w=-2:h='trunc(min(ih,{Math.Max(16, maxHeight)})/2)*2'",
-        "-frames:v", "1", "-update", "1", "-c:v", "mjpeg", "-q:v", "3", "-f", "image2", output,
+        "-vf", $"settb=AVTB,trim=start={seek.Time(seconds)},setpts=PTS-STARTPTS," + filters,
+        "-frames:v", "1", "-update", "1", .. codec, "-f", "image2", output,
     ];
 
     /// <summary>

@@ -16,7 +16,7 @@ public class ZstSettingsTests
         Assert.Equal("archives", ProfileSelector.Select(BuiltInData.CreateProfiles(), [name])?.Id);
 
     [Fact]
-    public void Version_104_archives_learn_zstandard_without_taking_custom_claims()
+    public void Version_106_archives_learn_zstandard_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
@@ -24,11 +24,11 @@ public class ZstSettingsTests
         archives.Extensions.RemoveAll(e => Extensions.Contains(e));
         profiles.Insert(0, new ToolbarProfile { Id = "mine", Name = "Mine", Extensions = ["ZST"] });
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(103, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(105, presets, profiles));
         Assert.DoesNotContain("zst", archives.Extensions, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("tar.zst", archives.Extensions);
         Assert.Contains("tzst", archives.Extensions);
         Assert.Equal("mine", ProfileSelector.Select(profiles, ["logs.zst"])?.Id);
-        Assert.False(SettingsMigrations.ApplyToLibrary(103, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(105, presets, profiles));
     }
 }

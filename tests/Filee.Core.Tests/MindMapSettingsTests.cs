@@ -13,7 +13,7 @@ public class MindMapSettingsTests
         Assert.Equal("office", ProfileSelector.Select(BuiltInData.CreateProfiles(), [file])?.Id);
 
     [Fact]
-    public void Version_108_donuts_learn_mind_maps_without_taking_custom_claims()
+    public void Version_110_donuts_learn_mind_maps_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
@@ -21,14 +21,14 @@ public class MindMapSettingsTests
         donut.Remove("mm");
         donut.Remove("xmind");
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(107, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(109, presets, profiles));
         Assert.Contains("mm", donut);
         Assert.Contains("xmind", donut);
-        Assert.False(SettingsMigrations.ApplyToLibrary(107, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(109, presets, profiles));
 
         donut.Remove("xmind");
         profiles.Insert(0, new ToolbarProfile { Id = "my-maps", Name = "Maps", Extensions = ["XMIND"] });
-        Assert.False(SettingsMigrations.ApplyToLibrary(107, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(109, presets, profiles));
         Assert.DoesNotContain("xmind", donut); // the user's own donut has it
     }
 }

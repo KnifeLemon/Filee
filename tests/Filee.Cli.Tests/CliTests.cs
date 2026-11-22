@@ -39,6 +39,50 @@ public sealed class CliTests : IDisposable
         Assert.Contains("requires an ISO target", rejected.Errors);
     }
 
+    [Theory]
+    [InlineData("joliet", "MY_DISC")]
+    [InlineData("udf201", "My disc")]
+    [InlineData("joliet", "")]
+    public async Task Iso_label_option_overrides_without_changing_a_saved_preset(string filesystem, string label)
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_folder, "label-source")).FullName;
+        File.WriteAllText(Path.Combine(folder, "input.txt"), "label contents");
+        var preset = new Filee.Core.Presets.Preset { Id = "label-test", Name = "Label", TargetFormat = "iso", Archive = { IsoVolumeLabel = "SAVED" } };
+        var store = new Filee.Core.Settings.UserDataStore(_settings);
+        store.Load();
+        store.Presets.Add(preset);
+        store.SaveLibrary();
+        var result = await Run("convert", folder, "--preset", "label-test", "--iso-filesystem", filesystem, "--iso-label", label, "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        using var image = File.OpenRead(folder + ".iso");
+        using DiscUtils.DiscFileSystem fs = filesystem == "udf201" ? new DiscUtils.Udf.UdfReader(image) : new DiscUtils.Iso9660.CDReader(image, true);
+        Assert.Equal(label.Length == 0 ? "label-source" : label, fs.VolumeLabel);
+        var reloaded = new Filee.Core.Settings.UserDataStore(_settings);
+        reloaded.Load();
+        Assert.Equal("SAVED", reloaded.FindPreset("label-test")!.Archive.IsoVolumeLabel);
+        var wrongTarget = await Run("convert", folder, "--to", "zip", "--iso-label", label);
+        Assert.NotEqual(0, wrongTarget.Code);
+        Assert.Contains("requires an ISO target", wrongTarget.Errors);
+        var invalid = await Run("convert", folder, "--to", "iso", "--iso-label", "bad/label");
+        Assert.NotEqual(0, invalid.Code);
+        Assert.Contains("Invalid ISO label", invalid.Errors);
+    }
+
+    [Fact]
+    public async Task Iso_labels_are_derived_per_input_in_a_multi_folder_command()
+    {
+        var first = Directory.CreateDirectory(Path.Combine(_folder, "first.dir")).FullName;
+        var second = Directory.CreateDirectory(Path.Combine(_folder, "second")).FullName;
+        var result = await Run("convert", first, second, "--to", "iso", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        foreach (var (folder, expected) in new[] { (first, "first.dir"), (second, "second") })
+        {
+            using var stream = File.OpenRead(folder + ".iso");
+            using var iso = new DiscUtils.Iso9660.CDReader(stream, true);
+            Assert.Equal(expected, iso.VolumeLabel);
+        }
+    }
+
     [Fact]
     public async Task Same_audio_takes_a_films_sound_out_as_it_is()
     {

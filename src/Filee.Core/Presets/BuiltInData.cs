@@ -172,6 +172,7 @@ public static class BuiltInData
         .. DataPresets(),
         .. CodecAndSubtitlePresets(),
         .. ModelPresets(),
+        .. SourceModelPresets(),
         .. GeoPresets(),
         .. TracePresets(),
     ];
@@ -602,6 +603,20 @@ public static class BuiltInData
         new() { Id = "to-ply", Name = "PLY", TargetFormat = "ply" },
         new() { Id = "to-gltf", Name = "glTF", TargetFormat = "gltf" },
     ];
+
+    /// <summary>
+    /// Studiomdl data for Source engine models (#1526, added to the library in settings schema 100): in the palette only,
+    /// after glTF, in the Games field (off in a new install). "QC + SMD" decompiles a model into the folder studiomdl
+    /// builds it from (settings schema 101); only a .mdl can take it.
+    /// </summary>
+    public static List<Preset> SourceModelPresets() =>
+    [
+        new() { Id = "to-smd", Name = "SMD", TargetFormat = "smd" },
+        new() { Id = DecompileModelId, Name = "QC + SMD", TargetFormat = FormatRegistry.Folder },
+    ];
+
+    /// <summary>The preset that decompiles a Source engine model (.mdl) into its QC and SMDs.</summary>
+    public const string DecompileModelId = "decompile-mdl";
 
     /// <summary>
     /// Geospatial vector targets (added in settings schema 25, see SettingsMigrations). CSV, the sixth slice of the

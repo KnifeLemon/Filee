@@ -66,6 +66,8 @@ public static class AppHost
         services.AddSingleton<PresetAvailability>();
         services.AddSingleton<RadialViewModel>();
         services.AddSingleton<ConversionService>();
+        // "Mark this frame": the frames on their way to Annotate, deleted once marked (and when Filee quits).
+        services.AddSingleton(sp => new MarkedFrames(JobQueue.DefaultWorkRoot, sp.GetRequiredService<JobQueue>()));
         services.AddSingleton<SpreadsheetPrintService>();
         services.AddSingleton<WatchFolderService>();
         services.AddSingleton<Filee.App.Services.Connect.SharedFolderManager>();

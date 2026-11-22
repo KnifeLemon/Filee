@@ -98,6 +98,343 @@ public sealed class AnnotateWindowTests : IDisposable
     private static void Key(AnnotateWindow window, Key key, RawInputModifiers modifiers = RawInputModifiers.None) =>
         window.KeyPress(key, modifiers, PhysicalKey.None, null);
 
+    /// <summary>
+    /// "Mark this frame" again while Annotate is open on a frame: the new frame joins the list instead of closing the
+    /// one being marked; what is left unsaved is known, so its frame can be deleted.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_picture_added_while_open_joins_the_list_after_the_one_being_marked()
+    {
+        var (window, vm, exported) = Open();
+        try
+        {
+            Assert.False(vm.HasMultipleFiles);
+            Assert.Equal("Save", vm.SaveText);
+            vm.Mode = AnnotateMode.Box;
+            Drag(window, (0.2, 0.3), (0.6, 0.5));
+
+            var second = Picture("frame 0m12.500s.png");
+            vm.Add(second, "a note about it");
+            Assert.True(vm.HasMultipleFiles);
+            Assert.Equal("1 of 2", vm.CounterText);
+            Assert.Equal("Save & next", vm.SaveText);
+            Assert.Single(vm.Marks.Marks); // the marks being drawn stay
+            Assert.Equal("", vm.PictureNote); // the note is the frame's, not the picture shown
+
+            vm.SaveCommand.Execute(null);
+            Wait(() => vm.CurrentIndex == 1 && vm.PreviewImage is not null && !vm.IsBusy);
+            Assert.Equal("frame 0m12.500s.png", vm.CurrentFileName);
+            Assert.Equal("2 of 2", vm.CounterText);
+            Assert.Equal("a note about it", vm.PictureNote);
+            Assert.True(window.FindControl<TextBlock>("PictureNote")!.IsEffectivelyVisible);
+            Assert.Single(exported);
+            Assert.Equal([second], vm.UnsavedFiles);
+            Assert.Equal([second], vm.RemainingFiles);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// Annotate open on pictures of one's own: frames marked meanwhile come next, in the order marked, not after all of
+    /// them.
+    /// </summary>
+    [AvaloniaFact]
+    public void Frames_added_to_a_list_of_ones_own_come_next_in_the_order_marked()
+    {
+        var (window, vm, _) = Open(files: 3);
+        try
+        {
+            var a = Picture("frame a.png");
+            var b = Picture("frame b.png");
+            vm.Add(a);
+            vm.Add(b);
+            Assert.Equal("1 of 5", vm.CounterText);
+            vm.SkipCommand.Execute(null);
+            Wait(() => vm.CurrentIndex == 1 && !vm.IsBusy);
+            Assert.Equal("frame a.png", vm.CurrentFileName);
+            vm.SkipCommand.Execute(null);
+            Wait(() => vm.CurrentIndex == 2 && !vm.IsBusy);
+            Assert.Equal("frame b.png", vm.CurrentFileName);
+            vm.SkipCommand.Execute(null);
+            Wait(() => vm.CurrentIndex == 3 && !vm.IsBusy);
+            Assert.Equal("shot2.png", vm.CurrentFileName);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// "Mark this frame" from Cut a clip, through the app's own windows and job queue: Annotate opens on the frame
+    /// above the clip window (which stays on top), a second frame joins it, the marked copy is saved next to the video,
+    /// and the frames go once saved, or once the window closes with them unsaved.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_marked_frame_opens_in_Annotate_joins_an_open_window_and_is_saved_next_to_its_video()
+    {
+        TestServices.EnsureInitialized("en");
+        var windows = AppHost.Get<WindowService>();
+        var marks = AppHost.Get<MarkedFrames>();
+        var videos = Path.Combine(_folder, "videos");
+        Directory.CreateDirectory(videos);
+        var video = Path.Combine(videos, "Site walk.mp4");
+        File.WriteAllBytes(video, [0]);
+        string Frame(double seconds)
+        {
+            var frame = marks.NewPath(video, seconds);
+            File.Copy(Picture($"picture {seconds}.png"), frame);
+            return frame;
+        }
+        var first = Frame(1.5);
+        var second = Frame(2.5);
+        try
+        {
+            windows.AnnotateFrame(first);
+            var window = windows.AnnotateWindow!;
+            var vm = Assert.IsType<AnnotateViewModel>(window.DataContext);
+            Wait(() => vm.PreviewImage is not null && !vm.IsBusy);
+            Assert.False(window.Topmost); // no clip window to stay above here (AnnotateOnTop below)
+            Assert.Equal("Site walk 0m01.500s.png", vm.CurrentFileName);
+
+            windows.AnnotateFrame(second);
+            Assert.Same(window, windows.AnnotateWindow);
+            Assert.Equal("1 of 2", vm.CounterText);
+
+            RenderTests.Pump();
+            vm.Mode = AnnotateMode.Box;
+            Drag(window, (0.2, 0.3), (0.6, 0.5));
+            vm.SaveCommand.Execute(null);
+            var saved = Path.Combine(videos, "Site walk 0m01.500s Annotated.png");
+            for (var i = 0; i < 3000 && (!File.Exists(saved) || Directory.Exists(Path.GetDirectoryName(first))); i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                Thread.Sleep(10);
+            }
+            Assert.True(File.Exists(saved), "the marked copy is saved next to the video");
+            Assert.False(Directory.Exists(Path.GetDirectoryName(first)), "a saved frame goes");
+            Assert.Null(marks.VideoOf(first));
+
+            Wait(() => vm.CurrentIndex == 1 && vm.PreviewImage is not null && !vm.IsBusy);
+            window.Close();
+            Assert.False(Directory.Exists(Path.GetDirectoryName(second)), "a frame left unsaved goes with the window");
+        }
+        finally
+        {
+            windows.AnnotateWindow?.Close();
+            marks.Discard(first);
+            marks.Discard(second);
+        }
+    }
+
+    /// <summary>
+    /// A frame skipped in Annotate isn't needed any more (there is no way back to it) and goes at once, not when the
+    /// window closes; a minimised Annotate comes back when a frame is added to it.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_skipped_frame_goes_at_once_and_a_minimised_window_comes_back_for_the_next()
+    {
+        TestServices.EnsureInitialized("en");
+        var windows = AppHost.Get<WindowService>();
+        var marks = AppHost.Get<MarkedFrames>();
+        var video = Path.Combine(_folder, "Site walk.mp4");
+        File.WriteAllBytes(video, [0]);
+        string Frame(double seconds)
+        {
+            var frame = marks.NewPath(video, seconds);
+            File.Copy(Picture($"picture {seconds}.png"), frame);
+            return frame;
+        }
+        var first = Frame(1);
+        var second = Frame(2);
+        var third = Frame(3);
+        try
+        {
+            windows.AnnotateFrame(first);
+            var window = windows.AnnotateWindow!;
+            var vm = Assert.IsType<AnnotateViewModel>(window.DataContext);
+            Wait(() => vm.PreviewImage is not null && !vm.IsBusy);
+            windows.AnnotateFrame(second);
+            vm.SkipCommand.Execute(null);
+            Wait(() => vm.CurrentIndex == 1 && !vm.IsBusy);
+            Assert.False(Directory.Exists(Path.GetDirectoryName(first)), "a skipped frame goes");
+            Assert.True(File.Exists(second));
+
+            window.WindowState = WindowState.Minimized;
+            windows.AnnotateFrame(third);
+            Assert.Equal(WindowState.Normal, window.WindowState);
+        }
+        finally
+        {
+            windows.AnnotateWindow?.Close();
+            foreach (var frame in new[] { first, second, third })
+                marks.Discard(frame);
+        }
+    }
+
+    /// <summary>
+    /// A frame marked while Annotate shows its summary of pictures that failed opens in a window of its own; the
+    /// summary isn't turned back into a list to mark.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_frame_marked_while_Annotate_shows_its_summary_opens_a_new_window()
+    {
+        TestServices.EnsureInitialized("en");
+        var windows = AppHost.Get<WindowService>();
+        var marks = AppHost.Get<MarkedFrames>();
+        var video = Path.Combine(_folder, "Site walk.mp4");
+        File.WriteAllBytes(video, [0]);
+        var broken = marks.NewPath(video, 1);
+        File.WriteAllBytes(broken, [0x89, (byte)'P', (byte)'N', (byte)'G', 1, 2, 3]);
+        var fine = marks.NewPath(video, 2);
+        File.Copy(Picture("fine.png"), fine);
+        try
+        {
+            windows.AnnotateFrame(broken);
+            var first = windows.AnnotateWindow!;
+            var summary = Assert.IsType<AnnotateViewModel>(first.DataContext);
+            Wait(() => summary.IsFinished);
+            Assert.True(first.IsVisible);
+
+            windows.AnnotateFrame(fine);
+            var second = windows.AnnotateWindow!;
+            Assert.NotSame(first, second);
+            Assert.False(first.IsVisible);
+            var vm = Assert.IsType<AnnotateViewModel>(second.DataContext);
+            Wait(() => vm.PreviewImage is not null && !vm.IsBusy);
+            Assert.Equal("Site walk 0m02.000s.png", vm.CurrentFileName);
+            // The summary's list was left alone: the new frame isn't among its pictures.
+            Assert.Equal(["Site walk 0m01.000s.png"], summary.Problems.Select(p => p.Split(':')[0]));
+            Assert.DoesNotContain(fine, summary.UnsavedFiles);
+        }
+        finally
+        {
+            windows.AnnotateWindow?.Close();
+            marks.Discard(broken);
+            marks.Discard(fine);
+        }
+    }
+
+    /// <summary>
+    /// A frame that arrives once the window has begun to close opens a window of its own: added to the closing one, it
+    /// would be thrown away with that window's unsaved pictures.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_window_that_is_closing_takes_no_more_frames()
+    {
+        var (window, vm) = OpenOn([Picture("one.png")], (_, _) => { });
+        bool? doneWhileClosing = null;
+        window.Closing += (_, _) => doneWhileClosing = vm.IsDone;
+        window.Close();
+        Assert.True(doneWhileClosing);
+    }
+
+    /// <summary>
+    /// Annotate sits above Cut a clip, which stays on top, only while it holds frames from it still to mark and that
+    /// window is open; with pictures of one's own only, or the clip window closed, it is an ordinary window.
+    /// </summary>
+    [Fact]
+    public void Annotate_is_on_top_only_while_frames_wait_and_the_clip_window_is_open()
+    {
+        using var marks = new MarkedFrames(_folder);
+        var frame = marks.NewPath(Path.Combine(_folder, "clip.mp4"), 2);
+        var own = Path.Combine(_folder, "photo.png");
+        Assert.True(WindowService.AnnotateOnTop(true, [own, frame], marks));
+        Assert.False(WindowService.AnnotateOnTop(false, [own, frame], marks));
+        Assert.False(WindowService.AnnotateOnTop(true, [own], marks));
+        marks.Discard(frame); // saved: nothing of the clip window's left
+        Assert.False(WindowService.AnnotateOnTop(true, [own, frame], marks));
+    }
+
+    /// <summary>
+    /// The app's own wiring, with FFmpeg: Cut a clip opened through the window service marks a real video's frame, and
+    /// Annotate comes up above it (the clip window stays on top), then is an ordinary window once the clip window
+    /// closes.
+    /// </summary>
+    [AvaloniaFact]
+    public void Cut_a_clip_hands_its_frame_to_Annotate_above_it()
+    {
+        TestServices.EnsureInitialized("en");
+        var tools = Filee.Engines.Media.FfmpegConverter.Locate();
+        Assert.SkipUnless(tools is not null, "FFmpeg is not installed");
+        var video = Path.Combine(_folder, "walk.mp4");
+        // Off the UI thread: waiting on it there for FFmpeg would wait forever.
+        var made = Task.Run(() => Filee.Engines.Infrastructure.ProcessRunner.RunAsync(tools!.Value.Ffmpeg,
+            ["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x90:rate=10:d=2", "-pix_fmt", "yuv420p", video],
+            TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken)).GetAwaiter().GetResult();
+        Assert.True(made.ExitCode == 0, made.StandardError);
+        var windows = AppHost.Get<WindowService>();
+        var clipTool = AppHost.Get<UserDataStore>().FindPreset("tool-clip") ?? BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip");
+        try
+        {
+            windows.ShowClipWindow([video], clipTool);
+            var clip = Assert.IsType<ClipWindowViewModel>(windows.ClipWindow!.DataContext);
+            Wait(() => !clip.IsLoading && clip.MarkFrameCommand.CanExecute(null));
+            clip.MarkFrameCommand.Execute(null);
+            Wait(() => windows.AnnotateWindow is { DataContext: AnnotateViewModel { PreviewImage: not null, IsBusy: false } });
+            var annotate = windows.AnnotateWindow!;
+            Assert.Equal("walk 0m00.000s.png", ((AnnotateViewModel)annotate.DataContext!).CurrentFileName);
+            Assert.True(annotate.Topmost);
+            windows.ClipWindow!.Close();
+            Assert.False(annotate.Topmost);
+        }
+        finally
+        {
+            windows.ClipWindow?.Close();
+            windows.AnnotateWindow?.Close();
+        }
+    }
+
+    /// <summary>
+    /// Annotate stays above Cut a clip only while its frames wait: with the frame and one of the user's own pictures in
+    /// it, skipping the frame moves Annotate to the user's picture and, with the clip window still open, makes it an
+    /// ordinary window again (the rule is re-applied when Annotate moves on, not only when windows open or close).
+    /// </summary>
+    [AvaloniaFact]
+    public void Annotate_stops_staying_on_top_once_its_frame_is_skipped_while_Cut_a_clip_stays_open()
+    {
+        TestServices.EnsureInitialized("en");
+        var tools = Filee.Engines.Media.FfmpegConverter.Locate();
+        Assert.SkipUnless(tools is not null, "FFmpeg is not installed");
+        var video = Path.Combine(_folder, "walk.mp4");
+        var made = Task.Run(() => Filee.Engines.Infrastructure.ProcessRunner.RunAsync(tools!.Value.Ffmpeg,
+            ["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x90:rate=10:d=2", "-pix_fmt", "yuv420p", video],
+            TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken)).GetAwaiter().GetResult();
+        Assert.True(made.ExitCode == 0, made.StandardError);
+        var own = Path.Combine(_folder, "own picture.png");
+        var drawn = Task.Run(() => Filee.Engines.Infrastructure.ProcessRunner.RunAsync(tools!.Value.Ffmpeg,
+            ["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=64x64", "-frames:v", "1", own],
+            TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken)).GetAwaiter().GetResult();
+        Assert.True(drawn.ExitCode == 0, drawn.StandardError);
+        var windows = AppHost.Get<WindowService>();
+        var clipTool = AppHost.Get<UserDataStore>().FindPreset("tool-clip") ?? BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip");
+        try
+        {
+            windows.ShowClipWindow([video], clipTool);
+            var clip = Assert.IsType<ClipWindowViewModel>(windows.ClipWindow!.DataContext);
+            Wait(() => !clip.IsLoading && clip.MarkFrameCommand.CanExecute(null));
+            clip.MarkFrameCommand.Execute(null);
+            Wait(() => windows.AnnotateWindow is { DataContext: AnnotateViewModel { PreviewImage: not null, IsBusy: false } });
+            var annotate = windows.AnnotateWindow!;
+            var vm = (AnnotateViewModel)annotate.DataContext!;
+            vm.Add(own, null);
+            Assert.True(annotate.Topmost);
+            vm.SkipCommand.Execute(null);
+            Wait(() => vm.CurrentIndex == 1 && !vm.IsBusy);
+            Assert.NotNull(windows.ClipWindow);
+            Assert.Equal("own picture.png", vm.CurrentFileName);
+            Assert.False(annotate.Topmost);
+        }
+        finally
+        {
+            windows.ClipWindow?.Close();
+            windows.AnnotateWindow?.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Each_drawing_tool_draws_its_mark_where_dragged_and_a_click_draws_nothing()
     {

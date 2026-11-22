@@ -13,7 +13,7 @@ public class IwbSettingsTests
         Assert.Equal("presentations", ProfileSelector.Select(BuiltInData.CreateProfiles(), [file])?.Id);
 
     [Fact]
-    public void Version_115_donuts_learn_iwb_and_notebook_without_taking_custom_claims()
+    public void Version_117_donuts_learn_iwb_and_notebook_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
@@ -21,15 +21,15 @@ public class IwbSettingsTests
         donut.Remove("iwb");
         donut.Remove("notebook");
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(114, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(116, presets, profiles));
         Assert.Contains("iwb", donut);
         Assert.Contains("notebook", donut);
-        Assert.False(SettingsMigrations.ApplyToLibrary(114, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(116, presets, profiles));
 
         donut.Remove("iwb");
         donut.Remove("notebook");
         profiles.Insert(0, new ToolbarProfile { Id = "my-boards", Name = "Whiteboards", Extensions = ["IWB"] });
-        Assert.True(SettingsMigrations.ApplyToLibrary(114, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(116, presets, profiles));
         Assert.DoesNotContain("iwb", donut); // the user's own donut has it
         Assert.Contains("notebook", donut);
     }

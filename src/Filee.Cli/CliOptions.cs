@@ -21,6 +21,7 @@ internal sealed record CliOptions
     public int? Quality { get; set; }
     public string? Pages { get; set; }
     public Filee.Core.Presets.IsoFileSystem? IsoFileSystem { get; set; }
+    public string? IsoLabel { get; set; }
 
     /// <summary>--split-every: PDF → PDF in files of this many pages (#1259).</summary>
     public int? SplitEvery { get; set; }
@@ -79,6 +80,9 @@ internal sealed record CliOptions
 
             switch (arg.ToLowerInvariant())
             {
+                case "--iso-label":
+                    options.IsoLabel = Value();
+                    break;
                 case "--iso-filesystem":
                     var filesystem = Value()?.ToLowerInvariant();
                     if (filesystem == "joliet") options.IsoFileSystem = Filee.Core.Presets.IsoFileSystem.Joliet;

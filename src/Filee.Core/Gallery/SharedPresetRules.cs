@@ -291,7 +291,8 @@ internal static class SharedPresetRules
                     ("from", new NumberRule(0, 1_000_000)),
                     ("length", new NumberRule(0, 1_000_000)),
                     ("volume", new NumberRule(0, ClipPart.MaxVolume)),
-                    ("fade", Flag)) with
+                    ("fade", Flag),
+                    ("loop", Flag)) with
                 { Nullable = true })) with
             { Nullable = true }),
             ("joinIntoOne", Flag),
@@ -303,6 +304,7 @@ internal static class SharedPresetRules
             ("removeMetadata", Flag))),
         ("archive", Obj(
             ("isoFileSystem", Enum<IsoFileSystem>()),
+            ("isoVolumeLabel", new StringRule(30)),
             ("combineIntoOne", Flag),
             ("level", Enum<ArchiveLevel>()))),
         ("trace", Obj(

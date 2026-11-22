@@ -448,16 +448,19 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         var log = services.GetService<ILogger<ClipWindowViewModel>>();
         var vm = new ClipWindowViewModel(videos, preset, loc, store, new FfmpegFrameSource(),
             path => ClipTool.TargetFor(FormatRegistry.Detect(path)?.Id ?? ClipTool.FallbackTarget, catalog.CreatePlanner()),
-            (path, conversion) => conversions.Start([path], conversion), log, ringtone);
+            (path, conversion) => conversions.Start([path], conversion), log, ringtone,
+            services.GetRequiredService<MarkedFrames>(), AnnotateFrame);
         var win = new ClipWindow { DataContext = vm };
         win.PositionOnScreen(near);
         win.Closed += (_, _) =>
         {
             if (_clipWindow == win)
                 _clipWindow = null;
+            KeepAnnotateAboveClip();
             trimmer.Request();
         };
         _clipWindow = win;
+        KeepAnnotateAboveClip();
         win.Show();
         win.Activate();
     }
@@ -560,31 +563,89 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
 
     /// <summary>
     /// Opens the "Annotate" window on the pictures among the files. Each picture is written by an ordinary conversion,
-    /// shown in the toast.
+    /// shown in the toast; for a frame from "Mark this frame", "next to the source" is next to its video
+    /// (<see cref="MarkedFrames"/>).
     /// </summary>
-    public void ShowAnnotateWindow(IReadOnlyList<string> files, Preset preset)
+    public void ShowAnnotateWindow(IReadOnlyList<string> files, Preset preset) => OpenAnnotateWindow(files, preset);
+
+    private AnnotateViewModel? OpenAnnotateWindow(IReadOnlyList<string> files, Preset preset)
     {
         var pictures = files.Where(f => FormatRegistry.Detect(f) is { } format && HideService.CanOpen(format.Id)).ToList();
         if (pictures.Count == 0)
-            return;
+            return null;
         _annotateWindow?.Close();
         var conversions = services.GetRequiredService<ConversionService>();
+        var marks = services.GetRequiredService<MarkedFrames>();
         var planner = services.GetRequiredService<ConverterCatalog>().CreatePlanner();
         var vm = new AnnotateViewModel(pictures, preset, loc, services.GetRequiredService<UserDataStore>(),
             path => AnnotateTool.TargetFor(FormatRegistry.Detect(path)?.Id ?? "", planner),
-            (path, conversion) => conversions.Start([path], conversion), services.GetService<ILogger<AnnotateViewModel>>());
+            (path, conversion) => conversions.Start([path], marks.Apply(path, conversion)), services.GetService<ILogger<AnnotateViewModel>>());
         var win = new AnnotateWindow { DataContext = vm };
         PrepareWindow(win);
         win.Closed += (_, _) =>
         {
             if (_annotateWindow == win)
                 _annotateWindow = null;
+            // Frames left unsaved aren't needed any more; a picture of one's own is left alone.
+            foreach (var file in vm.UnsavedFiles)
+                marks.Discard(file);
             trimmer.Request();
         };
         _annotateWindow = win;
+        vm.PictureSkipped += marks.Discard; // nor is a frame skipped: there is no way back to it
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(AnnotateViewModel.CurrentIndex) or nameof(AnnotateViewModel.IsFinished) && _annotateWindow == win)
+                KeepAnnotateAboveClip();
+        };
+        if (pictures.Any(file => marks.VideoOf(file) is not null))
+            KeepAnnotateAboveClip(); // above the clip window from the start, not a moment after
         win.Show();
         win.Activate();
+        return vm;
     }
+
+    /// <summary>
+    /// "Mark this frame" in Cut a clip: opens <paramref name="frame"/> in Annotate with <paramref name="note"/> under
+    /// it, or, while Annotate is open on pictures still to mark, adds it as the next one, so the picture being marked
+    /// isn't lost. Annotate comes up over the clip window, which stays on top.
+    /// </summary>
+    internal void AnnotateFrame(string frame, string? note = null)
+    {
+        if (_annotateWindow is { DataContext: AnnotateViewModel { IsDone: false } open } window)
+        {
+            open.Add(frame, note);
+            KeepAnnotateAboveClip();
+            if (window.WindowState == WindowState.Minimized)
+                window.WindowState = WindowState.Normal;
+            window.Activate();
+            return;
+        }
+        var tool = services.GetRequiredService<UserDataStore>().FindPreset(BuiltInData.AnnotateId) is { IsAnnotateTool: true } saved
+            ? saved : BuiltInData.AnnotatePresets().Single();
+        if (OpenAnnotateWindow([frame], tool) is { } opened)
+            opened.SetNote(frame, note);
+        else
+            services.GetRequiredService<MarkedFrames>().Discard(frame); // nothing can open it: it isn't needed
+    }
+
+    /// <summary>
+    /// Annotate sits above the clip window, which stays on top, while it holds frames from it still to mark; otherwise
+    /// it is an ordinary window. Applied when a frame arrives, when Annotate moves to another picture and when a clip
+    /// window opens or closes.
+    /// </summary>
+    private void KeepAnnotateAboveClip()
+    {
+        if (_annotateWindow is not { DataContext: AnnotateViewModel vm } window)
+            return;
+        window.Topmost = AnnotateOnTop(_clipWindow is not null, vm.RemainingFiles, services.GetRequiredService<MarkedFrames>());
+    }
+
+    /// <summary>
+    /// The rule of <see cref="KeepAnnotateAboveClip"/>: a clip window is open, and frames from it wait.
+    /// </summary>
+    internal static bool AnnotateOnTop(bool clipWindowOpen, IEnumerable<string> unsaved, MarkedFrames marks) =>
+        clipWindowOpen && unsaved.Any(file => marks.VideoOf(file) is not null);
 
     /// <summary>
     /// Opens the "Add background" window on the pictures among the files. Each picture is written by an ordinary

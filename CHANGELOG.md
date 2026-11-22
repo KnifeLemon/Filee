@@ -22,7 +22,30 @@ Rename this heading to the version number when you release it.
 level: recommended
 ko: GitHub에서 업데이트 파일을 받지 못하면 Filee 다운로드 서버(dl.filee.sh)에서 받아요
 en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't answer
+ko: Zstandard 압축 파일(.tar.zst, .tzst, .zst)을 풀거나 다른 압축 형식으로 바꿀 수 있어요
+en: Zstandard archives (.tar.zst, .tzst, .zst) unpack and convert to other archive formats
+ko: 모양 정보가 없는 주석(형광펜, 메모 등)이 있는 PDF도 PDF/A 검사를 통과해요
+en: PDFs with highlights or notes that carry no appearance now pass PDF/A checks
+ko: Word 문서를 PDF로 바꿀 때 머리글 아래 줄과 문단 사이 구분선이 그대로 나와요
+en: Word documents converted to PDF keep the line under the page header and the lines between paragraphs
+ko: 비스듬히 스캔하거나 찍은 페이지로 만든 검색 가능한 PDF도 TXT로 변환하면 텍스트가 나와요
+en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT with their text
+ko: 클립 자르기에서 음악을 클립이 끝날 때까지 반복할 수 있어요
+en: Cut a clip can loop its music until the clip ends
+ko: 바로 가기를 변환하면 결과가 대상 파일 옆이 아니라 바로 가기 옆에 저장돼요
+en: A shortcut's results are saved next to the shortcut, not next to the file it points to
 -->
+
+- **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
+  rectangles, typed notes) without an appearance stream, which PDF/A requires, so the PDF/A preset's output was marked
+  PDF/A-2b but failed a validator such as veraPDF. Ghostscript now draws such markup into the page: it looks the same
+  but is no longer a separate annotation. Links stay clickable, and markup saved with an appearance stays an
+  annotation unless another one of its kind in the file has none.
+
+- **Zstandard archives open: `.tar.zst` / `.tzst` and `.zst`** (#1646). Extract unpacks a `.tar.zst` straight into
+  its files (no `.tar` left to open again), and it converts to ZIP, 7Z, TAR and the other archive formats like a
+  `.tar.xz`. A single `.zst` unpacks to the file inside, or becomes a `.gz`, `.bz2` or `.xz`. Filee reads Zstandard
+  but doesn't write it. The formats are in the Developer field, which is on by default.
 
 - **Updating from Settings → About works when GitHub's downloads don't answer** (#1593). The in-app update on Windows
   gave up when GitHub's download link didn't answer within 20 seconds, which some networks hit every time. Filee now
@@ -37,6 +60,27 @@ en: Updates come from Filee's download server (dl.filee.sh) when GitHub doesn't 
   and everything stacks in the order the PDF draws it. Words far apart on a line (columns, a label and its value) get
   boxes of their own. The PDF's comments become the slide's speaker notes. Other drawings stay pictures on the slide.
   For slides that look exactly like the PDF, turn on "Pictures of the pages" in the PPTX preset.
+
+- **Word → PDF keeps more paragraph lines** (#1700). In a DOCX, a bottom border on a paragraph in the page header
+  (the rule under a résumé's contact details) was missing from the PDF, and so was the line Word draws between
+  paragraphs that share one border (a "between" border). Both now come out in their colors, and the space Word
+  keeps between a paragraph and its bottom border is kept too, so headings with a rule are spaced as in Word.
+
+- **Searchable PDFs of pages scanned at an angle convert to text** (#1538). A PDF made with Searchable PDF from a page
+  scanned or photographed a few degrees askew failed to convert to TXT with "The PDF contains no text", although other
+  PDF readers select its text: Tesseract writes each line along its slanted baseline, and Filee only read level text.
+  The recognized text now comes out line by line, also in Markdown without pictures and in a DOCX or HWPX made with
+  "Recognize text". PDFs with visible text read as before.
+- **rustyfiles** counts as a file manager for gestures (#1714): with the default *File managers and desktop* scope, a
+  Ctrl + drag out of rustyfiles opens the donut, as in Explorer (Windows).
+- **A shortcut's results are saved next to the shortcut** (#1706). Converting a desktop shortcut (`.lnk`, or a Finder
+  alias on macOS) converts the file it points to, as before, but "next to the original" now means next to the
+  shortcut: a program's icon taken from its desktop shortcut lands on the desktop, not in the program's folder.
+  The same file dropped as itself is still saved next to itself.
+
+- **Cut a clip can loop its music** (#1432). With music on A2, **Loop music** next to **Music** plays the song again
+  from its start each time it ends, until the clip ends, and fades it out with the clip. Off, the music stops when the
+  song ends, as before. Several songs one after another on A2 are not there yet.
 
 ## 2.5.0
 

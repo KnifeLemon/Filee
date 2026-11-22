@@ -38,6 +38,7 @@ public sealed class UnixPortableIntegrationTests : IDisposable
         Assert.Equal(!ownStartup, File.Exists(Path.Combine(config, "autostart", "filee.desktop")));
         foreach (var path in new[] { "Thunar/sendto/filee.desktop", "nautilus/scripts/Filee", "nemo/actions/filee.nemo_action", "kio/servicemenus/filee.desktop" })
             Assert.Equal(!ownMenu, File.Exists(Path.Combine(data, path)));
+        Assert.Equal(!ownMenu, File.Exists(Path.Combine(config, "flea", "scripts", "Filee")));
         document = XDocument.Load(thunar);
         Assert.Contains(document.Root!.Elements("action"), a => (string?)a.Element("command") == "echo keep");
         Assert.Equal(!ownMenu, document.Root.Elements("action").Any(a => (string?)a.Element("unique-id") == LinuxDesktopIntegration.ThunarActionId));
