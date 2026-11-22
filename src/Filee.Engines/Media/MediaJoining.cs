@@ -80,11 +80,11 @@ internal static class MediaJoining
     }
 
     private static readonly char[] ForbiddenConcatCharacters = ['\n', '\r', '\0'];
-    
+
     /// <summary>True when every path can be written as a single line of an FFmpeg concat manifest.</summary>
     public static bool CanUseConcatList(IEnumerable<string> paths) =>
         paths.All(IsSafeConcatPath);
-    
+
     private static bool IsSafeConcatPath(string path)
     {
         if (path.IndexOfAny(ForbiddenConcatCharacters) >= 0)
@@ -92,7 +92,7 @@ internal static class MediaJoining
         var resolved = MediaInput.IsUrl(path) ? path : Path.GetFullPath(path);
         return resolved.IndexOfAny(ForbiddenConcatCharacters) < 0;
     }
-    
+
     /// <summary>The list of the concat demuxer: one <c>file '...'</c> line per clip, quotes escaped.</summary>
     /// <exception cref="ArgumentException">A path contains a line break or null character.</exception>
     public static string ConcatList(IEnumerable<string> paths)
