@@ -36,6 +36,7 @@ public class FormatRegistryTests
     [InlineData("archive.zip.001", "split")]
     [InlineData("archive.tar.001", "split")]
     [InlineData("sketch.kra~", "kra")] // Krita's backup of the previous save
+    [InlineData("template.ait", "ai")] // Adobe Illustrator template
     public void Detects_formats(string path, string id) => Assert.Equal(id, FormatRegistry.Detect(path)?.Id);
 
     [Fact]

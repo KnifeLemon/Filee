@@ -1204,6 +1204,10 @@ internal static class SettingsMigrations
         //       donut.
         if (from < 101 && presets.All(p => p.Id != BuiltInData.DecompileModelId))
             changed |= AddLikeNewLibrary(presets, BuiltInData.DecompileModelId);
+        // v102: Adobe Illustrator templates (.ait, #1726) learn the vector donut; custom claims stay put. (Schema 102
+        //       may be renumbered if another change takes it first.)
+        if (from < 102)
+            changed |= LearnExtensions(profiles, out _, ["ait"]);
         return changed;
     }
 
