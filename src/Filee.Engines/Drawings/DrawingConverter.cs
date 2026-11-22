@@ -15,6 +15,7 @@
 // cost.
 //
 // ODG, OTG and FODG output (from these drawings, SVG, metafiles, decks and PDF): DrawingConverter.Odg.cs.
+// EMF and WMF output (from these drawings, SVG and mind maps): DrawingConverter.Metafile.cs.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
@@ -40,13 +41,14 @@ public sealed partial class DrawingConverter : IConverter, IImageTransformer, IC
     /// <summary>One deck at a time through the PDF slides engine, which renders with PDFium (as its own engine gate does).</summary>
     private static readonly SemaphoreSlim PdfSlides = new(1, 1);
 
-    public DrawingConverter() : this(DrawingFormats.BuiltIn, odg: true)
+    public DrawingConverter() : this(DrawingFormats.BuiltIn, odg: true, metafiles: true)
     {
     }
 
     /// <summary>A converter of <paramref name="formats"/> instead of the built-in ones (tests).</summary>
     /// <param name="odg">Also ODG output, of these formats and of the other sources (SVG, metafiles, decks, PDF).</param>
-    internal DrawingConverter(IReadOnlyList<DrawingFormat> formats, bool odg = false)
+    /// <param name="metafiles">Also EMF and WMF output, of these formats and of SVG and mind maps.</param>
+    internal DrawingConverter(IReadOnlyList<DrawingFormat> formats, bool odg = false, bool metafiles = false)
     {
         _formats = formats;
         Edges =
@@ -59,6 +61,7 @@ public sealed partial class DrawingConverter : IConverter, IImageTransformer, IC
                from target in DrawingFormats.SlideTargets
                select new ConversionEdge(format.Id, target, OdpWriterConverter.Cost, DirectOnly: true, Checked: format.FirstUnsupported is not null),
             .. odg ? OdgEdges(formats, others: true) : [],
+            .. metafiles ? MetafileEdges(formats) : [],
         ];
     }
 
@@ -69,7 +72,7 @@ public sealed partial class DrawingConverter : IConverter, IImageTransformer, IC
     public IReadOnlyList<ConversionEdge> Edges { get; }
 
     /// <summary>Pictures of pages are drawn here, with the image options (turn, mirror, size) applied.</summary>
-    public bool Transforms(string from, string to) => to is not ("pdf" or "svg" or "odp" or "pptx" or "odg" or "otg" or "fodg");
+    public bool Transforms(string from, string to) => to is not ("pdf" or "svg" or "odp" or "pptx" or "odg" or "otg" or "fodg" or "emf" or "wmf");
 
     public EngineStatus GetStatus() => EngineStatus.Available(version: EngineVersions.BuiltIn);
 
@@ -82,6 +85,8 @@ public sealed partial class DrawingConverter : IConverter, IImageTransformer, IC
         {
             if (IsOdg(step.To))
                 return WriteOdg(step, progress, cancellationToken);
+            if (IsMetafile(step.To))
+                return WriteMetafiles(step, progress, cancellationToken);
             var format = Find(step.From) ?? throw new NotSupportedException($"The drawing converter doesn't read {step.From}.");
             if (format.ReadPages is { } open)
             {

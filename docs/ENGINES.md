@@ -35,7 +35,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, PDB, PML, TCR, RB, SNB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/PDB/PML/TCR/RB/SNB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
-| **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); **interactive whiteboards (IWB) and SMART Notebook → PDF, SVG, PNG, ODP, PPTX** ([Interactive whiteboards](#interactive-whiteboards-iwb-smart-notebook)); **mind maps (FreeMind / Freeplane MM, XMind) → PDF, SVG, PNG** drawn as maps, a page per sheet ([Mind maps](#mind-maps)); **SVG, EMF, WMF, VSDX, PDF, slide decks, whiteboards and mind maps → ODG, OTG, FODG** ([ODG output](#odg-output)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
+| **Drawings** | built in | **Visio VSDX, ODG, OTG, FODG → PDF, SVG, PNG** with the slide renderer (a page per drawing page; see [Drawings](#drawings-visio-odg)); **XPS, OpenXPS → PDF, SVG, PNG** with Filee's own XPS reader ([XPS reader](#xps-and-openxps-reader)); **Excel chart templates (CRTX) → PDF, SVG, PNG** with the [chart drawer](#charts); **interactive whiteboards (IWB) and SMART Notebook → PDF, SVG, PNG, ODP, PPTX** ([Interactive whiteboards](#interactive-whiteboards-iwb-smart-notebook)); **mind maps (FreeMind / Freeplane MM, XMind) → PDF, SVG, PNG** drawn as maps, a page per sheet ([Mind maps](#mind-maps)); **SVG, EMF, WMF, VSDX, PDF, slide decks, whiteboards and mind maps → ODG, OTG, FODG** ([ODG output](#odg-output)); **SVG, VSDX, ODG, whiteboards and mind maps → EMF, WMF** with Filee's own metafile writers ([EMF / WMF output](#emf--wmf-output)); a binary `.vsd` and a drawing with what the readers don't draw yet (charts, OLE objects, 3D) keep LibreOffice's route |
 | **DjVu** | built in | **DjVu (.djvu, .djv; one page, bundled or indirect; standalone IW44 pictures .iw4, .iw44) → PDF** (the layers kept: background JPEG, 1-bit JBIG2 / G4 masks, one shared JBIG2 dictionary per DjVu dictionary; the hidden text searchable; links, bookmarks, initial zoom and metadata) and **PNG, JPG, TIFF** pictures of the pages (#346; see [DjVu](#djvu)) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
@@ -46,7 +46,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Filee renderer** | built in, on by default (Settings → Engines → *Use the Filee renderer*) | **HWPX, HWP, Word documents (DOCX and DOC), ODT (+ OTT, FODT), RTF, TXT, Markdown, HTML, e-books, CSV / TSV, OFD, UYAP (UDF), the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, POTM, PPSX, PPT ([PPT reader](#ppt-reader)), ODP, OTP, FODP ([ODP / ODG reader](#odp--odg-reader)) → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet take the HWPX writer and rhwp (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF when the Filee renderer is off or can't draw a file yet, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives | built in (SharpCompress, DiscUtils, .NET and Filee's own readers and writers); 7-Zip optional (Settings → *Engines*, ~2 MB download) | **in-process**: ZIP (including ANSYS Workbench WBPZ and Adobe ZXP, and Windows app packages MSIX / APPX), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), 7Z (solid ones too), RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ/ZST), GZ, BZ2, XZ, LZMA, Z, ZST, lzip, CPIO, DEB, RPM, ISO (UDF discs too), IMG and DMG disk images, split (.001), ALZ, EGG, CAB, LHA, ARJ; **7-Zip, when installed**: the rare variants the in-process readers leave to it (see [Archives](#archives)) **→ folder, ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, BZ2, XZ, the packs, GMA** (in-process); "Compress into one archive" for any files |
-| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; SVG → EMF/WMF (and → ODG for what the [drawing engine](#odg-output) checks off), a PDF page → SVG |
+| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, PowerPoint 95 and older PPT, binary Visio (`.vsd`), and ODP / ODG with what Filee doesn't draw yet (charts, OLE objects, 3D) → PDF; PPT, RTF and OpenDocument to each other, output as DOCX/ODT/ODS, and ODP for what the [ODP writer](#odp-writer) doesn't take (OpenDocument presentations themselves, Keynote, decks with charts, effects or 3D); read-only formats (see below) → PDF and their kind's editable formats; SVG → EMF/WMF and → ODG for what the [drawing engine](#odg-output) checks off, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PostScript-based AI → PDF (images through PDF and PDFium), EPS/PS → PNG; PDF → EPS/PS only when moved above the built-in PostScript writer; smaller PDFs when a preset asks for it; PDF/A-2b for what the built-in PDF/A writer refuses; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
@@ -3298,6 +3298,40 @@ Costs are the ODP writer's (8), below LibreOffice's fallback. Hostile input: the
 unpacked SVGZ at most `MaxPartBytes`, `SafeXml`, `SvgSlideReader`'s limits; a metafile at most
 `MetafileLimits.MaxFileBytes`) and the writer's. Tests: `OdgWriterTests` (each source built in code, read back by the
 ODP / ODG reader and drawn, routes, the SVG check, hostile SVG and metafiles).
+
+### EMF / WMF output
+
+`Drawings/DrawingConverter.Metafile.cs` and `Drawings/DrawingMetafile.cs` write EMF and WMF without LibreOffice, with
+Filee's own writers (`Metafiles/EmfWriter.cs`, `WmfWriter.cs`, written from [MS-EMF] and [MS-WMF]), from the same
+sources as the drawing engine's other outputs: SVG / SVGZ (checked off to LibreOffice Draw like ODG output), the
+slide-model drawing formats with their checks (VSDX, ODG / OTG / FODG, whiteboards) and mind maps. A file per page
+(`_p1`, …) within the PDF options' page range; costs are the ODP writer's (8), direct only.
+
+- **Size**: the drawing's size. EMF: a 1440 dpi reference device (1/20 point per unit), the picture frame in 0.01 mm;
+  WMF: a placeable header, 1440 units per inch up to 22 inches a side, fewer for larger drawings so coordinates fit 16
+  bits. Word, PowerPoint and LibreOffice insert them at the SVG's size.
+- **Shapes**: EMF path brackets (lines, Béziers, closed figures, fill rules); WMF polygons (curves flattened, clips
+  applied to the geometry). Pens with width, dashes, caps, joins and miter limit where the transform keeps the line's
+  form (in WMF only round lines without dashes: GDI draws wide WMF pens no other way); other lines as their filled
+  outline; arrowheads as the slide renderer draws them.
+- **Fills**: solid; an axis-aligned linear gradient as an EMF GradientFill, other gradients as bands of solid colour
+  drawn over each other (no seams in smoothing renderers); pictures as StretchDIBits (WMF StretchDIB), clipped to the
+  shape. What has no metafile form (charts, tables, pattern fills, tiled or recoloured pictures, metafile pictures) is
+  the slide renderer's drawing as a picture at 288 dpi, its text still text.
+- **Opacity**: EMF through AlphaBlend (a translucent fill is one pixel of its colour stretched over the shape at its
+  opacity, clipped to it; translucent gradients and pictures with alpha are bitmaps). No EMF+: it would only repeat
+  every drawing as a second copy. WMF has no alpha: translucent colours are mixed with white, pictures keep their
+  opaque pixels through a mask.
+- **Text**: laid out by the slide renderer, written as text where the glyphs stand one to one for the characters:
+  EMF ExtTextOutW (Unicode, the font's face name, size, weight, italic, colour, each character's advance); WMF
+  ExtTextOut in the first ANSI code page that holds the run (Western, Korean, Japanese, Chinese, Cyrillic, …), upright
+  or turned. Shaped scripts (Arabic, Hebrew, Indic), squeezed text and, in WMF, clipped or skewed text or text no code
+  page holds are written as glyph outlines.
+- **Hostile input**: the readers' limits, and the writers stop at what the metafile renderer reads
+  (`MetafileLimits`: records, file bytes, bitmap pixels) with `error.document_too_complex` / `_too_large`.
+- Tests: `MetafileWriterTests` (SVG built in code → EMF / WMF read back by the metafile renderer at a few pixels and
+  against the slide renderer's picture, record-level checks of headers, sizes, end record and object tables, text and
+  its fallbacks, routes, limits). Windows' own GDI (`PlayEnhMetaFile`) and GDI+ play the files.
 
 Its edges are `Checked` (`ICapabilityCheck`): a format's check names what its reader doesn't draw, and such a file
 takes the route it would take without this engine, LibreOffice Draw. That is a binary `.vsd` (Visio 2003–2010, a

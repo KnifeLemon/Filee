@@ -91,8 +91,12 @@ public class LibreOfficeFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
         Assert.Equal("vector", Assert.Single(planner.Plan("svg", "pdf")!.Steps).Converter.Id);
         Assert.Equal("vector", Assert.Single(planner.Plan("svg", "png")!.Steps).Converter.Id);
         Assert.Equal("pdfium", Assert.Single(planner.Plan("pdf", "png")!.Steps).Converter.Id);
+        // SVG → EMF / WMF: Filee's own metafile writers, LibreOffice for a file the SVG reader checks off (MetafileWriterTests).
         foreach (var to in new[] { "emf", "wmf" })
-            Assert.Equal("libreoffice", Assert.Single(planner.Plan("svg", to)!.Steps).Converter.Id);
+        {
+            Assert.Equal("drawing", Assert.Single(planner.Plan("svg", to)!.Steps).Converter.Id);
+            Assert.Equal("libreoffice", Assert.Single(planner.Plan("svg", to, withoutChecked: true)!.Steps).Converter.Id);
+        }
         // SVG → ODG: the drawing engine's own SVG reader, LibreOffice for a file it checks off (OdgWriterTests).
         Assert.Equal("drawing", Assert.Single(planner.Plan("svg", "odg")!.Steps).Converter.Id);
         Assert.Equal("libreoffice", Assert.Single(planner.Plan("svg", "odg", withoutChecked: true)!.Steps).Converter.Id);
