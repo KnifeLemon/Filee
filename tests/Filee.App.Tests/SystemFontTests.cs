@@ -138,6 +138,35 @@ public class SystemFontTests
             Assert.True(SystemUiFontCollection.Installed("Helvetica", out _));
     }
 
+    /// <summary>
+    /// The UI font chain leaves out the plain family names CoreText doesn't list, so Avalonia's own system collection
+    /// never asks macOS for Segoe UI or Malgun Gothic; embedded and "fonts:System#" names stay. Elsewhere the chain is
+    /// whole. The rule is checked on every OS with a stand-in for the installed list.
+    /// </summary>
+    [Fact]
+    public void The_ui_font_chain_leaves_out_families_macos_does_not_list()
+    {
+        const string chain = "fonts:Filee#Noto Sans, Segoe UI, fonts:System#Malgun Gothic, Malgun Gothic, Apple SD Gothic Neo, sans-serif";
+        Assert.Equal("fonts:Filee#Noto Sans, fonts:System#Malgun Gothic, Apple SD Gothic Neo",
+            SoftPalette.Installed(chain, name => name == "Apple SD Gothic Neo"));
+        foreach (var language in new[] { "en", "ko", "zh-TW" })
+        {
+            foreach (var systemFont in new[] { false, true })
+            {
+                var none = SoftPalette.Installed(ThemeService.FontFamilies(language, systemFont), _ => false).Split(',', StringSplitOptions.TrimEntries);
+                Assert.All(none, name => Assert.StartsWith("fonts:", name, StringComparison.Ordinal));
+                Assert.Contains(none, name => name.StartsWith("fonts:Filee#", StringComparison.Ordinal));
+            }
+        }
+        Assert.Equal(OperatingSystem.IsMacOS(), ThemeService.InstalledFonts is not null);
+        if (OperatingSystem.IsMacOS())
+        {
+            var names = SoftPalette.Installed(ThemeService.FontFamilies("ko"), ThemeService.InstalledFonts!).Split(',', StringSplitOptions.TrimEntries);
+            Assert.DoesNotContain("Segoe UI", names);
+            Assert.DoesNotContain("Malgun Gothic", names);
+        }
+    }
+
     /// <summary>Avalonia's own system collection answers Han in Yu Gothic UI whatever family is asked (#1065).</summary>
     [AvaloniaFact]
     public void A_letter_is_only_matched_in_the_system_family_asked_for()
@@ -193,11 +222,11 @@ public class SystemFontTests
             Assert.True(reloaded.Settings.Theme.UseSystemFont);
 
             AppHost.Get<ThemeService>().Apply(store.Settings.Theme, "en");
-            Assert.Equal(SoftPalette.FontFamilyFor("en", systemFont: true), Application.Current!.Resources["AppFontFamily"]);
+            Assert.Equal(SoftPalette.FontFamilyFor("en", systemFont: true, ThemeService.InstalledFonts), Application.Current!.Resources["AppFontFamily"]);
 
             vm.UseSystemFont = false;
             AppHost.Get<ThemeService>().Apply(store.Settings.Theme, "en");
-            Assert.Equal(SoftPalette.FontFamilyFor("en"), Application.Current!.Resources["AppFontFamily"]);
+            Assert.Equal(SoftPalette.FontFamilyFor("en", asks: ThemeService.InstalledFonts), Application.Current!.Resources["AppFontFamily"]);
         }
         finally
         {

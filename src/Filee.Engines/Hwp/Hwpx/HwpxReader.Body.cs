@@ -567,8 +567,7 @@ internal sealed partial class HwpxReader
                 break;
             case "footNote" or "endNote":
                 {
-                    // In a section written vertically the notes are set vertically with its body.
-                    var note = Note(control, endnote: control.Name.LocalName == "endNote", turned: section?.Current.TextFlow is HTextFlow.Vertical or HTextFlow.Stacked);
+                    var note = Note(control, endnote: control.Name.LocalName == "endNote");
                     note.Format = format;
                     builder.Add(note);
                     break;
@@ -648,11 +647,14 @@ internal sealed partial class HwpxReader
         target.Add(item);
     }
 
-    private HNote Note(XElement control, bool endnote, bool turned = false)
+    private HNote Note(XElement control, bool endnote)
     {
         // The number shows in the section's note format (the autoNum in the note keeps a copy of it).
-        var note = new HNote(endnote) { Number = Attr(control, "number") is not null ? Math.Max(1, Int(control, "number")) : null };
-        note.Blocks.AddRange(ReadSubList(Child(control, "subList"), turned));
+        // A note keeps its own direction: in a section written vertically notes run with the body, and a note written
+        // vertically in a section written across is set vertically in the note area. Either way it isn't left out.
+        var subList = Child(control, "subList");
+        var note = new HNote(endnote) { Number = Attr(control, "number") is not null ? Math.Max(1, Int(control, "number")) : null, TextFlow = TextFlow(subList) };
+        note.Blocks.AddRange(ReadSubList(subList, turned: true));
         // The note starts with its number (an autoNum, skipped) and a space.
         if (note.Blocks.FirstOrDefault() is HParagraph first && first.Inlines.FirstOrDefault() is HText { Text: [' ', ..] } lead)
         {

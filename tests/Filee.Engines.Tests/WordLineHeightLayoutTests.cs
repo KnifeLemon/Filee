@@ -237,6 +237,36 @@ public sealed class WordLineHeightLayoutTests(EngineFixture fx) : IClassFixture<
     }
 
     [Fact]
+    public async Task Exact_and_at_least_lines_stand_their_text_on_the_line_s_bottom()
+    {
+        // The baseline is the line's height less the font's Win descent: an exact 20 pt line of 10 pt Noto Sans has its
+        // room above the text, an exact 8 pt line loses the tops of its glyphs above its top (it had them reach into the
+        // line below), and an at-least line taller than its text stands on its bottom as an exact one; 한글's exact lines
+        // keep their 85 % split (ParagraphLayoutTests).
+        NeedFonts(RepositoryFonts.Latin);
+        async Task<(float First, float Pitch)> Lines(string rule, int twips)
+        {
+            var spacing = $"<w:spacing w:line=\"{twips}\" w:lineRule=\"{rule}\"/>";
+            var page = await LayoutAsync(new DocxBuilder { Styles = Styles }.Paragraph(P(R("Line one"), spacing) + P(R("Line two"), spacing)));
+            return (Baseline(page, "Line one") - 72, Baseline(page, "Line two") - Baseline(page, "Line one"));
+        }
+
+        var descent = WinHeight(RepositoryFonts.Latin, 10) - WinAscent(RepositoryFonts.Latin, 10);
+        var (first, pitch) = await Lines("exact", 400);
+        Assert.Equal(20 - descent, first, 0.05f);
+        Assert.Equal(20, pitch, 0.05f);
+        (first, pitch) = await Lines("exact", 160);
+        Assert.Equal(8 - descent, first, 0.05f);
+        Assert.Equal(8, pitch, 0.05f);
+        (first, pitch) = await Lines("atLeast", 400);
+        Assert.Equal(20 - descent, first, 0.05f);
+        Assert.Equal(20, pitch, 0.05f);
+        // An at-least line its text is taller than is the text's line, as before.
+        (first, _) = await Lines("atLeast", 200);
+        Assert.Equal(WinAscent(RepositoryFonts.Latin, 10), first, 0.05f);
+    }
+
+    [Fact]
     public async Task Headers_footers_and_notes_do_not_snap_to_the_grid()
     {
         // The grid sets the body's lines per page; headers, footers and notes keep their font's lines.

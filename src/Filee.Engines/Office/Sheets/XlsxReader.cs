@@ -6,8 +6,9 @@
 // pictures), print areas, print titles, manual page breaks, conditional formats that colour cells, and the pictures,
 // shapes and charts of each sheet's drawing (XlsxDrawing, which names what it leaves out: 3D charts, SmartArt, ...),
 // and chart sheets (Workbook.ChartSheets: their page setup and chart, for the printer); tables with the look of their
-// table style (SheetTables: built-in styles and the workbook's own tableStyles) and their own formats (the table's
-// and its columns' dxf ids), and the notes on cells (comments parts, shown or not and their boxes from the legacy VML
+// table style (SheetTables: built-in styles and the workbook's own tableStyles), the cell styles they name and their
+// own formats (the table's and its columns' dxf ids), PivotTables with the look of their PivotTable style
+// (SheetPivots), and the notes on cells (comments parts, shown or not and their boxes from the legacy VML
 // drawing, and threaded comments with their replies: SheetComments) with pageSetup cellComments.
 // The package is read within DocumentLimits; the charts' points within ChartBudget.
 
@@ -52,6 +53,12 @@ internal sealed class XlsxReader
     /// <summary>The workbook's own table styles by name (styles.xml tableStyles).</summary>
     private readonly Dictionary<string, TableStyle> _tableStyles = new(StringComparer.Ordinal);
 
+    /// <summary>The workbook's own PivotTable styles by name (styles.xml tableStyles not marked pivot="0").</summary>
+    private readonly Dictionary<string, TableStyle> _pivotStyles = new(StringComparer.Ordinal);
+
+    /// <summary>What each named cell style gives a table's area (cellStyles → cellStyleXfs), by name.</summary>
+    private readonly Dictionary<string, TableStylePart> _cellStyles = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>The look of a cell that sets nothing (the Normal style's font).</summary>
     private CellStyle _normal = CellStyle.Default;
 
@@ -59,6 +66,7 @@ internal sealed class XlsxReader
     private readonly TableBudget _tableBudget = new();
 
     private int _tables;
+    private int _pivots;
     private OoxmlColors _colors = OoxmlColors.FromTheme(null);
     private XDocument? _theme;
     private NumberFormatter _formatter = new();
@@ -135,6 +143,7 @@ internal sealed class XlsxReader
                 read.PrintArea.AddRange(References(area));
             result.Sheets.Add(read);
         }
+        XlsxDrawing.LinkTexts(result);
         return result;
     }
 
@@ -362,6 +371,37 @@ internal sealed class XlsxReader
             _cellFormats.Add((style, formats.GetValueOrDefault(formatId) ?? NumberFormatter.BuiltIn(formatId) ?? "General"));
         }
 
+        // The cell styles by name, for tables that name one for an area: the font, fill and borders their
+        // cellStyleXfs entry includes (apply* not "0").
+        var styleXfs = root.Element(S + "cellStyleXfs")?.Elements(S + "xf").Take(SheetTables.MaxCellStyles).ToList() ?? [];
+        foreach (var named in root.Element(S + "cellStyles")?.Elements(S + "cellStyle").Take(SheetTables.MaxCellStyles) ?? [])
+        {
+            if ((string?)named.Attribute("name") is not { Length: > 0 } styleName || Index(named, "xfId") is var xfId && xfId >= styleXfs.Count)
+                continue;
+            var xf = styleXfs[xfId];
+            bool Applies(string name) => (string?)xf.Attribute(name) is not ("0" or "false");
+            var font = Applies("applyFont") && Index(xf, "fontId") is var fi && fi < fonts.Count ? fonts[fi] : null;
+            var fill = Applies("applyFill") && Index(xf, "fillId") is var fl && fl < fills.Count ? fills[fl] : default;
+            var border = Applies("applyBorder") && Index(xf, "borderId") is var bi && bi < borders.Count ? borders[bi] : NoBorders;
+            var look = new CellStyle
+            {
+                Bold = font?.Bold ?? false,
+                Italic = font?.Italic ?? false,
+                Underline = font?.Underline ?? false,
+                Strike = font?.Strike ?? false,
+                Color = font?.Color,
+                Fill = fill.Color,
+                FillPattern = fill.Pattern,
+                Gradient = fill.Gradient,
+                Left = border.Left,
+                Right = border.Right,
+                Top = border.Top,
+                Bottom = border.Bottom,
+            };
+            if (SheetTables.CellStylePart(look, _normal) is { } part)
+                _cellStyles.TryAdd(styleName, part);
+        }
+
         foreach (var dxf in root.Element(S + "dxfs")?.Elements(S + "dxf") ?? [])
         {
             var font = dxf.Element(S + "font");
@@ -387,28 +427,36 @@ internal sealed class XlsxReader
             _dxfInner.Add((Inner("vertical"), Inner("horizontal")));
         }
 
-        // The workbook's own table styles: their parts point into the differential formats.
+        // The workbook's own table and PivotTable styles (a style is both unless it says otherwise): their parts point
+        // into the differential formats.
         foreach (var tableStyle in root.Element(S + "tableStyles")?.Elements(S + "tableStyle") ?? [])
         {
-            if ((string?)tableStyle.Attribute("name") is not { Length: > 0 } styleName || (string?)tableStyle.Attribute("table") is "0" or "false"
-                || _tableStyles.Count >= SheetTables.MaxTables)
+            if ((string?)tableStyle.Attribute("name") is not { Length: > 0 } styleName || _tableStyles.Count + _pivotStyles.Count >= SheetTables.MaxTables)
                 continue;
             var parts = new Dictionary<string, TableStylePart>(StringComparer.Ordinal);
-            foreach (var element in tableStyle.Elements(S + "tableStyleElement").Take(32))
+            foreach (var element in tableStyle.Elements(S + "tableStyleElement").Take(64))
             {
                 var type = (string?)element.Attribute("type");
-                if (!SheetTables.IsTablePart(type) || element.Attribute("dxfId") is null || Index(element, "dxfId") is var id && id >= _dxfs.Count)
+                if (!SheetTables.IsTablePart(type) && !SheetPivots.IsPivotPart(type) || element.Attribute("dxfId") is null
+                    || Index(element, "dxfId") is var id && id >= _dxfs.Count)
                     continue;
                 parts[type!] = new TableStylePart(_dxfs[id], _dxfInner[id].Vertical, _dxfInner[id].Horizontal,
                     (int)Math.Clamp(Number(element.Attribute("size")) ?? 1, 1, 9));
             }
-            _tableStyles[styleName] = new TableStyle(parts);
+            if ((string?)tableStyle.Attribute("table") is not ("0" or "false"))
+                _tableStyles[styleName] = new TableStyle(parts);
+            if ((string?)tableStyle.Attribute("pivot") is not ("0" or "false"))
+                _pivotStyles[styleName] = new TableStyle(parts);
         }
     }
 
     /// <summary>A table style by name: the workbook's own, else a built-in one in the workbook's theme colours.</summary>
     private TableStyle? TableStyleOf(string? name) =>
         name is null ? null : _tableStyles.TryGetValue(name, out var own) ? own : SheetTables.BuiltIn(name, ThemeColor);
+
+    /// <summary>A PivotTable style by name: the workbook's own, else a built-in one in the workbook's theme colours.</summary>
+    private TableStyle? PivotStyleOf(string? name) =>
+        name is null ? null : _pivotStyles.TryGetValue(name, out var own) ? own : SheetPivots.BuiltIn(name, ThemeColor);
 
     private string? ThemeColor(int theme, double tint) => _colors.Spreadsheet(new XElement("color", new XAttribute("theme", theme),
         new XAttribute("tint", tint.ToString("R", CultureInfo.InvariantCulture))));
@@ -588,6 +636,7 @@ internal sealed class XlsxReader
 
         sheet.PageSetup = PageSetup(xml, partPath);
         Tables(xml, partPath, sheet);
+        Pivots(partPath, sheet);
         Comments(xml, partPath, sheet);
         foreach (var formatting in xml.Elements(S + "conditionalFormatting"))
             ConditionalFormats(formatting, sheet);
@@ -622,8 +671,50 @@ internal sealed class XlsxReader
     }
 
     /// <summary>
-    /// A table's own formats: the table's header / data / total row formats, their border formats, then each
-    /// column's (tableColumn headerRowDxfId / dataDxfId / totalsRowDxfId); ids past the workbook's dxfs are skipped.
+    /// The sheet's PivotTables (its pivotTable relationships → pivotTableDefinition parts) with the look of their
+    /// styles put on their cells: location, row and column items, row / column / page fields, pivotTableStyleInfo.
+    /// </summary>
+    private void Pivots(string partPath, Worksheet sheet)
+    {
+        var pivots = new List<SheetPivot>();
+        foreach (var relationship in _package.Relationships(partPath).Values)
+        {
+            if (relationship.External || !relationship.Type.EndsWith("/pivotTable", StringComparison.Ordinal) || ++_pivots > SheetPivots.MaxPivots
+                || _package.Part(relationship.Target)?.Root is not { } pivot || pivot.Name != S + "pivotTableDefinition"
+                || pivot.Element(S + "location") is not { } location || CellRange.Parse((string?)location.Attribute("ref")) is not { } range)
+                continue;
+            var info = pivot.Element(S + "pivotTableStyleInfo");
+            bool Flag(string name) => info?.Attribute(name) is { } flag && On(flag);
+            int Count(string name) => (int)Math.Clamp(Number(location.Attribute(name)) ?? 0, 0, SheetPagination.MaxRow + 1);
+            List<PivotItem> Items(string name, int most) => [.. (pivot.Element(S + name)?.Elements(S + "i") ?? []).Take(most)
+                .Select(i => new PivotItem(SheetPivots.Kind((string?)i.Attribute("t")),
+                    (int)Math.Clamp((Number(i.Attribute("r")) ?? 0) + i.Elements(S + "x").Take(1000).Count() - 1, 0, 1000)))];
+            var pages = pivot.Element(S + "pageFields")?.Elements(S + "pageField").Take(SheetPivots.MaxPageFields).Count() ?? 0;
+            pivots.Add(new SheetPivot(range, (string?)info?.Attribute("name"))
+            {
+                FirstHeaderRow = Count("firstHeaderRow"),
+                FirstDataRow = Count("firstDataRow"),
+                FirstDataColumn = Count("firstDataCol"),
+                Rows = Items("rowItems", range.Bottom - range.Top + 1),
+                Columns = Items("colItems", range.Right - range.Left + 1),
+                RowFields = pivot.Element(S + "rowFields")?.Elements(S + "field").Take(1000).Count() ?? 0,
+                ColumnFields = pivot.Element(S + "colFields")?.Elements(S + "field").Take(1000).Count() ?? 0,
+                PageFields = SheetPivots.PageCells(range, pages, Count("rowPageCount"), Count("colPageCount"), On(pivot.Attribute("pageOverThenDown"))),
+                RowHeaders = Flag("showRowHeaders"),
+                ColumnHeaders = Flag("showColHeaders"),
+                RowStripes = Flag("showRowStripes"),
+                ColumnStripes = Flag("showColStripes"),
+                LastColumn = Flag("showLastColumn"),
+            });
+        }
+        SheetPivots.Apply(sheet, pivots, PivotStyleOf, _normal, _tableBudget);
+    }
+
+    /// <summary>
+    /// A table's own formats: the cell styles it names for its header, data and total rows (headerRowCellStyle,
+    /// dataCellStyle, totalsRowCellStyle), its header / data / total row formats and their border formats, then each
+    /// column's (tableColumn's cell styles, then headerRowDxfId / dataDxfId / totalsRowDxfId); ids past the
+    /// workbook's dxfs and names it has no cell style of are skipped.
     /// </summary>
     private List<TableFormat> TableFormats(XElement table)
     {
@@ -633,6 +724,15 @@ internal sealed class XlsxReader
             if (element.Attribute(attribute) is not null && Index(element, attribute) is var id && id < _dxfs.Count)
                 formats.Add(new TableFormat(area, new TableStylePart(_dxfs[id], _dxfInner[id].Vertical, _dxfInner[id].Horizontal), outline, column));
         }
+        // A cell style named for an area goes under that area's own formats.
+        void Named(XElement element, string attribute, TableArea area, int? column)
+        {
+            if ((string?)element.Attribute(attribute) is { Length: > 0 } name && _cellStyles.TryGetValue(name, out var part))
+                formats.Add(new TableFormat(area, part, false, column));
+        }
+        Named(table, "headerRowCellStyle", TableArea.Header, null);
+        Named(table, "dataCellStyle", TableArea.Data, null);
+        Named(table, "totalsRowCellStyle", TableArea.Totals, null);
         Add(table, "headerRowDxfId", TableArea.Header, false, null);
         Add(table, "dataDxfId", TableArea.Data, false, null);
         Add(table, "totalsRowDxfId", TableArea.Totals, false, null);
@@ -642,6 +742,9 @@ internal sealed class XlsxReader
         var column = 0;
         foreach (var tableColumn in table.Element(S + "tableColumns")?.Elements(S + "tableColumn").Take(SheetPagination.MaxColumn + 1) ?? [])
         {
+            Named(tableColumn, "headerRowCellStyle", TableArea.Header, column);
+            Named(tableColumn, "dataCellStyle", TableArea.Data, column);
+            Named(tableColumn, "totalsRowCellStyle", TableArea.Totals, column);
             Add(tableColumn, "headerRowDxfId", TableArea.Header, false, column);
             Add(tableColumn, "dataDxfId", TableArea.Data, false, column);
             Add(tableColumn, "totalsRowDxfId", TableArea.Totals, false, column);

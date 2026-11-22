@@ -268,10 +268,10 @@ internal sealed class StyledText
 
     /// <summary>
     /// The lines of the text: at its line feeds, and with <paramref name="wrap"/> where it may break so a line fits
-    /// <paramref name="width"/> points (a word wider than that is broken between characters). Spaces at a wrapped
-    /// line's end are left out.
+    /// <paramref name="width"/> points (<paramref name="firstWidth"/> for the first line when given: a paragraph's
+    /// indent or bullet), a word wider than that broken between characters. Spaces at a wrapped line's end are left out.
     /// </summary>
-    public List<(int Start, int End)> Lines(float width, bool wrap)
+    public List<(int Start, int End)> Lines(float width, bool wrap, float? firstWidth = null)
     {
         var lines = new List<(int, int)>();
         var start = 0;
@@ -282,7 +282,7 @@ internal sealed class StyledText
             if (!wrap)
                 lines.Add((start, TrimEnd(start, end, carriageOnly: true)));
             else
-                Wrap(start, end, width, lines);
+                Wrap(start, end, width, firstWidth ?? width, lines);
             if (hard < 0)
                 break;
             start = hard + 1;
@@ -290,7 +290,7 @@ internal sealed class StyledText
         return lines;
     }
 
-    private void Wrap(int start, int end, float width, List<(int, int)> lines)
+    private void Wrap(int start, int end, float width, float firstWidth, List<(int, int)> lines)
     {
         if (start >= end)
         {
@@ -303,11 +303,12 @@ internal sealed class StyledText
             var used = 0f;
             var lastBreak = -1;
             var i = lineStart;
+            var limit = lines.Count == 0 ? firstWidth : width;
             for (; i < end; i++)
             {
                 if (i > lineStart && Breaks[i] != LineBreak.None)
                     lastBreak = i;
-                if (used + _advances[i] > width + 0.01f && !char.IsWhiteSpace(Text[i]) && i > lineStart)
+                if (used + _advances[i] > limit + 0.01f && !char.IsWhiteSpace(Text[i]) && i > lineStart)
                     break;
                 used += _advances[i];
             }

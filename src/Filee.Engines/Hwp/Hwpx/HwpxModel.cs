@@ -829,6 +829,13 @@ internal sealed class HNote(bool endnote) : HInline
     public bool Endnote { get; } = endnote;
     public List<HBlock> Blocks { get; } = [];
 
+    /// <summary>
+    /// How the note's text runs (한글 subList textDirection): a note written vertically in a section written across is
+    /// set vertically in the note area (PageComposer); in a section written vertically notes run with its body. For
+    /// layout only.
+    /// </summary>
+    public HTextFlow TextFlow { get; set; }
+
     /// <summary>The number 한글 gave the note (its numbering may restart by section or page); null = counted on.</summary>
     public int? Number { get; set; }
 
@@ -1026,9 +1033,18 @@ internal enum HShapeKind
 
     /// <summary>한글 호: <see cref="HGeometry.Arc"/>. Only in models read for layout.</summary>
     Arc,
+
+    /// <summary>
+    /// An open path of straight and curved pieces (<see cref="HGeometry.Path"/>), with arrowheads: bent and curved
+    /// connectors (Word bentConnector / curvedConnector, ODF draw:connector, 한글 꺾인 / 곡선 연결선) and open
+    /// free-form lines. Every writer writes it.
+    /// </summary>
+    Path,
 }
 
-/// <summary>A drawing without text: rectangle, ellipse or straight line (and, read for layout, polygon, curve or arc).</summary>
+/// <summary>
+/// A drawing without text: rectangle, ellipse, straight line or open path (and, read for layout, polygon, curve or arc).
+/// </summary>
 internal sealed class HShape(HShapeKind kind) : HObject
 {
     public HShapeKind Kind { get; } = kind;
@@ -1042,7 +1058,7 @@ internal sealed class HShape(HShapeKind kind) : HObject
     /// <summary>Stacking order among floating objects (higher is in front); null = document order.</summary>
     public int? ZOrder { get; set; }
 
-    /// <summary>Outline of a polygon, curve or arc; null for the other kinds.</summary>
+    /// <summary>Outline of a polygon, curve, arc or open path; null for the other kinds.</summary>
     public HGeometry? Geometry { get; set; }
     public string? Fill { get; set; }
     public HGradient? Gradient { get; set; }
@@ -1056,7 +1072,7 @@ internal sealed class HShape(HShapeKind kind) : HObject
     public bool FlipVertical { get; set; }
 
     /// <summary>
-    /// The arrowhead at the start of a line (or of an open curve or arc): DrawingML headEnd, 한글 headStyle; null = none.
+    /// The arrowhead at the start of a line (or of an open path, curve or arc): DrawingML headEnd, 한글 headStyle; null = none.
     /// </summary>
     public HArrow? Head { get; set; }
 

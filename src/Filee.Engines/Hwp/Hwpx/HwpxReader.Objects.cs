@@ -1,4 +1,5 @@
-// Objects inside runs: pictures (inline or floating), rectangles / ellipses / lines, text boxes (drawing objects with
+// Objects inside runs: pictures (inline or floating), rectangles / ellipses / lines, connectors (hp:connectLine: straight
+// ones as lines, bent and curved ones as open paths through their control points), text boxes (drawing objects with
 // hp:drawText), groups (hp:container), equations and other objects that only carry text. Charts (hp:chart, whose
 // chartIDRef names an OOXML chart part in the package) are read by ChartReader and become a picture of the chart that
 // carries it, so the renderer draws it as vectors and the writers get the picture. Objects the model cannot hold (OLE,
@@ -325,9 +326,9 @@ internal sealed partial class HwpxReader
                 yield return Box(element, HShapeKind.Ellipse, placement);
                 break;
             case "line":
-            case "connectLine" when Attr(element, "type")?.StartsWith("STRAIGHT", StringComparison.Ordinal) == true:
+            case "connectLine" when ConnectorPath(element) is null:
                 {
-                    // A straight connector is drawn as a line between its ends; bent and curved ones keep their text only.
+                    // A straight connector (or a bent or curved one without control points) is drawn as a line between its ends.
                     var start = Child(element, "startPt");
                     var end = Child(element, "endPt");
                     var points = start is not null && end is not null;
@@ -342,6 +343,25 @@ internal sealed partial class HwpxReader
                         // A line runs corner to corner of its box; the end points say which corners.
                         FlipHorizontal = Int(start, "x") > Int(end, "x"),
                         FlipVertical = Int(start, "y") > Int(end, "y"),
+                        Transform = Transform(element),
+                        ZOrder = ZOrder(element),
+                        Head = Arrow(lineShape, "head"),
+                        Tail = Arrow(lineShape, "tail"),
+                    };
+                    break;
+                }
+            case "connectLine" when ConnectorPath(element) is { } connector:
+                {
+                    // A bent (STROKE_*) or curved (ARC_*) connector: its path through the control points.
+                    var original = Child(element, "orgSz");
+                    var lineShape = Child(element, "lineShape");
+                    yield return new HShape(HShapeKind.Path)
+                    {
+                        Width = placement.Width,
+                        Height = placement.Height,
+                        Anchor = placement.Anchor,
+                        Geometry = new HGeometry(Int(original, "width", placement.Width), Int(original, "height", placement.Height), Path: connector),
+                        Line = LineShape(lineShape),
                         Transform = Transform(element),
                         ZOrder = ZOrder(element),
                         Head = Arrow(lineShape, "head"),
@@ -365,7 +385,7 @@ internal sealed partial class HwpxReader
                     break;
                 }
             default:
-                // Arcs, polygons, curves and connectors: only their text survives, in a box without outline.
+                // Arcs, polygons and curves: only their text survives, in a box without outline.
                 if (Child(element, "drawText") is not null)
                 {
                     var box = (HTextBox)Box(element, HShapeKind.Rectangle, placement);
@@ -428,6 +448,31 @@ internal sealed partial class HwpxReader
     }
 
     private static int? ZOrder(XElement element) => Attr(element, "zOrder") is not null ? Int(element, "zOrder") : null;
+
+    /// <summary>
+    /// The path of a bent (type STROKE_*) or curved (ARC_*) hp:connectLine in its original size, from hp:startPt
+    /// through hp:controlPoints to hp:endPt; null for a straight one or one without control points (read as a line).
+    /// OWPML leaves the control points' type numbers undescribed; as other readers of 한글's files take them, 3 marks
+    /// the start, 26 the end and 2 a point between. A bent connector runs straight through its points; a curved one
+    /// takes its points between as Bézier controls (two per cubic, see OpenPaths.FromControls).
+    /// </summary>
+    private static HPath? ConnectorPath(XElement element)
+    {
+        var type = Attr(element, "type") ?? "";
+        var curved = type.StartsWith("ARC", StringComparison.Ordinal);
+        if (!curved && !type.StartsWith("STROKE", StringComparison.Ordinal))
+            return null;
+        static HPoint Point(XElement? point) => new(Int(point, "x"), Int(point, "y"));
+        var points = Children(Child(element, "controlPoints"), "point").Take(OpenPaths.MaxSegments * 2 + 2).ToList();
+        if (points.Count == 0 || points.Count > OpenPaths.MaxSegments * 2)
+            return null;
+        var start = points[0] is var first && Int(first, "type") == 3 ? Point(first) : Point(Child(element, "startPt"));
+        var end = points[^1] is var last && Int(last, "type") == 26 ? Point(last) : Point(Child(element, "endPt"));
+        var between = points.Where(p => Int(p, "type") is not (3 or 26)).Select(Point).ToList();
+        return curved
+            ? OpenPaths.FromControls(start, end, between)
+            : new HPath(start, [.. between.Select(p => new HPathSegment(p)), new HPathSegment(end)]);
+    }
 
     /// <summary>Outline of a polygon (hc:pt), curve (hp:seg) or arc (center, ax1, ax2) in its original size (hp:orgSz).</summary>
     private static HGeometry Geometry(XElement element, HShapeKind kind, Placement placement)

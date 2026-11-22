@@ -28,7 +28,7 @@ internal static class AnnotationFonts
             return;
         _chain = (language, systemFont);
         AnnotationPainter.UseFonts(() => Chain(language, systemFont));
-        var family = SoftPalette.FontFamilyFor(language, systemFont);
+        var family = SoftPalette.FontFamilyFor(language, systemFont, ThemeService.InstalledFonts);
         AnnotationPainter.UseFallback(codePoint => FallbackFor(codePoint, family));
     }
 

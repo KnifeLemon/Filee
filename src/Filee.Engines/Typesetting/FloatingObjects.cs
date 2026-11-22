@@ -12,9 +12,9 @@
 //   the top, up from the bottom or from the centre; or against the paragraph (PARA): the offset down from the top of
 //   its first line, whatever the alignment, never above it.
 //
-// Drawing: pictures with their crop inside their inner margin, under their outline (EMF / WMF as vector drawing); rectangles (rounded by their corner ratio), ellipses, lines, polygons, curves and
-// arcs with their fill (a colour or a linear gradient) and outline (solid, dashed, dotted, dash-dot or double, at its
-// width; lines, open curves and arcs with their arrowheads, LineArrows), rotated and mirrored about their centre; text boxes as their shape with their paragraphs and tables inside
+// Drawing: pictures with their crop inside their inner margin, under their outline (EMF / WMF as vector drawing); rectangles (rounded by their corner ratio), ellipses, lines, open paths (bent and curved
+// connectors), polygons, curves and arcs with their fill (a colour or a linear gradient) and outline (solid, dashed, dotted, dash-dot or double, at its
+// width; lines, open paths, curves and arcs with their arrowheads, LineArrows), rotated and mirrored about their centre; text boxes as their shape with their paragraphs and tables inside
 // their padding, at the top, middle or bottom, turned with the box (not mirrored); vertical text in a box is turned
 // into it (VerticalText). SmartArt (HImage.Drawing) is drawn by the slide renderer, scaled into its box. Curves go smoothly through their
 // points; arcs run counterclockwise from their first axis point to the second. WordArt (Word's watermarks) is a text
@@ -40,6 +40,12 @@ using Filee.Engines.Rendering;
 using SkiaSharp;
 
 namespace Filee.Engines.Typesetting;
+
+/// <summary>
+/// Stacks a paragraph list's blocks in a column <paramref name="width"/> wide (TableLayout.Stack), its text running as
+/// <paramref name="flow"/> says (a text box's own direction), or as the text around it when null.
+/// </summary>
+internal delegate List<Piece> BlockStack(IReadOnlyList<HBlock> blocks, float width, HTextFlow? flow = null);
 
 /// <summary>The areas an anchor can be relative to, in points on the page.</summary>
 /// <param name="Paper">The whole sheet.</param>
@@ -155,18 +161,23 @@ internal static class FloatingObjects
     /// Pieces drawing the floating objects of a paragraph in a paragraph list (a table cell, a header or footer, a text
     /// box) whose first line starts at <paramref name="top"/>: placed against the list (its width as the column, the
     /// paragraph within its indents) or, given a <paramref name="frame"/>, against the paper or the page. Each comes
-    /// with its z-order and whether it lies behind the text.
+    /// with its z-order and whether it lies behind the text. In a list written vertically (<paramref name="flow"/>: a
+    /// cell or a text box written so, or one on a page written so) an object stands upright, as on such a page: placed
+    /// with its sides swapped in the list laid out across, and drawn at its own size turned back a quarter about that
+    /// place's middle, so it is upright once the list is turned into place.
     /// </summary>
     public static IEnumerable<(int Order, Piece Piece, bool Behind)> Pieces(HParagraph paragraph, float top, float width, AnchorFrame? frame,
-        Func<IReadOnlyList<HBlock>, float, List<Piece>> stack)
+        BlockStack stack, HTextFlow flow = HTextFlow.Horizontal)
     {
+        var upright = flow is HTextFlow.Vertical or HTextFlow.Stacked or HTextFlow.Up or HTextFlow.Down;
         var list = new SKRect(0, 0, width, 0);
         var local = new AnchorFrame(list, list, list,
             new SKRect((paragraph.Format.Left ?? 0) / 100f, 0, width - (paragraph.Format.Right ?? 0) / 100f, 0), frame?.Odd ?? true);
         foreach (var (item, anchor) in Of(paragraph))
         {
-            if (Size(item) is not var (w, h))
+            if (Size(item) is not var (ownWidth, ownHeight))
                 continue;
+            var (w, h) = upright ? (ownHeight, ownWidth) : (ownWidth, ownHeight);
             var inList = Place(anchor, w, h, local);
             var onPage = frame is { } f ? Place(anchor, w, h, f) : inList;
             var pageX = frame is not null && anchor.HorizontalRelativeTo is "PAPER" or "PAGE";
@@ -177,7 +188,15 @@ internal static class FloatingObjects
             var piece = new Piece(top, room, (page, x, y) =>
             {
                 var (left, upper) = (pageX ? onPage.Left : x + inList.Left, pageY ? onPage.Top : y + inList.Top);
-                Draw(page, item, new SKRect(left, upper, left + w, upper + h), stack);
+                var area = new SKRect(left, upper, left + w, upper + h);
+                if (!upright)
+                {
+                    Draw(page, item, area, stack);
+                    return;
+                }
+                var layer = new PageContent(page.Width, page.Height);
+                Draw(layer, item, SKRect.Create(area.MidX - h / 2, area.MidY - w / 2, h, w), stack);
+                page.Add(layer, SKMatrix.CreateRotationDegrees(flow == HTextFlow.Up ? 90 : -90, area.MidX, area.MidY));
             });
             yield return (ZOrder(item), piece, anchor.Wrap == "BEHIND_TEXT");
         }
@@ -301,7 +320,7 @@ internal static class FloatingObjects
     /// Draws an object into <paramref name="area"/>; a text box's blocks are stacked by <paramref name="stack"/> (the
     /// blocks and the width they take).
     /// </summary>
-    public static void Draw(PageContent page, HInline item, SKRect area, Func<IReadOnlyList<HBlock>, float, List<Piece>> stack)
+    public static void Draw(PageContent page, HInline item, SKRect area, BlockStack stack)
     {
         switch (item)
         {
@@ -358,7 +377,7 @@ internal static class FloatingObjects
     /// is laid out with room for its lines whatever their length, then stretched so the lines' width and height fill the
     /// box; WordArt's text is as see-through as its fill.
     /// </summary>
-    private static void TextBoxText(PageContent page, HTextBox box, SKRect area, Func<IReadOnlyList<HBlock>, float, List<Piece>> stack)
+    private static void TextBoxText(PageContent page, HTextBox box, SKRect area, BlockStack stack)
     {
         var padding = box.Padding;
         var inner = new SKRect(area.Left + padding.Left / 100f, area.Top + padding.Top / 100f,
@@ -369,7 +388,7 @@ internal static class FloatingObjects
         {
             // Vertical text: lines as long as the box is high, turned into it (turned with the box too).
             var length = Math.Max(1, inner.Height);
-            var vertical = VerticalText.Turned(stack(box.Blocks, length), box.TextFlow, Math.Max(0, inner.Width), length, box.VerticalAlign);
+            var vertical = VerticalText.Turned(stack(box.Blocks, length, box.TextFlow), box.TextFlow, Math.Max(0, inner.Width), length, box.VerticalAlign);
             var layer = new PageContent(page.Width, page.Height);
             vertical.Draw(layer, inner.Left, inner.Top);
             if (art is { Opacity: < 1 } faded)
@@ -469,7 +488,7 @@ internal static class FloatingObjects
     /// Draws an object's caption its gap away from the object: below or above it as wide as it, or beside it at its
     /// own width, level with the object's top.
     /// </summary>
-    private static void Caption(PageContent page, HCaption caption, SKRect area, Func<IReadOnlyList<HBlock>, float, List<Piece>> stack)
+    private static void Caption(PageContent page, HCaption caption, SKRect area, BlockStack stack)
     {
         var gap = caption.Gap / 100f;
         var beside = caption.Side is HCaptionSide.Left or HCaptionSide.Right;
@@ -594,7 +613,7 @@ internal static class FloatingObjects
         HBorder line, SKRect area, bool flipHorizontal, bool flipVertical, HArrow? head = null, HArrow? tail = null)
     {
         using var path = Outline(kind, geometry, cornerRatio, area, flipHorizontal, flipVertical);
-        if (kind != HShapeKind.Line && (gradient is not null || ParagraphText.Color(fill) is not null))
+        if (kind is not (HShapeKind.Line or HShapeKind.Path) && (gradient is not null || ParagraphText.Color(fill) is not null))
         {
             using var paint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
             using var shader = gradient is null ? null : Gradient(gradient, area);
@@ -606,7 +625,7 @@ internal static class FloatingObjects
         }
         if ((head ?? tail) is not null && line.Style != HBorderStyle.None && LineArrows.Open(path))
         {
-            // A line, open curve or arc with arrowheads (closed outlines have no ends to put them on).
+            // A line, open path, curve or arc with arrowheads (closed outlines have no ends to put them on).
             LineArrows.Draw(canvas, line, path, head, tail, part => Stroke(canvas, line, part));
         }
         else
@@ -632,6 +651,14 @@ internal static class FloatingObjects
                 break;
             case HShapeKind.Polygon when geometry?.Points is { Count: > 1 } points:
                 path.AddPoly([.. points.Select(Point)], close: points[0] == points[^1] || points.Count > 2);
+                break;
+            case HShapeKind.Path when geometry?.Path is { } open:
+                {
+                    using var drawn = OpenPaths.ToSkia(open, Point);
+                    path.AddPath(drawn);
+                    break;
+                }
+            case HShapeKind.Path:
                 break;
             case HShapeKind.Curve when geometry?.Segments is { Count: > 0 } segments:
                 Curve(path, [.. segments.Select(s => (s.Curve, Point(s.Start), Point(s.End)))]);

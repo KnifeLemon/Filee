@@ -19,11 +19,19 @@
 //   CIDToGIDMap. Viewers drew nothing or a box there; now nothing. Only when every use of the font was followed (the
 //   codes are known), and not for variable programs (gvar).
 //
-// A program that can't be read is left as it is (the PDF/A then shows the problem as before). Type 1 and CFF programs
-// that lack glyphs are left as they are too.
+// - The same for Type 1 programs (FontFile: an empty charstring under the glyph name the code's encoding gives, in the
+//   encrypted part, written as the font's own charstrings are), name-keyed CFF ones (FontFile3 /Type1C) and CID-keyed
+//   CFF ones of CIDFontType0 fonts with an Identity encoding (FontFile3 /CIDFontType0C: the CID added to the charset).
+//   A code whose encoding names no glyph gets a name of its own ("g65") through the Encoding's Differences. The
+//   descriptor's CharSet lists the new names; a CIDSet, which would have to list the new CIDs, is left out (PDF/A-2
+//   doesn't ask for one). Only when every use of the font was followed; OpenType (FontFile3 /OpenType) programs and
+//   CFF programs whose widths or glyphs the dictionary doesn't match otherwise are left as they are.
+//
+// A program that can't be read is left as it is (the PDF/A then shows the problem as before).
 
 using System.Buffers.Binary;
 using Filee.Engines.Fonts;
+using Filee.Engines.Fonts.Cff;
 using Filee.Engines.Pdf.PostScript;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.Advanced;
@@ -52,6 +60,13 @@ internal static partial class PdfAFonts
                     case "/Type0" when Name(font, "/Encoding") is "/Identity-H" or "/Identity-V" && Descendants(font) is [var cidFont, ..]
                                        && Name(cidFont, "/Subtype") == "/CIDFontType2":
                         RepairComposite(document, font, cidFont, codes);
+                        break;
+                    case "/Type1" or "/MMType1" when codes is { Count: > 0 }:
+                        RepairType1(document, font, codes);
+                        break;
+                    case "/Type0" when codes is { Count: > 0 } && Name(font, "/Encoding") is "/Identity-H" or "/Identity-V" && Descendants(font) is [var cidFont, ..]
+                                       && Name(cidFont, "/Subtype") == "/CIDFontType0":
+                        RepairCidCff(document, cidFont, codes);
                         break;
                 }
             }
@@ -288,6 +303,177 @@ internal static partial class PdfAFonts
         }
     }
 
+    // ---- Type 1 and CFF programs
+
+    /// <summary>
+    /// A simple Type 1 font (FontFile, or a bare CFF FontFile3 /Type1C) whose drawn codes name glyphs its program
+    /// lacks: an empty glyph under that name, with the code's width, is added to the program. A code that names no
+    /// glyph (or .notdef) gets a name of its own in the Encoding's Differences first.
+    /// </summary>
+    private static void RepairType1(PdfDocument document, PdfDictionary font, HashSet<int> used)
+    {
+        if (Resolve(font.Elements["/FontDescriptor"]) is not PdfDictionary descriptor)
+            return;
+        var symbolic = (Integer(descriptor, "/Flags") & Symbolic) != 0;
+        var type1File = Resolve(descriptor.Elements["/FontFile"]) as PdfDictionary;
+        var cffFile = Resolve(descriptor.Elements["/FontFile3"]) as PdfDictionary;
+        byte[] bytes;
+        string?[] builtIn;
+        Func<string, bool> has;
+        double scale; // 1/1000 em → glyph space
+        if (type1File?.Stream is not null)
+        {
+            bytes = type1File.Stream.UnfilteredValue;
+            var program = Type1Program.Read(bytes);
+            (builtIn, has, scale) = (program.Encoding, program.HasGlyph, 0.001 / program.FontMatrix[0]);
+        }
+        else if (cffFile?.Stream is not null && Name(cffFile, "/Subtype") == "/Type1C")
+        {
+            bytes = cffFile.Stream.UnfilteredValue;
+            var program = CffProgram.Read(bytes);
+            if (program.IsCid)
+                return;
+            (builtIn, has, scale) = (program.BuiltInEncoding(), name => program.GlyphOfName(name) >= 0, 0.001 / CffFont.Parse(bytes).FontMatrices[0][0]);
+        }
+        else
+        {
+            return;
+        }
+        if (bytes.Length == 0 || bytes.Length > PdfFontUses.MaxStreamSize * 8L || !double.IsFinite(scale) || scale <= 0)
+            return;
+
+        var names = SimpleEncodings.Resolve(font, builtIn, out _, symbolic);
+        var first = (int)PdfObjects.Number(font, "/FirstChar", 0);
+        var array = PdfObjects.Array(font, "/Widths");
+        var missing = PdfObjects.Number(PdfObjects.Get(descriptor, "/MissingWidth")) ?? 0;
+        double Width(int code) => array is not null && code - first >= 0 && code - first < array.Elements.Count
+            && PdfObjects.Number(array.Elements[code - first]) is { } w ? w : missing;
+
+        var glyphs = new List<(string Name, double Width)>();
+        var widths = new Dictionary<string, double>(StringComparer.Ordinal);
+        var renamed = new Dictionary<int, string>();
+        foreach (var code in used.Where(c => c is >= 0 and < 256).Order())
+        {
+            var name = names[code];
+            if (name is not null && name != ".notdef" && has(name))
+                continue;
+            if (name is null or ".notdef" || name.Any(c => c <= ' ' || c > '~' || "/[]{}()<>%".Contains(c)))
+            {
+                // No glyph name to give: one of its own.
+                var own = $"g{code}";
+                for (var n = 2; has(own) || names.Contains(own); n++)
+                    own = $"g{code}.{n}";
+                renamed[code] = name = own;
+            }
+            if (widths.TryAdd(name, Width(code)))
+                glyphs.Add((name, Width(code) * scale));
+        }
+        if (glyphs.Count == 0)
+            return;
+
+        var copy = DescriptorCopy(document, descriptor);
+        if (type1File is not null)
+        {
+            var rewritten = Type1Program.AddEmptyGlyphs(bytes, glyphs, (int)PdfObjects.Number(type1File, "/Length1", 0), (int)PdfObjects.Number(type1File, "/Length2", 0));
+            var file = new PdfDictionary(document);
+            file.CreateStream(rewritten.Data);
+            file.Elements.SetInteger("/Length1", rewritten.Length1);
+            file.Elements.SetInteger("/Length2", rewritten.Length2);
+            file.Elements.SetInteger("/Length3", rewritten.Length3);
+            file.Stream.Zip();
+            document.Internals.AddObject(file);
+            copy.Elements["/FontFile"] = file.Reference;
+        }
+        else
+        {
+            var cff = CffSubsetter.AddGlyphs(bytes, [.. glyphs.Select(g => new CffSubsetter.NewGlyph(g.Name, 0, g.Width))]);
+            copy.Elements["/FontFile3"] = CffStream(document, cff, "/Type1C");
+        }
+        // CharSet lists every glyph of the program when it is there.
+        if (Resolve(copy.Elements["/CharSet"]) is PdfString charSet)
+            copy.Elements["/CharSet"] = new PdfString(charSet.Value + string.Concat(glyphs.Select(g => "/" + g.Name)));
+        font.Elements["/FontDescriptor"] = copy.Reference;
+
+        // Codes with a name of their own: the Encoding names them (every name it gave, so nothing else changes).
+        if (renamed.Count > 0)
+        {
+            var encoding = new PdfDictionary(document);
+            encoding.Elements.SetName("/Type", "/Encoding");
+            if (Resolve(font.Elements["/Encoding"]) is PdfName { Value: "/WinAnsiEncoding" or "/MacRomanEncoding" or "/MacExpertEncoding" } baseName)
+                encoding.Elements["/BaseEncoding"] = baseName;
+            else if (Resolve(font.Elements["/Encoding"]) is PdfDictionary old && Resolve(old.Elements["/BaseEncoding"]) is PdfName oldBase)
+                encoding.Elements["/BaseEncoding"] = oldBase;
+            var differences = new PdfArray(document);
+            var next = -2;
+            for (var code = 0; code < 256; code++)
+            {
+                var name = renamed.TryGetValue(code, out var own) ? own : names[code];
+                if (name is null)
+                    continue;
+                if (code != next)
+                    differences.Elements.Add(new PdfInteger(code));
+                differences.Elements.Add(new PdfName("/" + name));
+                next = code + 1;
+            }
+            encoding.Elements["/Differences"] = differences;
+            font.Elements["/Encoding"] = encoding;
+        }
+    }
+
+    /// <summary>
+    /// A CIDFontType0 with an Identity encoding (codes are CIDs) whose CID-keyed CFF program (FontFile3
+    /// /CIDFontType0C) lacks CIDs it draws: an empty glyph with the CID's width is added for each.
+    /// </summary>
+    private static void RepairCidCff(PdfDocument document, PdfDictionary cidFont, HashSet<int> used)
+    {
+        if (Resolve(cidFont.Elements["/FontDescriptor"]) is not PdfDictionary descriptor
+            || Resolve(descriptor.Elements["/FontFile3"]) is not PdfDictionary { Stream: not null } file || Name(file, "/Subtype") != "/CIDFontType0C")
+            return;
+        var bytes = file.Stream.UnfilteredValue;
+        if (bytes.Length == 0 || bytes.Length > PdfFontUses.MaxStreamSize * 8L)
+            return;
+        var parsed = CffFont.Parse(bytes);
+        if (!parsed.IsCid || parsed.Charset is null)
+            return;
+        var present = new HashSet<int>(parsed.Charset.Select(c => (int)c));
+        var widths = CidWidths(cidFont);
+        var standard = PdfObjects.Number(cidFont, "/DW", 1000);
+        var scale = 0.001 / parsed.FontMatrices[0][0];
+        if (!double.IsFinite(scale) || scale <= 0)
+            return;
+        // CID 0 is .notdef itself: nothing to add for it.
+        var lacking = used.Where(cid => cid is > 0 and < MaxCids && !present.Contains(cid)).Order()
+            .Select(cid => new CffSubsetter.NewGlyph(null, cid, (widths.TryGetValue(cid, out var w) ? w : standard) * scale)).ToList();
+        if (lacking.Count == 0)
+            return;
+        var cff = CffSubsetter.AddGlyphs(bytes, lacking);
+        var copy = DescriptorCopy(document, descriptor);
+        copy.Elements["/FontFile3"] = CffStream(document, cff, "/CIDFontType0C");
+        copy.Elements.Remove("/CIDSet"); // it would have to list the new CIDs; PDF/A-2 lets it be left out
+        cidFont.Elements["/FontDescriptor"] = copy.Reference;
+    }
+
+    /// <summary>A FontFile3 stream of a CFF program.</summary>
+    private static PdfReference CffStream(PdfDocument document, byte[] cff, string subtype)
+    {
+        var file = new PdfDictionary(document);
+        file.CreateStream(cff);
+        file.Elements.SetName("/Subtype", subtype);
+        file.Stream.Zip();
+        document.Internals.AddObject(file);
+        return file.Reference!;
+    }
+
+    /// <summary>A copy of a font descriptor (the old one may be shared), added to the document.</summary>
+    private static PdfDictionary DescriptorCopy(PdfDocument document, PdfDictionary descriptor)
+    {
+        var copy = new PdfDictionary(document);
+        foreach (var key in descriptor.Elements.Keys)
+            copy.Elements[key] = descriptor.Elements[key];
+        document.Internals.AddObject(copy);
+        return copy;
+    }
+
     /// <summary>A CIDFont's W array of single CIDs in runs: "c [w1 w2 …]".</summary>
     private static PdfArray WidthArray(PdfDocument document, Dictionary<int, double> widths)
     {
@@ -500,6 +686,7 @@ internal static partial class PdfAFonts
             copy.Elements[key] = descriptor.Elements[key];
         copy.Elements.SetInteger("/Flags", flags);
         copy.Elements["/FontFile2"] = file.Reference;
+        copy.Elements.Remove("/CIDSet"); // the CIDs present may have changed; PDF/A-2 lets it be left out
         document.Internals.AddObject(copy);
         font.Elements["/FontDescriptor"] = copy.Reference;
     }

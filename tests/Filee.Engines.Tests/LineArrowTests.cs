@@ -233,8 +233,11 @@ public class LineArrowTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var shapes = Shapes(OdtReader.Read(path, Path.Combine(Path.GetDirectoryName(path)!, "media")));
 
-        // The bent connector is left out; a line without an outline has no arrowheads.
-        Assert.Equal(3, shapes.Count);
+        // The bent connector is an open path (ConnectorTests); a line without an outline has no arrowheads.
+        Assert.Equal(4, shapes.Count);
+        Assert.Equal(HShapeKind.Path, shapes[2].Kind);
+        Assert.Equal(shapes[0].Tail, shapes[2].Tail);
+        shapes.RemoveAt(2);
         Assert.True(shapes[0].FlipHorizontal);
         // On a hairline (counted as 2 pt): a 0.15 cm circle is about 2 line widths, a 0.3 cm arrow about 4 wide and 6 long.
         Assert.Equal(new HArrow(HArrowKind.Oval, HArrowSize.Small, HArrowSize.Small), shapes[0].Head);
@@ -259,7 +262,7 @@ public class LineArrowTests(EngineFixture fx) : IClassFixture<EngineFixture>
             var marked = line.Replace("headStyle=\"NORMAL\"", "headStyle=\"EMPTY_CIRCLE\"", StringComparison.Ordinal)
                 .Replace("headSz=\"MEDIUM_MEDIUM\"", "headSz=\"SMALL_LARGE\"", StringComparison.Ordinal)
                 .Replace("tailStyle=\"NORMAL\"", "tailStyle=\"CONCAVE_ARROW\"", StringComparison.Ordinal);
-            // The same line as a straight connector (연결선) and as a bent one, which keeps only its text (none).
+            // The same line as a straight connector (연결선) and as a bent one without control points, drawn straight too.
             var connector = marked.Replace("<hp:line ", "<hp:connectLine type=\"STRAIGHT_ONEWAY\" ", StringComparison.Ordinal).Replace("</hp:line>", "</hp:connectLine>", StringComparison.Ordinal);
             var bent = connector.Replace("STRAIGHT_ONEWAY", "STROKE_ONEWAY", StringComparison.Ordinal);
             var changed = xml.Replace(line, marked + connector + bent, StringComparison.Ordinal);
@@ -271,7 +274,7 @@ public class LineArrowTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var shapes = Shapes(HwpxReader.Read(path, Path.Combine(folder, "media")));
 
-        Assert.Equal(2, shapes.Count);
+        Assert.Equal(3, shapes.Count);
         Assert.All(shapes, s =>
         {
             Assert.Equal(HShapeKind.Line, s.Kind);

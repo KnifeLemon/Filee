@@ -1,5 +1,5 @@
-// Paragraphs of text written vertically (a section written top to bottom, PageComposer), laid out across before
-// VerticalText turns them into place.
+// Paragraphs of text written vertically (a section written top to bottom, PageComposer; a table cell, text box, header
+// or note written so, TableLayout.Stack with its flow), laid out across before VerticalText turns them into place.
 //
 // - Objects laid out like characters (pictures, shapes, text boxes) stand upright on the page, as Word and 한글 keep
 //   them: on the line their height runs along it and their width across it, and they are drawn turned back a quarter
@@ -19,7 +19,7 @@ internal sealed partial class ParagraphLayouter
 {
     /// <summary>
     /// How the text being laid out runs on the page (the section's HSection.TextFlow while the page composer lays out a
-    /// body written vertically); Horizontal for text across.
+    /// body written vertically, a cell's or text box's own while TableLayout stacks it); Horizontal for text across.
     /// </summary>
     public HTextFlow TextFlow { get; set; }
 

@@ -223,13 +223,17 @@ internal sealed partial class HwpxWriter
 
     private string Shape(HShape shape)
     {
+        if (shape.Kind == HShapeKind.Path && shape.Geometry?.Path is null)
+            return "";
         var id = NextId();
         var w = Math.Max(1, shape.Width);
         var h = Math.Max(1, shape.Height);
+        var open = shape.Kind is HShapeKind.Line or HShapeKind.Path;
         var (element, extra) = shape.Kind switch
         {
             HShapeKind.Ellipse => ("ellipse", " intervalDirty=\"0\" hasArcPr=\"0\" arcType=\"NORMAL\""),
             HShapeKind.Line => ("line", " isReverseHV=\"0\""),
+            HShapeKind.Path => ("connectLine", $" type=\"{ConnectorType(shape)}\""),
             _ => ("rect", $" ratio=\"{shape.CornerRatio}\""),
         };
 
@@ -240,8 +244,8 @@ internal sealed partial class HwpxWriter
         sb.Append("<hp:flip horizontal=\"0\" vertical=\"0\"/>");
         sb.Append($"<hp:rotationInfo angle=\"0\" centerX=\"{w / 2}\" centerY=\"{h / 2}\" rotateimage=\"1\"/>");
         sb.Append(IdentityRendering);
-        sb.Append(shape.Kind == HShapeKind.Line ? LineShape(shape.Line, shape.Head, shape.Tail) : LineShape(shape.Line));
-        if (shape.Kind != HShapeKind.Line)
+        sb.Append(open ? LineShape(shape.Line, shape.Head, shape.Tail) : LineShape(shape.Line));
+        if (!open)
             sb.Append(FillBrush(shape.Fill, shape.Gradient));
         sb.Append("<hp:shadow type=\"NONE\" color=\"#B2B2B2\" offsetX=\"0\" offsetY=\"0\" alpha=\"0\"/>");
         switch (shape.Kind)
@@ -254,6 +258,9 @@ internal sealed partial class HwpxWriter
                     sb.Append($"<hc:startPt x=\"{x1}\" y=\"{y1}\"/><hc:endPt x=\"{x2}\" y=\"{y2}\"/>");
                     break;
                 }
+            case HShapeKind.Path:
+                sb.Append(ConnectorGeometry(shape.Geometry!, w, h));
+                break;
             case HShapeKind.Ellipse:
                 sb.Append(EllipseGeometry(w, h));
                 break;
@@ -266,6 +273,40 @@ internal sealed partial class HwpxWriter
         sb.Append("<hp:outMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/>");
         sb.Append($"</hp:{element}>");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// An open path as a 한글 connector: curved (ARC_*) when it is cubics alone joined halfway between their controls
+    /// (DrawingML's curved connectors are), which its controls then say; else bent (STROKE_*) through its corners, a
+    /// curve in it flattened into straight pieces. ONEWAY / BOTH follow the arrowheads.
+    /// </summary>
+    private static string ConnectorType(HShape shape)
+    {
+        var curved = shape.Geometry?.Path is { } path && OpenPaths.Smooth(path);
+        var arrows = shape.Head is not null && shape.Tail is not null ? "BOTH" : shape.Head is not null || shape.Tail is not null ? "ONEWAY" : "NOARROW";
+        return (curved ? "ARC_" : "STROKE_") + arrows;
+    }
+
+    /// <summary>
+    /// hp:startPt, hp:endPt and hp:controlPoints of a connector in its box: the start (type 3), the points between
+    /// (type 2: corners, or a curved connector's Bézier controls) and the end (type 26). Not attached to any object.
+    /// </summary>
+    private static string ConnectorGeometry(HGeometry geometry, int w, int h)
+    {
+        var path = geometry.Path!;
+        var (sx, sy) = (geometry.Width > 0 ? w / (double)geometry.Width : 1, geometry.Height > 0 ? h / (double)geometry.Height : 1);
+        string Point(string element, HPoint p, string more) =>
+            $"<hp:{element} x=\"{OpenPaths.Round(p.X * sx)}\" y=\"{OpenPaths.Round(p.Y * sy)}\"{more}/>";
+        var between = OpenPaths.Smooth(path)
+            ? path.Segments.SelectMany(s => new[] { s.Control1!.Value, s.Control2!.Value }).ToList()
+            : OpenPaths.Flattened(path)[1..^1];
+        var sb = new StringBuilder();
+        sb.Append(Point("startPt", path.Start, " subjectIDRef=\"0\" subjectIdx=\"0\""));
+        sb.Append(Point("endPt", path.End, " subjectIDRef=\"0\" subjectIdx=\"0\""));
+        sb.Append("<hp:controlPoints>").Append(Point("point", path.Start, " type=\"3\""));
+        foreach (var point in between)
+            sb.Append(Point("point", point, " type=\"2\""));
+        return sb.Append(Point("point", path.End, " type=\"26\"")).Append("</hp:controlPoints>").ToString();
     }
 
     /// <summary>

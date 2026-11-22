@@ -521,6 +521,309 @@ public sealed class SheetNotesAndTablesTests(EngineFixture fx) : IClassFixture<E
         Assert.True(white > 20, white.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
+    // ───────────────────────── Shape text: text areas, bullets, autofit, vertical, linked ─────────────────────────
+
+    private const string DrawingNamespaces = "xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" " +
+                                             "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"";
+
+    /// <summary>
+    /// A shape at (<paramref name="x"/>, <paramref name="y"/>) points from the sheet's corner, <paramref name="w"/> ×
+    /// <paramref name="h"/>, outlined in black, with <paramref name="bodyPr"/> and <paramref name="paragraphs"/> as its text.
+    /// </summary>
+    private static string Shape(string preset, double x, double y, double w, double h, string bodyPr, string paragraphs, string attributes = "")
+    {
+        const double Emu = 12700;
+        return $"<xdr:absoluteAnchor><xdr:pos x=\"{(long)(x * Emu)}\" y=\"{(long)(y * Emu)}\"/><xdr:ext cx=\"{(long)(w * Emu)}\" cy=\"{(long)(h * Emu)}\"/>" +
+               $"<xdr:sp{attributes}><xdr:nvSpPr><xdr:cNvPr id=\"2\" name=\"Shape\"/><xdr:cNvSpPr/></xdr:nvSpPr>" +
+               $"<xdr:spPr><a:prstGeom prst=\"{preset}\"><a:avLst/></a:prstGeom><a:noFill/><a:ln w=\"9525\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill></a:ln></xdr:spPr>" +
+               $"<xdr:txBody>{bodyPr}<a:lstStyle/>{paragraphs}</xdr:txBody></xdr:sp><xdr:clientData/></xdr:absoluteAnchor>";
+    }
+
+    /// <summary>Puts <paramref name="anchors"/> on the first sheet as its drawing.</summary>
+    private static void Draw(XlsbBuilder book, params string[] anchors)
+    {
+        var sheet = book.Sheets[0];
+        sheet.DrawingId = "rIdD";
+        sheet.Relationships.Add(("rIdD", "drawing", "../drawings/drawing1.xml"));
+        book.Parts["xl/drawings/drawing1.xml"] = $"<xdr:wsDr {DrawingNamespaces}>{string.Concat(anchors)}</xdr:wsDr>";
+    }
+
+    /// <summary>The letters of the first printed page and the page's height (PDF coordinates: points, y up).</summary>
+    private static (List<UglyToad.PdfPig.Content.Letter> Letters, double Height) Letters(Workbook book)
+    {
+        var pdf = SheetPrinter.ToPdf(book, new SheetPrintSource("book.xlsx", "C:\\"), TestContext.Current.CancellationToken, now: Now);
+        using var document = PdfDocument.Open(pdf);
+        var page = document.GetPage(1);
+        return ([.. page.Letters], page.Height);
+    }
+
+    /// <summary>The left edge of the first word <paramref name="word"/> on the first page, in points.</summary>
+    private static double LeftOf(Workbook book, string word)
+    {
+        var pdf = SheetPrinter.ToPdf(book, new SheetPrintSource("book.xlsx", "C:\\"), TestContext.Current.CancellationToken, now: Now);
+        using var document = PdfDocument.Open(pdf);
+        return document.GetPage(1).GetWords().First(w => w.Text == word).BoundingBox.Left;
+    }
+
+    [Fact]
+    public void Shape_text_keeps_to_its_presets_text_box_with_bullets_indents_and_the_saved_autofit()
+    {
+        var book = Budget();
+        Draw(book,
+            // Left-aligned text in an ellipse starts inside the ellipse's text box (its inscribed rectangle), in a
+            // rectangle at the box's edge.
+            Shape("ellipse", 40, 40, 200, 100, "<a:bodyPr anchor=\"t\"/>", "<a:p><a:pPr algn=\"l\"/><a:r><a:rPr lang=\"en-US\"/><a:t>Oval</a:t></a:r></a:p>"),
+            Shape("rect", 40, 150, 200, 40, "<a:bodyPr anchor=\"t\"/>", "<a:p><a:r><a:rPr lang=\"en-US\"/><a:t>Boxy</a:t></a:r></a:p>"),
+            // A hanging bullet in its own font, numbers counted per level and restarted, a symbol font's bullet.
+            Shape("rect", 260, 40, 200, 150, "<a:bodyPr anchor=\"t\"/>",
+                "<a:p><a:pPr marL=\"285750\" indent=\"-285750\"><a:buFont typeface=\"Arial\"/><a:buChar char=\"•\"/></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Apples</a:t></a:r></a:p>" +
+                "<a:p><a:pPr marL=\"285750\" indent=\"-285750\"><a:buAutoNum type=\"arabicPeriod\"/></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Pears</a:t></a:r></a:p>" +
+                "<a:p><a:pPr marL=\"285750\" indent=\"-285750\"><a:buAutoNum type=\"arabicPeriod\"/></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Plums</a:t></a:r></a:p>" +
+                "<a:p><a:pPr marL=\"285750\" indent=\"-285750\"><a:buClr><a:srgbClr val=\"FF0000\"/></a:buClr><a:buSzPct val=\"150000\"/><a:buAutoNum type=\"alphaLcParenR\" startAt=\"3\"/></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Figs</a:t></a:r></a:p>" +
+                "<a:p><a:pPr marL=\"285750\" indent=\"-285750\"><a:buFont typeface=\"Wingdings\"/><a:buChar char=\"§\"/></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Kiwis</a:t></a:r></a:p>" +
+                "<a:p><a:pPr><a:buNone/></a:pPr><a:r><a:rPr lang=\"en-US\"/><a:t>Plain</a:t></a:r></a:p>"),
+            // "Shrink text on overflow" as Excel saved it: half the size, lines 20 % closer.
+            Shape("rect", 40, 220, 200, 40, "<a:bodyPr><a:normAutofit fontScale=\"50000\" lnSpcReduction=\"20000\"/></a:bodyPr>",
+                "<a:p><a:r><a:rPr lang=\"en-US\" sz=\"2000\"/><a:t>Large</a:t></a:r></a:p><a:p><a:r><a:rPr lang=\"en-US\"/><a:t>small</a:t></a:r></a:p>"));
+        var (xlsb, xlsx) = Twins(book);
+        foreach (var read in new[] { xlsb, xlsx })
+        {
+            var shapes = read.Sheets[0].Drawings.OfType<SheetShape>().ToList();
+            var list = shapes[2].Text!.Paragraphs;
+            Assert.Equal(["•", "1.", "2.", "c)", Hwp.Hwpx.SymbolFonts.Map("Wingdings", "§"), null], list.Select(p => p.Bullet?.Text));
+            Assert.Equal((22.5, -22.5), (list[0].Left, list[0].Indent));
+            Assert.Equal(("Arial", "#FF0000", 16.5), (list[0].Bullet!.FontName, list[3].Bullet!.Color, list[3].Bullet!.FontSize));
+            var shrunk = shapes[3].Text!;
+            Assert.Equal((5.5, 10.0, 5.5), (shrunk.Font.FontSize!.Value, shrunk.Paragraphs[0].Runs[0].FontSize!.Value, shrunk.Paragraphs[1].Runs[0].FontSize!.Value));
+            Assert.Equal(0.8, shrunk.Paragraphs[0].LineSpacing, 6);
+        }
+        var left = xlsb.Sheets[0].PageSetup.LeftMargin;
+        // The ellipse's text box starts 14.6 % of its width in (200 × (1 − cos 45°) / 2), then the 7.2 pt inset.
+        Assert.InRange(LeftOf(xlsb, "Oval") - left, 40 + 29.3 + 7.2 - 1, 40 + 29.3 + 7.2 + 3);
+        Assert.InRange(LeftOf(xlsb, "Boxy") - left, 40 + 7.2 - 1, 40 + 7.2 + 3);
+        // The bullet hangs at the box's inset, the text starts at the left margin (22.5 pt further).
+        Assert.InRange(LeftOf(xlsb, "Apples") - left, 260 + 7.2 + 22.5 - 1, 260 + 7.2 + 22.5 + 3);
+        Assert.InRange(LeftOf(xlsb, "1.") - left, 260 + 7.2 - 1, 260 + 7.2 + 3);
+        Assert.InRange(LeftOf(xlsb, "c)") - left, 260 + 7.2 - 1, 260 + 7.2 + 3);
+        Assert.InRange(LeftOf(xlsb, "Plain") - left, 260 + 7.2 - 1, 260 + 7.2 + 3);
+        var page = Assert.Single(InLanguage("en-US", () => Words(xlsb, "shape-bullets")));
+        Assert.Contains("2. Plums", page);
+    }
+
+    [Fact]
+    public void Vertical_shape_text_runs_down_or_up_and_east_asian_characters_stand_upright()
+    {
+        var book = Budget();
+        Draw(book,
+            Shape("rect", 40, 40, 40, 160, "<a:bodyPr vert=\"vert\" anchor=\"t\"/>", "<a:p><a:r><a:rPr lang=\"en-US\"/><a:t>DOWN</a:t></a:r></a:p>"),
+            Shape("rect", 120, 40, 40, 160, "<a:bodyPr vert=\"vert270\" anchor=\"t\"/>", "<a:p><a:r><a:rPr lang=\"en-US\"/><a:t>UPWARD</a:t></a:r></a:p>"),
+            Shape("rect", 200, 40, 40, 160, "<a:bodyPr vert=\"eaVert\" anchor=\"t\"/>", "<a:p><a:r><a:rPr lang=\"ko-KR\"/><a:t>세로 ok</a:t></a:r></a:p>"),
+            Shape("rect", 280, 40, 40, 160, "<a:bodyPr vert=\"wordArtVert\" anchor=\"t\"/>", "<a:p><a:r><a:rPr lang=\"en-US\"/><a:t>TALL</a:t></a:r></a:p>"));
+        var (xlsb, xlsx) = Twins(book);
+        foreach (var read in new[] { xlsb, xlsx })
+        {
+            Assert.Equal([ShapeTextFlow.Down, ShapeTextFlow.Up, ShapeTextFlow.EastAsian, ShapeTextFlow.Stacked],
+                read.Sheets[0].Drawings.OfType<SheetShape>().Select(s => s.Text!.Flow));
+        }
+        var (letters, height) = Letters(xlsb);
+        var left = xlsb.Sheets[0].PageSetup.LeftMargin;
+        var top = xlsb.Sheets[0].PageSetup.TopMargin;
+        // (x, y down the page) of each letter's baseline start.
+        List<(double X, double Y, bool Across)> Of(string text, double from, double to)
+        {
+            // The letters of the box in drawing order, matched one by one.
+            var inBox = letters.Where(l => l.StartBaseLine.X - left >= from && l.StartBaseLine.X - left <= to).ToList();
+            var found = new List<(double, double, bool)>();
+            var at = 0;
+            foreach (var c in text)
+            {
+                at = inBox.FindIndex(at, l => l.Value == c.ToString());
+                var l = inBox[at++];
+                found.Add((l.StartBaseLine.X - left, height - l.StartBaseLine.Y - top,
+                    Math.Abs(l.EndBaseLine.Y - l.StartBaseLine.Y) < 0.1 && l.EndBaseLine.X > l.StartBaseLine.X));
+            }
+            return found;
+        }
+        // Turned 90° clockwise: the letters go down the box, near its right edge, lying on their side.
+        var down = Of("DOWN", 40, 80);
+        Assert.All(down, l => Assert.False(l.Across));
+        Assert.True(down.Zip(down.Skip(1)).All(p => p.Second.Y > p.First.Y + 3 && Math.Abs(p.Second.X - p.First.X) < 2), string.Join(" ", down));
+        Assert.InRange(down[0].Y, 40, 60);
+        // Turned 270°: up the box from its bottom.
+        var up = Of("UPWARD", 120, 160);
+        Assert.True(up.Zip(up.Skip(1)).All(p => p.Second.Y < p.First.Y - 3 && Math.Abs(p.Second.X - p.First.X) < 2), string.Join(" ", up));
+        Assert.InRange(up[0].Y, 170, 200);
+        // East Asian: the Hangul stands upright, the Latin lies on its side; both go down.
+        var hangul = Of("세로", 200, 240);
+        Assert.All(hangul, l => Assert.True(l.Across));
+        Assert.True(hangul[1].Y > hangul[0].Y + 5, string.Join(" ", hangul));
+        Assert.All(Of("ok", 200, 240), l => Assert.False(l.Across));
+        // Stacked: every letter upright, one under the other.
+        var tall = Of("TALL", 280, 320);
+        Assert.All(tall, l => Assert.True(l.Across));
+        Assert.True(tall.Zip(tall.Skip(1)).All(p => p.Second.Y > p.First.Y + 3), string.Join(" ", tall));
+    }
+
+    [Fact]
+    public void Shape_text_linked_to_a_cell_shows_the_cells_text()
+    {
+        var book = Budget();
+        book.Sheets[0].Text(4, 1, "Linked value");
+        book.Sheet("Data sheet").Text(0, 0, "From data");
+        book.Sheet("Hidden", state: 1).Text(0, 0, "Hidden text");
+        Draw(book,
+            Shape("rect", 40, 120, 160, 30, "<a:bodyPr/>",
+                "<a:p><a:pPr algn=\"ctr\"/><a:fld id=\"{00000000-0000-0000-0000-000000000001}\" type=\"TxLink\"><a:rPr lang=\"en-US\" b=\"1\"/><a:t>old text</a:t></a:fld></a:p>",
+                " textlink=\"$B$5\""),
+            Shape("rect", 220, 120, 160, 30, "<a:bodyPr/>", "<a:p><a:r><a:rPr lang=\"en-US\"/><a:t>stale</a:t></a:r></a:p>", " textlink=\"'Data sheet'!$A$1\""),
+            Shape("rect", 40, 170, 160, 30, "<a:bodyPr/>", "<a:p><a:r><a:rPr lang=\"en-US\"/><a:t>Saved</a:t></a:r></a:p>", " textlink=\"Hidden!A1\""),
+            Shape("rect", 220, 170, 160, 30, "<a:bodyPr/>", "<a:p><a:r><a:rPr lang=\"en-US\"/><a:t>gone</a:t></a:r></a:p>", " textlink=\"$D$9\""));
+        var folder = fx.NewFolder();
+        Assert.Null(SheetCapabilities.FirstUnsupported(book.SaveXlsx(Path.Combine(folder, "linked.xlsx")), "xlsx"));
+        var (xlsb, xlsx) = Twins(book);
+        foreach (var read in new[] { xlsb, xlsx })
+        {
+            var texts = read.Sheets[0].Drawings.OfType<SheetShape>().Select(s => s.Text!.Paragraphs.SelectMany(p => p.Runs).ToList()).ToList();
+            // The cell's text in the linked run's font and the paragraph's alignment; a hidden sheet's link keeps the
+            // saved text; an empty cell leaves the shape empty.
+            Assert.Equal(("Linked value", true), (Assert.Single(texts[0]).Text, Assert.Single(texts[0]).Bold));
+            Assert.Equal(CellAlign.Center, read.Sheets[0].Drawings.OfType<SheetShape>().First().Text!.Paragraphs[0].Align);
+            Assert.Equal("From data", Assert.Single(texts[1]).Text);
+            Assert.Equal("Saved", Assert.Single(texts[2]).Text);
+            Assert.Empty(texts[3]);
+        }
+        var page = InLanguage("en-US", () => Words(xlsb, "shape-linked"))[0];
+        Assert.Contains("Linked value", page);
+        Assert.DoesNotContain("old text", page);
+    }
+
+    // ───────────────────────── Cell styles of tables, PivotTable styles ─────────────────────────
+
+    [Fact]
+    public void A_tables_named_cell_styles_go_under_its_formats_and_its_cells_own()
+    {
+        var book = Sales("TableStyleLight1");
+        book.CellStyles.Add(("Accent heading", 1, 2, 0)); // bold white on #1F4E79
+        book.CellStyles.Add(("Boxed", 0, 0, 1));          // thin borders all round
+        book.Sheets[0].TableCellStyles[0] = ("Accent heading", null, null, [(2, null, "Boxed", null)]);
+        var (xlsb, xlsx) = Twins(book);
+        foreach (var sheet in new[] { xlsb.Sheets[0], xlsx.Sheets[0] })
+        {
+            CellStyle At(int row, int column) => sheet.Get(row, column)!.Style;
+            Assert.Equal(("#1F4E79", "#FFFFFF", true), (At(0, 0).Fill, At(0, 0).Color, At(0, 0).Bold));
+            Assert.Equal(("thin", "thin"), (At(1, 2).Left.Style, At(1, 2).Bottom.Style));
+            // The blank C4 of column C's data rows gets the borders too; column B's cells don't.
+            Assert.Equal("thin", At(3, 2).Top.Style);
+            Assert.False(At(1, 1).Left.IsVisible);
+        }
+        Assert.Equal(Cells(xlsx.Sheets[0]), Cells(xlsb.Sheets[0]));
+
+        // The table's own header format goes over the cell style it names.
+        book.Dxfs.Add((XlsbColor.Rgb(0xFFF2CC), null, false));
+        book.Sheets[0].TableFormats[0] = (0, -1, -1, -1, []);
+        var (formatted, formattedXlsx) = Twins(book);
+        Assert.Equal(("#FFF2CC", "#FFFFFF"), (formatted.Sheets[0].Get(0, 0)!.Style.Fill, formatted.Sheets[0].Get(0, 0)!.Style.Color));
+        Assert.Equal(Cells(formattedXlsx.Sheets[0]), Cells(formatted.Sheets[0]));
+    }
+
+    /// <summary>
+    /// A compact PivotTable on A3:B9 with a page field in A1:B1: two row fields (region, city), one data column, the
+    /// grand total row; its values in the sheet's cells as Excel saves them.
+    /// </summary>
+    private static XlsbBuilder Pivot(string style, bool rowHeaders = true)
+    {
+        var book = new XlsbBuilder();
+        var sheet = book.Sheet("Pivot").Text(0, 0, "Year").Text(0, 1, "(All)")
+            .Text(2, 0, "Row Labels").Text(2, 1, "Sum of Sales")
+            .Text(3, 0, "East").Number(3, 1, 300).Text(4, 0, "Seoul").Number(4, 1, 100).Text(5, 0, "Busan").Number(5, 1, 200)
+            .Text(6, 0, "West").Number(6, 1, 50).Text(7, 0, "LA").Number(7, 1, 50)
+            .Text(8, 0, "Grand Total").Number(8, 1, 350)
+            .Width(0, 1, 16);
+        sheet.PageSetup = A4;
+        sheet.Pivots.Add(new XlsbPivot((2, 0, 8, 1), 1, 1, 1, style)
+        {
+            RowFields = 2,
+            PageFields = 1,
+            RowHeaders = rowHeaders,
+            Rows = [(null, 0, 1), (null, 1, 1), (null, 1, 1), (null, 0, 1), (null, 1, 1), ("grand", 0, 1)],
+        });
+        return book;
+    }
+
+    [Fact]
+    public void A_pivot_table_prints_in_its_built_in_pivot_style()
+    {
+        var (xlsb, xlsx) = Twins(Pivot("PivotStyleLight16"));
+        var light = Tinted(4, 0.79998168889431442);
+        var line = new CellBorder("thin", Tinted(4, 0.39997558519241921));
+        foreach (var sheet in new[] { xlsb.Sheets[0], xlsx.Sheets[0] })
+        {
+            CellStyle At(int row, int column) => sheet.Get(row, column)!.Style;
+            // Header row: bold on accent 1 at 80 %, a line below; the grand total row likewise with a line above.
+            Assert.Equal((light, true, line), (At(2, 1).Fill, At(2, 1).Bold, At(2, 1).Bottom));
+            Assert.Equal((light, true, line), (At(8, 0).Fill, At(8, 0).Bold, At(8, 0).Top));
+            // The outer field's items (row subheading 1): bold across the table with a line below; the inner ones plain.
+            Assert.Equal((true, true, line), (At(3, 0).Bold, At(6, 1).Bold, At(3, 1).Bottom));
+            Assert.Equal((false, null), (At(4, 0).Bold, At(4, 0).Fill));
+            // The page field's caption and value.
+            Assert.Equal((light, light), (At(0, 0).Fill, At(0, 1).Fill));
+        }
+        Assert.Equal(Cells(xlsx.Sheets[0]), Cells(xlsb.Sheets[0]));
+        Assert.Contains("Grand Total", InLanguage("en-US", () => Words(xlsb, "pivot-light16"))[0]);
+        // Without row headers the row subheadings are plain.
+        Assert.False(Twins(Pivot("PivotStyleLight16", rowHeaders: false)).Xlsb.Sheets[0].Get(3, 0)!.Style.Bold);
+    }
+
+    [Fact]
+    public void A_custom_pivot_style_colours_subtotals_by_their_fields_level()
+    {
+        var book = new XlsbBuilder();
+        var sheet = book.Sheet("Pivot").Text(0, 0, "Row Labels").Text(0, 1, "Sum");
+        for (var row = 1; row <= 6; row++)
+            sheet.Text(row, 0, $"Line {row}").Number(row, 1, row);
+        sheet.PageSetup = A4;
+        book.Dxfs.Add((XlsbColor.Rgb(0xFF0000), null, false)); // 0: first subtotal rows
+        book.Dxfs.Add((XlsbColor.Rgb(0x00FF00), null, false)); // 1: second
+        book.Dxfs.Add((XlsbColor.Rgb(0x0000FF), null, false)); // 2: third
+        book.Dxfs.Add((XlsbColor.Rgb(0xFFFF00), null, true));  // 3: grand total row
+        book.PivotStyles.Add(("Own pivot", [("firstSubtotalRow", 0), ("secondSubtotalRow", 1), ("thirdSubtotalRow", 2), ("totalRow", 3)]));
+        // Subtotals of fields 0, 1, 2 and 3, a blank line, the grand total: the first, then the second and third by turns.
+        sheet.Pivots.Add(new XlsbPivot((0, 0, 6, 1), 1, 1, 1, "Own pivot")
+        {
+            RowFields = 4,
+            Rows = [("default", 0, 1), ("default", 1, 1), ("default", 2, 1), ("sum", 3, 1), ("blank", 0, 1), ("grand", 0, 1)],
+        });
+        var (xlsb, xlsx) = Twins(book);
+        foreach (var read in new[] { xlsb.Sheets[0], xlsx.Sheets[0] })
+        {
+            Assert.Equal(["#FF0000", "#00FF00", "#0000FF", "#00FF00", null, "#FFFF00"], Enumerable.Range(1, 6).Select(r => read.Get(r, 1)!.Style.Fill));
+            Assert.True(read.Get(6, 0)!.Style.Bold);
+        }
+        Assert.Equal(Cells(xlsx.Sheets[0]), Cells(xlsb.Sheets[0]));
+    }
+
+    [Fact]
+    public void A_pivot_table_over_a_whole_sheet_is_styled_within_the_budget_quickly()
+    {
+        var clock = Stopwatch.StartNew();
+        var book = new XlsbBuilder();
+        var sheet = book.Sheet("Big").Text(0, 0, "Head").Text(5000, 3, "Far");
+        sheet.Pivots.Add(new XlsbPivot((0, 0, 1_048_575, 16_383), 1, 1, 1, "PivotStyleMedium9")
+        {
+            RowStripes = true,
+            ColumnStripes = true,
+            Rows = [(null, 0, 1), ("grand", 0, 1)],
+            Columns = [.. Enumerable.Range(0, 300).Select(_ => ((string?)null, 0, 1))],
+        });
+        var (xlsb, xlsx) = Twins(book);
+        foreach (var read in new[] { xlsb.Sheets[0], xlsx.Sheets[0] })
+        {
+            Assert.InRange(read.Rows.Sum(r => r.Value.Count), 2, new TableBudget().Cells + 2);
+            Assert.True(read.Get(0, 0)!.Style.Bold);
+        }
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(120), clock.Elapsed.ToString());
+    }
+
     // ───────────────────────── ODS drawings ─────────────────────────
 
     private static byte[] Halves(SKColor left, SKColor right, int width = 40, int height = 20)

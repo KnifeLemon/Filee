@@ -60,7 +60,7 @@ internal static class PortableStartupFailure
             Width = 520,
             SizeToContent = SizeToContent.Height,
             CanResize = false,
-            FontFamily = SoftPalette.FontFamilyFor(language),
+            FontFamily = SoftPalette.FontFamilyFor(language, asks: ThemeService.InstalledFonts),
             FlowDirection = SoftPalette.IsRightToLeft(language) ? FlowDirection.RightToLeft : FlowDirection.LeftToRight,
             Content = new StackPanel
             {

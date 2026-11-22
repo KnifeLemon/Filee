@@ -29,8 +29,9 @@
 //   text, which then shows through as it does in the PDF. The other modes, blended pictures, and Multiply / Darken over
 //   anything else painted before them are drawn over their backdrop (Backdrops): the page's colour and, where earlier
 //   pictures, text or shapes lie under them, those drawn again into the same picture under the blend, which then
-//   covers them there (the text stays a text box underneath). A picture under a soft mask other than a constant alpha
-//   gets the mask in its own alpha.
+//   covers them there (the text stays a text box underneath). What lies under each blend is found through a grid of
+//   the page's paints (BackdropIndex), so thousands of blends stay quick. A picture under a soft mask other than a
+//   constant alpha gets the mask in its own alpha.
 //   Rules and shading of a ruled table are the table's own borders and fills, so they are not repeated as shapes.
 // - Clipping: a clipping rectangle crops the pictures and rectangles it cuts (srcRect, a smaller rectangle); another
 //   clipping path is a picture's custom geometry and is intersected with a shape's outline; strokes it cuts are drawn.
@@ -41,7 +42,8 @@
 //   text markup), top to bottom, with their author.
 //
 // Not rebuilt (left for later): form fields, the appearance of annotations, text inside pattern cells, vertical CJK
-// writing. Blends past MaxBackdrops a page see only their own picture's graphics.
+// writing. Blends past the page's backdrop budget (MaxBackdropPaints earlier paints drawn under them, MaxBackdropArea of
+// their area) see only their own picture's graphics.
 
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
@@ -400,11 +402,11 @@ internal sealed partial class PdfDocumentReader
         return [.. slots.OfType<PdfSlideItem>()];
     }
 
-    /// <summary>Blended paints that get the page's earlier paints drawn under them, on one page at most.</summary>
-    internal const int MaxBackdrops = 64;
-
     /// <summary>Earlier paints drawn under blended ones, on one page at most.</summary>
     internal const int MaxBackdropPaints = 50_000;
+
+    /// <summary>The area of the blended paints drawn over a backdrop, in pages, on one page at most.</summary>
+    internal const int MaxBackdropArea = 64;
 
     /// <summary>
     /// What blended paints are drawn over, as the PDF blends them with what is under them:
@@ -416,14 +418,16 @@ internal sealed partial class PdfDocumentReader
     /// (the slide's background) and the graphics of its own picture.</item>
     /// <item>One over earlier pictures, text or shapes gets the page colour and everything painted before it there (its
     /// <see cref="PdfPaint.Below"/>) drawn under it inside its own picture, which then covers those items where it
-    /// paints. Up to <see cref="MaxBackdrops"/> paints and <see cref="MaxBackdropPaints"/> earlier paints a page; past
-    /// that a blend sees only its own picture's graphics.</item>
+    /// paints. Up to <see cref="MaxBackdropPaints"/> earlier paints a page and blends covering <see cref="MaxBackdropArea"/>
+    /// pages together; past that a blend sees only its own picture's graphics.</item>
     /// </list>
     /// </summary>
     private static void Backdrops(List<Entry> entries, PdfSlideDrawing drawing, SKColor page, SKRect pageBox)
     {
         var converted = new HashSet<PdfPaint>(ReferenceEqualityComparer.Instance);
-        var (backdrops, paints) = (0, 0);
+        var paints = 0;
+        var room = (double)MaxBackdropArea * pageBox.Width * pageBox.Height;
+        BackdropIndex? index = null;
         for (var i = 0; i < entries.Count; i++)
         {
             var entry = entries[i];
@@ -455,45 +459,113 @@ internal sealed partial class PdfDocumentReader
                 entries[i] = entry with { Paint = blended with { Backdrop = page } };
                 continue;
             }
-            if (backdrops >= MaxBackdrops || paints >= MaxBackdropPaints)
+            var size = (double)box.Width * box.Height;
+            if (paints >= MaxBackdropPaints || size > room)
                 continue;
-            var below = Below(drawing, entry.Order, box, pageBox, MaxBackdropPaints - paints);
+            index ??= new BackdropIndex(drawing, pageBox);
+            var below = index.Below(entry.Order, box, MaxBackdropPaints - paints);
             if (below is null)
                 continue;
-            backdrops++;
+            room -= size;
             paints += below.Count;
             entries[i] = entry with { Paint = blended with { Backdrop = page, Below = below } };
         }
     }
 
     /// <summary>
-    /// The paints and glyphs painted before <paramref name="order"/> that reach into <paramref name="box"/>, in paint
-    /// order; null when there are more than <paramref name="room"/>.
+    /// The paints and glyphs of a page by where they can paint, so the backdrop of each blend finds what lies under it
+    /// without going through the whole page: a grid of <see cref="Cells"/> × <see cref="Cells"/> over the page, each
+    /// cell listing what reaches into it; what covers more than a quarter of the cells is listed once for all.
     /// </summary>
-    private static List<PdfPaint>? Below(PdfSlideDrawing drawing, int order, SKRect box, SKRect page, int room)
+    private sealed class BackdropIndex
     {
-        var below = new List<PdfPaint>();
-        foreach (var paint in drawing.Paints)
+        private const int Cells = 64;
+
+        private readonly List<(PdfPaint Paint, SKRect Reach)> _items = [];
+        private readonly List<int>[] _cells = new List<int>[Cells * Cells];
+        private readonly List<int> _large = [];
+        private readonly int[] _seen;
+        private readonly SKRect _page;
+        private int _query;
+
+        public BackdropIndex(PdfSlideDrawing drawing, SKRect page)
         {
-            if (paint.Order >= order)
-                break;
-            if (Reach(paint, page).IntersectsWith(box))
-                below.Add(paint);
+            _page = page;
+            foreach (var paint in drawing.Paints)
+                _items.Add((paint, Reach(paint, page)));
+            foreach (var letter in drawing.Letters)
+            {
+                var area = letter.Area;
+                if (letter.Clip is { } clip)
+                    area.Intersect(clip.Bounds);
+                _items.Add((letter, area));
+            }
+            _seen = new int[_items.Count];
+            for (var i = 0; i < _items.Count; i++)
+            {
+                var (x0, y0, x1, y1) = Span(_items[i].Reach);
+                if (x1 < x0 || y1 < y0)
+                    continue;
+                if ((long)(x1 - x0 + 1) * (y1 - y0 + 1) > Cells * Cells / 4)
+                {
+                    _large.Add(i);
+                    continue;
+                }
+                for (var y = y0; y <= y1; y++)
+                {
+                    for (var x = x0; x <= x1; x++)
+                        (_cells[y * Cells + x] ??= []).Add(i);
+                }
+            }
         }
-        foreach (var letter in drawing.Letters)
+
+        /// <summary>The cells a box covers (empty when it lies off the page).</summary>
+        private (int X0, int Y0, int X1, int Y1) Span(SKRect box)
         {
-            if (letter.Order >= order)
-                break;
-            var area = letter.Area;
-            if (letter.Clip is { } clip)
-                area.Intersect(clip.Bounds);
-            if (area.IntersectsWith(box))
-                below.Add(letter);
+            if (box.IsEmpty || !box.IntersectsWith(_page) || _page.Width <= 0 || _page.Height <= 0)
+                return (0, 0, -1, -1);
+            int Cell(float value, float start, float length) => Math.Clamp((int)((value - start) / length * Cells), 0, Cells - 1);
+            return (Cell(box.Left, _page.Left, _page.Width), Cell(box.Top, _page.Top, _page.Height),
+                Cell(box.Right, _page.Left, _page.Width), Cell(box.Bottom, _page.Top, _page.Height));
         }
-        if (below.Count > room)
-            return null;
-        below.Sort((a, b) => a.Order.CompareTo(b.Order));
-        return below;
+
+        /// <summary>
+        /// The paints and glyphs painted before <paramref name="order"/> that reach into <paramref name="box"/>, in
+        /// paint order; null when there are more than <paramref name="room"/>.
+        /// </summary>
+        public List<PdfPaint>? Below(int order, SKRect box, int room)
+        {
+            var found = new List<int>();
+            _query++;
+            void Look(int i)
+            {
+                if (_seen[i] == _query)
+                    return;
+                _seen[i] = _query;
+                var (paint, reach) = _items[i];
+                if (paint.Order < order && reach.IntersectsWith(box))
+                    found.Add(i);
+            }
+            foreach (var i in _large)
+                Look(i);
+            var (x0, y0, x1, y1) = Span(box);
+            for (var y = y0; y <= y1 && found.Count <= room; y++)
+            {
+                for (var x = x0; x <= x1; x++)
+                {
+                    if (_cells[y * Cells + x] is { } cell)
+                    {
+                        foreach (var i in cell)
+                            Look(i);
+                    }
+                }
+            }
+            if (found.Count > room)
+                return null;
+            var below = found.Select(i => _items[i].Paint).ToList();
+            below.Sort((a, b) => a.Order.CompareTo(b.Order));
+            return below;
+        }
     }
 
     /// <summary>The box a paint can paint in on the slide.</summary>

@@ -3,12 +3,17 @@
 // glyph IDs, CIDs, the charset and the subroutine numbers stay valid. Everything else (dictionaries, strings, charset,
 // encoding, FDSelect) is copied; only the offsets between the parts are written again, each as a five-byte integer.
 // Converting to TrueType instead (FontSubsetter) would change the PDF's font type and make the outlines bigger.
+//
+// AddGlyphs appends empty glyphs (a width and endchar) to such a font, for PDF/A's rule that every glyph a PDF draws is
+// in its program: with a name in the charset (name-keyed fonts; new names go into the String INDEX) or a CID
+// (CID-keyed fonts, drawn with the first font dictionary). The charset and FDSelect are written again in format 0; the
+// rest is copied as Subset copies it.
 
 using System.Buffers.Binary;
 
 namespace Filee.Engines.Fonts.Cff;
 
-/// <summary>Empties the glyphs and subroutines of a CFF font that the given glyphs don't use.</summary>
+/// <summary>Empties the glyphs and subroutines of a CFF font that the given glyphs don't use, or adds empty ones.</summary>
 internal static class CffSubsetter
 {
     private const int OpCharset = 15;
@@ -16,8 +21,14 @@ internal static class CffSubsetter
     private const int OpCharStrings = 17;
     private const int OpPrivate = 18;
     private const int OpSubrs = 19;
+    private const int OpDefaultWidthX = 20;
+    private const int OpNominalWidthX = 21;
+    private const int OpCidCount = 1234;
     private const int OpFdArray = 1236;
     private const int OpFdSelect = 1237;
+
+    /// <summary>Strings every CFF font has without listing them (SIDs 0–390).</summary>
+    private const int StandardStrings = 391;
 
     private const byte EndChar = 14;
     private const byte Return = 11;
@@ -65,7 +76,134 @@ internal static class CffSubsetter
             interpreter.Run(glyph);
         }
 
-        // The table's parts, read again as bytes.
+        var parts = ReadParts(cff, font);
+        var charStrings = new byte[font.GlyphCount][];
+        for (var gid = 0; gid < font.GlyphCount; gid++)
+            charStrings[gid] = kept.Contains(gid) ? font.CharStrings[gid] : [EndChar];
+        var globalSubrs = Blank(font.GlobalSubrs, usedGlobal);
+        var localSubrs = parts.Privates.Select((p, i) => Blank(p.Subrs, usedLocal.GetValueOrDefault(font.Privates[i].Subrs) ?? [])).ToArray();
+        return Write(cff, parts with { Global = globalSubrs, CharStrings = charStrings, LocalSubrs = localSubrs });
+    }
+
+    /// <summary>A new glyph for <see cref="AddGlyphs"/>: its name (name-keyed fonts) or CID (CID-keyed ones), and its width in the font's units.</summary>
+    internal readonly record struct NewGlyph(string? Name, int Cid, double Width);
+
+    /// <summary>
+    /// The font with an empty glyph (a width and nothing else) for each of <paramref name="glyphs"/>; their glyph IDs
+    /// follow the font's last one, in order.
+    /// </summary>
+    /// <exception cref="InvalidDataException">
+    /// The font is damaged, laid out in a way this can't rewrite, or can't take the glyphs (65,535 glyphs or strings).
+    /// </exception>
+    /// <exception cref="NotSupportedException">The font is CFF2 or uses Type 1 charstrings.</exception>
+    public static byte[] AddGlyphs(byte[] cff, IReadOnlyList<NewGlyph> glyphs)
+    {
+        var font = CffFont.Parse(cff);
+        var parts = ReadParts(cff, font);
+        var count = font.GlyphCount;
+        if (glyphs.Count == 0)
+            return cff;
+        if (count + glyphs.Count > ushort.MaxValue)
+            throw new InvalidDataException("The CFF font can't take more glyphs.");
+        if (font.Charset is null)
+            throw new InvalidDataException("The CFF font has an expert charset.");
+
+        // The charset in format 0: the font's names (or CIDs), then the new ones.
+        var strings = parts.StringList;
+        var charset = new List<byte> { 0 };
+        void Add(int value)
+        {
+            charset.Add((byte)(value >> 8));
+            charset.Add((byte)value);
+        }
+        for (var gid = 1; gid < count; gid++)
+            Add(font.Charset[gid]);
+        foreach (var glyph in glyphs)
+        {
+            if (font.IsCid)
+            {
+                if (glyph.Cid is <= 0 or > ushort.MaxValue)
+                    throw new InvalidDataException("A CID doesn't fit the CFF charset.");
+                Add(glyph.Cid);
+                continue;
+            }
+            var name = glyph.Name ?? throw new InvalidDataException("A name-keyed CFF glyph needs a name.");
+            var sid = Array.IndexOf(CffStandardData.StandardStrings, name);
+            if (sid < 0)
+            {
+                var bytes = System.Text.Encoding.Latin1.GetBytes(name);
+                var known = strings.FindIndex(b => b.AsSpan().SequenceEqual(bytes));
+                if (known < 0)
+                {
+                    strings.Add(bytes);
+                    known = strings.Count - 1;
+                }
+                sid = StandardStrings + known;
+            }
+            if (sid > ushort.MaxValue)
+                throw new InvalidDataException("The CFF font can't take more strings.");
+            Add(sid);
+        }
+
+        // Each new glyph: its width as the first operand where it isn't the default, then endchar (first font dictionary).
+        var widths = parts.Privates[0].Dict;
+        var (standard, nominal) = (Value(widths, OpDefaultWidthX), Value(widths, OpNominalWidthX));
+        var charStrings = font.CharStrings.Concat(glyphs.Select(g =>
+        {
+            var width = Math.Round(g.Width);
+            return Math.Abs(width - standard) < 0.5 ? [EndChar] : (byte[])[.. Type2Number((int)(width - nominal)), EndChar];
+        })).ToArray();
+
+        // FDSelect in format 0: the new glyphs use the first font dictionary.
+        byte[]? fdSelect = parts.FdSelect is null ? null : [0, .. Enumerable.Range(0, count).Select(g => (byte)font.FontDictIndex(g)), .. new byte[glyphs.Count]];
+        var top = parts.Top;
+        var replace = new Dictionary<int, double[]>();
+        if (font.IsCid && glyphs.Max(g => g.Cid) + 1 is var cidCount && Find(top, OpCidCount) is { Values.Length: > 0 } entry && entry.Values[0] < cidCount)
+            replace[OpCidCount] = [cidCount];
+        if (Find(top, OpCharset) is null)
+            top = [.. top, new DictEntry(OpCharset, [], [0])];
+        return Write(cff, parts with
+        {
+            Top = top,
+            Strings = Index([.. strings]),
+            Charset = [.. charset],
+            FdSelect = fdSelect,
+            Global = font.GlobalSubrs,
+            CharStrings = charStrings,
+            LocalSubrs = [.. parts.Privates.Select(p => p.Subrs)],
+            Replace = replace,
+        });
+    }
+
+    /// <summary>A Type 2 charstring integer.</summary>
+    private static byte[] Type2Number(int value)
+    {
+        value = Math.Clamp(value, short.MinValue, short.MaxValue);
+        return value switch
+        {
+            >= -107 and <= 107 => [(byte)(value + 139)],
+            >= 108 and <= 1131 => [(byte)(((value - 108) >> 8) + 247), (byte)(value - 108)],
+            >= -1131 and <= -108 => [(byte)(((-value - 108) >> 8) + 251), (byte)(-value - 108)],
+            _ => [28, (byte)(value >> 8), (byte)value],
+        };
+    }
+
+    /// <summary>
+    /// A CFF table's parts as bytes and DICT entries, and what is written of them: the strings, charset, FDSelect,
+    /// charstrings and subroutines (each offset is written again as five bytes, whatever its value). <see cref="Replace"/>
+    /// sets other Top DICT operands.
+    /// </summary>
+    private sealed record Parts(byte[] Header, byte[] Names, byte[] Strings, List<byte[]> StringList, List<DictEntry> Top, byte[]? Charset,
+        byte[]? Encoding, byte[]? FdSelect, List<List<DictEntry>>? FontDicts, Private[] Privates)
+    {
+        public byte[][] Global { get; init; } = [];
+        public byte[][] CharStrings { get; init; } = [];
+        public byte[][][] LocalSubrs { get; init; } = [];
+        public Dictionary<int, double[]> Replace { get; init; } = [];
+    }
+
+    private static Parts ReadParts(byte[] cff, CffFont font)
+    {
         var position = (int)cff[2];
         var header = cff[..position];
         var nameStart = position;
@@ -73,7 +211,7 @@ internal static class CffSubsetter
         var names = cff[nameStart..position];
         var topDicts = CffFont.ReadIndex(cff, ref position);
         var stringStart = position;
-        CffFont.ReadIndex(cff, ref position);
+        var stringList = CffFont.ReadIndex(cff, ref position).ToList();
         var strings = cff[stringStart..position];
         CffFont.ReadIndex(cff, ref position); // global subroutines: font.GlobalSubrs
         if (topDicts.Length != 1)
@@ -100,19 +238,22 @@ internal static class CffSubsetter
         }
         if (privates.Length != font.Privates.Length)
             throw new InvalidDataException("The CFF font dictionaries can't be matched.");
+        return new Parts(header, names, strings, stringList, top, charset, encoding, fdSelect, fontDicts, privates);
+    }
 
-        var charStrings = new byte[glyphCount][];
-        for (var gid = 0; gid < glyphCount; gid++)
-            charStrings[gid] = kept.Contains(gid) ? font.CharStrings[gid] : [EndChar];
-        var globalSubrs = Blank(font.GlobalSubrs, usedGlobal);
-        var localSubrs = privates.Select((p, i) => Blank(p.Subrs, usedLocal.GetValueOrDefault(font.Privates[i].Subrs) ?? [])).ToArray();
+    /// <summary>The table written from <paramref name="parts"/> (see <see cref="Parts"/>).</summary>
+    private static byte[] Write(byte[] cff, Parts parts)
+    {
+        var (header, names, strings, top, charset, encoding, fdSelect, fontDicts, privates) =
+            (parts.Header, parts.Names, parts.Strings, parts.Top, parts.Charset, parts.Encoding, parts.FdSelect, parts.FontDicts, parts.Privates);
+        var (globalSubrs, charStrings, localSubrs) = (parts.Global, parts.CharStrings, parts.LocalSubrs);
 
         // Sizes first (every offset is written as five bytes, whatever its value), then the offsets.
         // A private dictionary's subroutines follow it directly.
         var privateDicts = privates.Select(p => Dict(p.Dict, new() { [OpSubrs] = [0] })).ToArray();
         var hasSubrs = privates.Select(p => Find(p.Dict, OpSubrs) is not null).ToArray();
         var privateBlocks = privates.Select((p, i) => privateDicts[i].Length + (hasSubrs[i] ? Index(localSubrs[i]).Length : 0)).ToArray();
-        var topPlaceholder = TopValues(top, 0, 0, 0, 0, 0, 0, 0);
+        var topPlaceholder = TopValues(top, charset is not null, 0, 0, 0, 0, 0, 0, 0, parts.Replace);
         var topIndexLength = Index([Dict(top, topPlaceholder)]).Length;
         var globalIndex = Index(globalSubrs);
         var charStringsIndex = Index(charStrings);
@@ -150,7 +291,8 @@ internal static class CffSubsetter
         using var output = new MemoryStream(cff.Length);
         output.Write(header);
         output.Write(names);
-        output.Write(Index([Dict(top, TopValues(top, charsetAt, encodingAt, charStringsAt, privateDicts[0].Length, privateAt[0], fdArrayAt, fdSelectAt))]));
+        output.Write(Index([Dict(top, TopValues(top, charset is not null, charsetAt, encodingAt, charStringsAt, privateDicts[0].Length, privateAt[0], fdArrayAt,
+            fdSelectAt, parts.Replace))]));
         output.Write(strings);
         output.Write(globalIndex);
         if (charset is not null)
@@ -172,11 +314,11 @@ internal static class CffSubsetter
     }
 
     /// <summary>The Top DICT's offsets, for the operators it has.</summary>
-    private static Dictionary<int, double[]> TopValues(List<DictEntry> top, int charset, int encoding, int charStrings,
-        int privateSize, int privateOffset, int fdArray, int fdSelect)
+    private static Dictionary<int, double[]> TopValues(List<DictEntry> top, bool ownCharset, int charset, int encoding, int charStrings,
+        int privateSize, int privateOffset, int fdArray, int fdSelect, Dictionary<int, double[]> replace)
     {
-        var values = new Dictionary<int, double[]> { [OpCharStrings] = [charStrings] };
-        if (Value(top, OpCharset) >= 3)
+        var values = new Dictionary<int, double[]>(replace) { [OpCharStrings] = [charStrings] };
+        if (ownCharset)
             values[OpCharset] = [charset];
         if (Value(top, OpEncoding) >= 2)
             values[OpEncoding] = [encoding];

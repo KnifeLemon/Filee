@@ -408,6 +408,24 @@ internal sealed partial class PptxReader
         if (line.Style == HBorderStyle.None)
             return;
         var xfrm = element.Element(P + "spPr")?.Element(A + "xfrm");
+        var (flipH, flipV) = ((string?)xfrm?.Attribute("flipH") is "1" or "true", (string?)xfrm?.Attribute("flipV") is "1" or "true");
+        var preset = element.Element(P + "spPr")?.Element(A + "prstGeom");
+        var (w, h) = (Math.Max(1, Hwp(bounds.W)), Math.Max(1, Hwp(bounds.H)));
+        // A bent or curved connector: its path, mirrored by the flips.
+        if (OpenPaths.Preset((string?)preset?.Attribute("prst"), w, h, preset?.Element(A + "avLst")?.Elements(A + "gd").Take(8)
+                .Where(g => g.Attribute("name") is not null && g.Attribute("fmla") is not null)
+                .GroupBy(g => (string)g.Attribute("name")!).ToDictionary(g => g.Key, g => (string)g.First().Attribute("fmla")!)) is { } path)
+        {
+            output.Add(new HShape(HShapeKind.Path)
+            {
+                Width = w,
+                Height = h,
+                Anchor = Anchor(Hwp(bounds.X), Hwp(bounds.Y)),
+                Geometry = new HGeometry(w, h, Path: OpenPaths.Mirrored(path, w, h, flipH, flipV)),
+                Line = line,
+            });
+            return;
+        }
         output.Add(new HShape(HShapeKind.Line)
         {
             Width = Math.Max(1, Hwp(bounds.W)),

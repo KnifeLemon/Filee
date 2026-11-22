@@ -4,8 +4,7 @@
 //   them (FontMetrics.ExternalLeading: the hhea line gap less what the Win metrics reach beyond the hhea ascender and
 //   descender), as GDI gives Word a font's height: 12 pt Times New Roman or Arial is 13.8 pt (2355 of 2048 units), not
 //   13.3; Calibri, Cambria and Segoe UI have none (their Win metrics already reach past the hhea line gap). The
-//   typographic metrics and the USE_TYPO_METRICS bit play no part. Not rounded (13.799 pt; whether Word rounds to
-//   twips or pixels isn't measured).
+//   typographic metrics and the USE_TYPO_METRICS bit play no part. Not rounded (see below).
 // - An East Asian font (one for a Chinese, Japanese or Korean code page, OS/2 ulCodePageRange1) gets 30% more, half
 //   above the text and half below: a single line of 12 pt SimSun is 15.6 pt in Word, not 12, its text 1.8 pt below the
 //   line's top (#356: 23.4 pt at 1.5 lines). Microsoft YaHei and Malgun Gothic, whose Win metrics are 1.33 em, get
@@ -20,7 +19,16 @@
 //   20 pt ☑ from Wingdings 2's F052 is 21.1 pt high on every system. Other symbols (☑ typed as Unicode, drawn in a
 //   fallback font that is often much taller) count only on a line without other text.
 // - "At least" (w:lineRule="atLeast") is at least the line single spacing gives the fonts, not the font size: "at least
-//   12 pt" keeps 12 pt Times New Roman's 13.8 pt. Extra room goes below the text, as a multiple's does.
+//   12 pt" keeps 12 pt Times New Roman's 13.8 pt.
+// - "Exactly" (w:lineRule="exact") and "at least" stand the text on the line's bottom: the baseline is the line's height
+//   less the descent of its fonts (as single spacing measures them), so the room an exact line has over its text goes
+//   above the text, and an exact line too small for its text loses the tops of its glyphs, which Word cuts off at the
+//   line's top (here they reach into the line above: the layout doesn't clip). ECMA-376 17.3.1.33 says only that an
+//   exact line is that high whatever its content, "clipped as necessary", and an at-least line that high unless its
+//   content needs more. Where an at-least line's extra room goes isn't measured in Word: it stands on the bottom as an
+//   exact line of that height does (its minimum is the line's height then). A multiple's extra room goes below.
+// - Line heights aren't rounded (13.799 pt for 12 pt Times New Roman): whether Word rounds them to twips or pixels
+//   isn't measured (no Word PDF of many such lines).
 // - Word's document grid (HLineHeight.GridPitch, set for the body's paragraphs that snap to it): a line's text takes
 //   whole grid lines, the text in their middle; the multiple is of that height.
 //

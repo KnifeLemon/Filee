@@ -19,7 +19,7 @@ public class PortableStartupFailureTests
     {
         var window = PortableStartupFailure.CreateWindow("Filee 无法写入便携数据文件夹", language);
 
-        Assert.Equal(SoftPalette.FontFamilyFor(language), window.FontFamily);
+        Assert.Equal(SoftPalette.FontFamilyFor(language, asks: ThemeService.InstalledFonts), window.FontFamily);
         Assert.Equal(direction, window.FlowDirection);
         Assert.Contains(((StackPanel)window.Content!).Children.OfType<TextBlock>(), t => t.Text == "Filee 无法写入便携数据文件夹");
     }

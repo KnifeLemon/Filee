@@ -456,7 +456,28 @@ internal readonly record struct HPoint(int X, int Y);
 /// <param name="Points">Polygon corners in order (한글 hc:pt).</param>
 /// <param name="Segments">Curve segments as 한글 stores them (hp:seg): each a straight or curved piece from start to end.</param>
 /// <param name="Arc">Arc of an ellipse (한글 hp:arc).</param>
-internal sealed record HGeometry(int Width, int Height, IReadOnlyList<HPoint>? Points = null, IReadOnlyList<HCurveSegment>? Segments = null, HArc? Arc = null);
+/// <param name="Path">An open path of straight and Bézier pieces (<see cref="HShapeKind.Path"/>).</param>
+internal sealed record HGeometry(int Width, int Height, IReadOnlyList<HPoint>? Points = null, IReadOnlyList<HCurveSegment>? Segments = null, HArc? Arc = null,
+    HPath? Path = null);
+
+/// <summary>
+/// An open path from <c>Start</c> through its segments, mirroring already applied: what a bent or curved connector or
+/// an open free-form line draws. Its points may lie outside the box (a connector's bend can).
+/// </summary>
+internal sealed record HPath(HPoint Start, IReadOnlyList<HPathSegment> Segments)
+{
+    /// <summary>The point the path ends at.</summary>
+    public HPoint End => Segments.Count > 0 ? Segments[^1].End : Start;
+
+    /// <summary>Some piece is a curve.</summary>
+    public bool Curved => Segments.Any(s => s.Curved);
+}
+
+/// <summary>A straight piece to <c>End</c>, or with both controls a cubic Bézier through them to <c>End</c>.</summary>
+internal readonly record struct HPathSegment(HPoint End, HPoint? Control1 = null, HPoint? Control2 = null)
+{
+    public bool Curved => Control1 is not null && Control2 is not null;
+}
 
 /// <summary>A piece of a 한글 curve; <c>Curve</c> is false for a straight piece (seg type LINE).</summary>
 internal readonly record struct HCurveSegment(bool Curve, HPoint Start, HPoint End);

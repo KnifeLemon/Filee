@@ -1,5 +1,6 @@
 // Objects inside runs: pictures (DrawingML, inline or floating), text boxes and simple shapes (Word 2010 "wps"
-// shapes inside mc:AlternateContent, as Word writes them), hyperlinks and bookmarks.
+// shapes inside mc:AlternateContent, as Word writes them; open paths, the bent and curved connectors, as custom
+// geometry), hyperlinks and bookmarks.
 //
 // Child order follows CT_Inline / CT_Anchor (extent, effectExtent, wrap, docPr, cNvGraphicFramePr, graphic) and
 // CT_WordprocessingShape (cNvSpPr, spPr, txbx, bodyPr). Every drawing gets a document-wide unique docPr id.
@@ -196,6 +197,17 @@ internal sealed partial class DocxWriter
             HShapeKind.Line => "line",
             _ => shape.CornerRatio > 0 ? "roundRect" : "rect",
         };
+        if (shape.Kind == HShapeKind.Path)
+        {
+            // An open path (bent or curved connector, free-form line): custom geometry, flips already in its points.
+            if (shape.Geometry?.Path is not { } path)
+                return "";
+            var custom = CustomGeometry(path, shape.Geometry, w, h);
+            var open = "<wps:wsp><wps:cNvSpPr/>" +
+                       ShapeProperties(w, h, "line", 0, null, null, shape.Line, false, false, shape.Head, shape.Tail, custom) +
+                       "<wps:bodyPr/></wps:wsp>";
+            return DrawingRun(shape.Anchor, w, h, "Shape", open);
+        }
         var line = shape.Kind == HShapeKind.Line;
         var xml =
             "<wps:wsp><wps:cNvSpPr/>" +
@@ -203,6 +215,24 @@ internal sealed partial class DocxWriter
                 line ? shape.Head : null, line ? shape.Tail : null) +
             "<wps:bodyPr/></wps:wsp>";
         return DrawingRun(shape.Anchor, w, h, "Shape", xml);
+    }
+
+    /// <summary>a:custGeom of an open path: one stroked, unfilled a:path in the shape's EMU box (points may lie outside it).</summary>
+    private static string CustomGeometry(HPath path, HGeometry geometry, int width, int height)
+    {
+        var (sx, sy) = (geometry.Width > 0 ? width / (double)geometry.Width : 1, geometry.Height > 0 ? height / (double)geometry.Height : 1);
+        string Point(HPoint p) =>
+            $"<a:pt x=\"{Number((long)Math.Round(p.X * sx * 127))}\" y=\"{Number((long)Math.Round(p.Y * sy * 127))}\"/>";
+        var sb = new StringBuilder("<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l=\"l\" t=\"t\" r=\"r\" b=\"b\"/><a:pathLst>");
+        sb.Append($"<a:path w=\"{Number(Emu(width))}\" h=\"{Number(Emu(height))}\" fill=\"none\"><a:moveTo>{Point(path.Start)}</a:moveTo>");
+        foreach (var segment in path.Segments)
+        {
+            if (segment is { Control1: { } c1, Control2: { } c2 })
+                sb.Append($"<a:cubicBezTo>{Point(c1)}{Point(c2)}{Point(segment.End)}</a:cubicBezTo>");
+            else
+                sb.Append($"<a:lnTo>{Point(segment.End)}</a:lnTo>");
+        }
+        return sb.Append("</a:path></a:pathLst></a:custGeom>").ToString();
     }
 
     /// <summary>A wps shape in a run, inside mc:AlternateContent like Word writes it (Word 2007 would need VML).</summary>
@@ -214,15 +244,16 @@ internal sealed partial class DocxWriter
     }
 
     /// <summary>wps:spPr: xfrm, preset geometry, fill (solid, linear gradient or none) and outline with a line's arrowheads.</summary>
+    /// <param name="custom">a:custGeom in place of the preset; <paramref name="geometry"/> "line" then keeps it unfilled.</param>
     private static string ShapeProperties(int width, int height, string geometry, int cornerRatio, string? fill, HGradient? gradient, HBorder line, bool flipH, bool flipV,
-        HArrow? head = null, HArrow? tail = null)
+        HArrow? head = null, HArrow? tail = null, string? custom = null)
     {
         var sb = new StringBuilder("<wps:spPr>");
         sb.Append($"<a:xfrm{(flipH ? " flipH=\"1\"" : "")}{(flipV ? " flipV=\"1\"" : "")}><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{Number(Emu(width))}\" cy=\"{Number(Emu(height))}\"/></a:xfrm>");
         // 한글's corner ratio (50 = half circle) and DrawingML's "adj" (50000 = half the shorter side) scale alike.
-        sb.Append(geometry == "roundRect"
+        sb.Append(custom ?? (geometry == "roundRect"
             ? $"<a:prstGeom prst=\"roundRect\"><a:avLst><a:gd name=\"adj\" fmla=\"val {Number(Math.Clamp(cornerRatio, 0, 50) * 1000)}\"/></a:avLst></a:prstGeom>"
-            : $"<a:prstGeom prst=\"{geometry}\"><a:avLst/></a:prstGeom>");
+            : $"<a:prstGeom prst=\"{geometry}\"><a:avLst/></a:prstGeom>"));
         if (gradient is { Colors.Count: >= 2 })
         {
             sb.Append("<a:gradFill rotWithShape=\"1\"><a:gsLst>");

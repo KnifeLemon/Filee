@@ -24,11 +24,13 @@
 //   UTF-16 code units, so the font becomes an Identity-H (-V) CIDFontType2 whose CIDs are those codes, mapped by a
 //   CIDToGIDMap to an installed CJK font's glyphs: the PDF's name first, then common fonts of its script (from the
 //   CMap's name, serif or sans as the name and descriptor say: Batang / Malgun Gothic, MS Mincho / Yu Gothic, SimSun /
-//   Microsoft YaHei, MingLiU / Microsoft JhengHei, Noto CJK …). The PDF gives widths by the CMap's CIDs, which need
-//   the CMap file; they are kept where the CID of a code is known without it (UnicodeWidth): every code when W gives
-//   all CIDs the default width DW, and printable ASCII under the CMaps that aren't half-width (CIDs 1–95 in all four
-//   Adobe collections). The program's advances are set to them. Other codes take the installed font's widths. Codes
-//   of surrogate pairs, other predefined CMaps and codes Filee can't follow are refused as before.
+//   Microsoft YaHei, MingLiU / Microsoft JhengHei, Noto CJK …). The PDF gives widths (W) and vertical metrics (W2) by
+//   the CMap's CIDs: each code's CID comes from the CMap file (PdfPredefinedCMaps, the Adobe files PdfPig carries), so
+//   every code keeps the PDF's width and its W2 entry, now under the code. Without the file, only what is known without
+//   it is kept (UnicodeWidth): every code when W gives all CIDs the default width DW, and printable ASCII under the
+//   CMaps that aren't half-width (CIDs 1–95 in all four Adobe collections); other codes then take the installed font's
+//   widths and the default vertical metrics. The program's advances are set to the widths. Codes of surrogate pairs,
+//   other predefined CMaps and codes Filee can't follow are refused as before.
 //
 // Type 3 fonts are drawings and need no program. Fonts the PDF embedded itself are repaired by PdfAFontRepair.
 
@@ -595,6 +597,10 @@ internal static partial class PdfAFonts
         var original = CidWidths(cidFont);
         var standard = PdfObjects.Number(cidFont, "/DW", 1000);
         var halfWidth = Name(font, "/Encoding").Contains("-HW-", StringComparison.Ordinal);
+        // Each code's CID by the CMap file when Filee can read it, else where it is known without one.
+        var cmap = PdfPredefinedCMaps.Cids(Name(font, "/Encoding"));
+        int? Cid(int code) => cmap is not null ? cmap.GetValueOrDefault(code) : !halfWidth && code is >= 0x20 and <= 0x7E and not '\\' and not '~' ? code - 0x1F : null;
+        double? Width(int code) => cmap is not null ? original.GetValueOrDefault(Cid(code) ?? 0, standard) : UnicodeWidth(code, original, standard, halfWidth);
         var baseFont = BaseName(cidFont);
         var serif = (Integer(descriptor, "/Flags") & Serif) != 0
                     || new[] { "Myeong", "Myung", "Mincho", "Ming", "Song", "Batang", "Serif" }.Any(w => baseFont.Contains(w, StringComparison.OrdinalIgnoreCase));
@@ -631,7 +637,7 @@ internal static partial class PdfAFonts
             var kept = new Dictionary<int, double>();
             foreach (var (code, glyph) in match.Glyphs)
             {
-                if (UnicodeWidth(code, original, standard, halfWidth) is not { } width)
+                if (Width(code) is not { } width)
                     continue;
                 var shown = Math.Round(width * program.UnitsPerEm / 1000) * 1000 / program.UnitsPerEm;
                 if (!kept.TryAdd(glyph, shown))
@@ -648,7 +654,22 @@ internal static partial class PdfAFonts
                 widths.Elements.Add(new PdfArray(document, Number(Math.Round(match.Widths[glyph], 3))));
             }
             cidFont.Elements["/W"] = widths;
-            cidFont.Elements.Remove("/W2"); // vertical metrics by the old CIDs: the defaults instead
+            // Vertical metrics (W2) by the new CIDs too, where the old CID of a code is known; others take DW2.
+            var verticalMetrics = VerticalMetrics(cidFont);
+            cidFont.Elements.Remove("/W2");
+            if (verticalMetrics.Count > 0)
+            {
+                var metrics = new PdfArray(document);
+                foreach (var code in match.Glyphs.Keys)
+                {
+                    if (Cid(code) is not { } cid || !verticalMetrics.TryGetValue(cid, out var entry))
+                        continue;
+                    metrics.Elements.Add(new PdfInteger(code));
+                    metrics.Elements.Add(new PdfArray(document, Number(entry.W1Y), Number(entry.VX), Number(entry.VY)));
+                }
+                if (metrics.Elements.Count > 0)
+                    cidFont.Elements["/W2"] = metrics;
+            }
             var text = match.Glyphs.Keys.ToDictionary(code => code, code => code);
             WriteComposite(document, font, cidFont, descriptor, text, match, cancellationToken);
             if (!font.Elements.ContainsKey("/ToUnicode"))
@@ -672,6 +693,43 @@ internal static partial class PdfAFonts
         if (!halfWidth && code is >= 0x20 and <= 0x7E and not '\\' and not '~')
             return widths.TryGetValue(code - 0x1F, out var width) ? width : standard;
         return null;
+    }
+
+    /// <summary>A CIDFont's vertical metrics (W2), CID → (w1y, v1x, v1y), bounded.</summary>
+    internal static Dictionary<int, (double W1Y, double VX, double VY)> VerticalMetrics(PdfDictionary cidFont)
+    {
+        var metrics = new Dictionary<int, (double, double, double)>();
+        if (PdfObjects.Array(cidFont, "/W2") is not { } array)
+            return metrics;
+        var items = array.Elements.Select(Resolve).ToList();
+        for (var i = 0; i < items.Count && metrics.Count < MaxCids;)
+        {
+            if (PdfObjects.Number(items[i]) is not { } start)
+                break;
+            if (i + 1 < items.Count && items[i + 1] is PdfArray list)
+            {
+                var values = list.Elements.Select(PdfObjects.Number).ToList();
+                for (var k = 0; k + 2 < values.Count; k += 3)
+                {
+                    var cid = (int)start + k / 3;
+                    if (cid >= 0 && cid < MaxCids && values[k] is { } w && values[k + 1] is { } x && values[k + 2] is { } y)
+                        metrics[cid] = (w, x, y);
+                }
+                i += 2;
+            }
+            else if (i + 4 < items.Count && PdfObjects.Number(items[i + 1]) is { } end && PdfObjects.Number(items[i + 2]) is { } w
+                     && PdfObjects.Number(items[i + 3]) is { } x && PdfObjects.Number(items[i + 4]) is { } y)
+            {
+                for (var cid = Math.Max(0, (int)start); cid <= Math.Min(MaxCids - 1, (int)end) && metrics.Count < MaxCids; cid++)
+                    metrics[cid] = (w, x, y);
+                i += 5;
+            }
+            else
+            {
+                break;
+            }
+        }
+        return metrics;
     }
 
     /// <summary>A CIDFont's widths (W), CID → width, bounded.</summary>

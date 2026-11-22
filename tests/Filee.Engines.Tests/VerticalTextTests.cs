@@ -650,6 +650,131 @@ public sealed class VerticalTextTests(EngineFixture fx) : IClassFixture<EngineFi
         Assert.True(body[1].Origin.X > body[0].Origin.X + 5 && Math.Abs(body[1].Origin.Y - body[0].Origin.Y) < 0.5f, "the body runs across");
     }
 
+    /// <summary>A left-aligned paragraph without spacing, digits auto-spaced (as Word's are).</summary>
+    private static HParagraph Plain(params HInline[] inlines)
+    {
+        var paragraph = new HParagraph { Format = new HParaFormat(Align: HAlign.Left, Before: 0, After: 0) { Layout = new HParaLayout(Breaking: new HLineBreaking(AutoSpaceDigits: true)) } };
+        paragraph.Inlines.AddRange(inlines);
+        return paragraph;
+    }
+
+    /// <summary>A table of one cell 100 pt wide and high, written as <paramref name="flow"/> says, holding <paramref name="blocks"/>.</summary>
+    private static HTable OneCell(HTextFlow flow, params HBlock[] blocks)
+    {
+        var cell = new HCell { TextFlow = flow };
+        cell.Blocks.AddRange(blocks);
+        var row = new HRow { Height = 10000 };
+        row.Cells.Add(cell);
+        var table = new HTable { ColumnCount = 1, ColumnWidths = [10000] };
+        table.Rows.Add(row);
+        return table;
+    }
+
+    /// <summary>How far apart the em box middles of <paramref name="before"/> and <paramref name="after"/> are down the page.</summary>
+    private static float Down(PageContent page, char before, char after)
+    {
+        var middles = Middles(page);
+        return middles.Single(m => m.Character == after).Middle.Y - middles.Single(m => m.Character == before).Middle.Y;
+    }
+
+    [Fact]
+    public void A_number_set_across_takes_one_em_in_vertical_cells_and_text_boxes()
+    {
+        // As in a section written vertically: 第12回 down a cell and 第34回 down a text box, each number one em between
+        // its neighbours (it took its width across and auto-spacing before).
+        NeedFonts();
+        var document = new HDocument();
+        var section = Section(HTextFlow.Horizontal);
+        section.Blocks.Add(OneCell(HTextFlow.Vertical, Plain(new HText("第12回", Korean()))));
+        var box = new HTextBox { Width = 6000, Height = 10000, BaseLine = 85, Line = HBorder.None, TextFlow = HTextFlow.Vertical };
+        box.Blocks.Add(Plain(new HText("見34目", Korean())));
+        section.Blocks.Add(Plain(new HText("가", Korean()), box));
+        document.Sections.Add(section);
+
+        var page = Assert.Single(new PageComposer(new FontResolver(_fonts), _shaper).Compose(document, Token).Pages);
+
+        Assert.Equal(20, Down(page, '第', '回'), 0.6);
+        Assert.Equal(20, Down(page, '見', '目'), 0.6);
+        Assert.All(page.Items.OfType<GlyphItem>().Select(i => i.Run).Where(r => r.Text is "12" or "34"), r => Assert.NotNull(r.Transform));
+    }
+
+    [Fact]
+    public void Pictures_in_vertical_cells_and_in_cells_of_a_vertical_page_stand_upright()
+    {
+        NeedFonts();
+        SKRectI Drawn(HTextFlow page, HTextFlow cell, HImage picture)
+        {
+            var document = new HDocument();
+            var section = Section(page);
+            section.Blocks.Add(OneCell(cell, Plain(new HText("가나", Korean()), picture, new HText("다", Korean()))));
+            document.Sections.Add(section);
+            return RedArea(new PageComposer(new FontResolver(_fonts), _shaper).Compose(document, Token).Pages[0]);
+        }
+
+        // Laid out like a character in a cell written vertically: as it is, 40 pt wide and 20 pt high.
+        var inline = Drawn(HTextFlow.Horizontal, HTextFlow.Vertical, new HImage(Red(40, 20)) { Width = 4000, Height = 2000 });
+        Assert.InRange(inline.Width, 39, 41);
+        Assert.InRange(inline.Height, 19, 21);
+        // Floating in a cell of a page written vertically, and in a vertical cell of a page written across.
+        var anchor = new HAnchor("PARA", "LEFT", 0, "PARA", "TOP", 0, "IN_FRONT_OF_TEXT", true);
+        foreach (var (page, cell) in new[] { (HTextFlow.Vertical, HTextFlow.Horizontal), (HTextFlow.Horizontal, HTextFlow.Vertical) })
+        {
+            var floating = Drawn(page, cell, new HImage(Red(60, 20)) { Width = 6000, Height = 2000, Anchor = anchor });
+            Assert.True(floating.Width is >= 59 and <= 61 && floating.Height is >= 19 and <= 21, $"{page} page, {cell} cell: {floating}");
+        }
+    }
+
+    [Fact]
+    public void A_hangul_note_written_vertically_keeps_its_direction_and_is_not_left_out()
+    {
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "note.hwpx");
+        File.Copy(HwpxReaderTests.HangulStylePackage(folder), path);
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            var entry = zip.GetEntry("Contents/section0.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+                xml = reader.ReadToEnd();
+            entry.Delete();
+            const string Note = "<hp:footNote number=\"1\" suffixChar=\"41\" instId=\"77\"><hp:subList id=\"\" textDirection=\"";
+            Assert.Contains(Note + "HORIZONTAL", xml, StringComparison.Ordinal);
+            using var writer = new StreamWriter(zip.CreateEntry("Contents/section0.xml").Open(), new UTF8Encoding(false));
+            writer.Write(xml.Replace(Note + "HORIZONTAL", Note + "VERTICAL", StringComparison.Ordinal));
+        }
+
+        var document = HwpxReader.ReadForLayout(path, Path.Combine(folder, "media"));
+        var notes = document.Sections[0].Blocks.OfType<HParagraph>().SelectMany(p => p.Inlines).OfType<HNote>().ToList();
+        Assert.Equal(HTextFlow.Vertical, notes.Single(n => !n.Endnote).TextFlow);
+        Assert.Equal(HTextFlow.Horizontal, notes.Single(n => n.Endnote).TextFlow);
+        Assert.Equal(0, document.LeftOut[HLeftOutKind.VerticalText]);
+    }
+
+    [Fact]
+    public void A_note_written_vertically_in_a_section_written_across_is_set_vertically()
+    {
+        // Down from the right of the note area under the body, each Hangul upright; the body runs across.
+        NeedFonts();
+        var document = new HDocument();
+        var section = Section(HTextFlow.Horizontal);
+        var note = new HNote(endnote: false) { TextFlow = HTextFlow.Vertical };
+        note.Blocks.Add(Plain(new HText("주석문", Korean())));
+        section.Blocks.Add(Plain(new HText("본문", Korean()), note));
+        document.Sections.Add(section);
+
+        var page = Assert.Single(new PageComposer(new FontResolver(_fonts), _shaper).Compose(document, Token).Pages);
+
+        var glyphs = Glyphs(page);
+        var text = glyphs.Where(g => g.Character is '주' or '석' or '문' && g.Origin.Y > 200).ToList();
+        Assert.Equal(3, text.Count);
+        Assert.All(text, g => Assert.True(Upright(g), $"{g.Character} up {g.Up}"));
+        Assert.True(text.Zip(text.Skip(1)).All(pair => pair.Second.Origin.Y > pair.First.Origin.Y + 5 && Math.Abs(pair.Second.Origin.X - pair.First.Origin.X) < 0.5f),
+            string.Join(", ", text.Select(g => $"{g.Character} {g.Origin}")));
+        Assert.All(text, g => Assert.InRange(g.Origin.X, 595.3f - 72 - 20, 595.3f - 72));
+        var body = glyphs.Where(g => g.Character is '본' or '문' && g.Origin.Y < 200).ToList();
+        Assert.True(body.Count == 2 && body[1].Origin.X > body[0].Origin.X + 5 && Math.Abs(body[1].Origin.Y - body[0].Origin.Y) < 0.5f, "the body runs across");
+    }
+
     [Fact]
     public void The_pieces_of_a_rectangle_gradient_overlap_so_no_seam_shows_between_them()
     {
