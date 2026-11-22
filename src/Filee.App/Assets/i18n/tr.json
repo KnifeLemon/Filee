@@ -1153,6 +1153,8 @@
   "presets.video_codec.av1": "AV1 (en küçük, yavaş)",
   "presets.hardware_encoding": "Donanım hızlandırması kullan (grafik işlemcisi)",
   "presets.hardware_encoding_hint": "H.264, HEVC ve AV1'i grafik işlemcisinde kodlar.\nÇok daha hızlıdır ve daha az güç tüketir.\nAynı dosya boyutunda kalite biraz daha düşüktür.\nUygun işlemci yoksa (AV1 için yeni bir model gerekir) video normal şekilde kodlanır.",
+  "presets.turn_upright": "Telefon videolarını dik konuma getir",
+  "presets.turn_upright_hint": "Dikey telefon videolarını yeniden kodlar; böylece yan gösteren TV ve oynatıcılarda da dik oynatılır.\nÖn ayarın kalitesini korur, ancak daha uzun sürer.\nDöndürme bilgisi olmayan videolar etkilenmez.",
   "presets.caption_video": "Altyazı oluştur (Whisper)",
   "presets.caption_video_hint": "Whisper kullanarak video ve sesteki konuşmaları bir SRT altyazı dosyasına dönüştürür. TXT biçiminde yalnızca konuşulan metin, zaman bilgisi olmadan yazılır.",
   "presets.spoken_language": "Konuşulan dil",

@@ -1168,6 +1168,8 @@
   "presets.video_codec.av1": "AV1 (smallest, slow)",
   "presets.hardware_encoding": "Use hardware acceleration (graphics chip)",
   "presets.hardware_encoding_hint": "Encodes H.264, HEVC and AV1 on the graphics chip.\nMuch faster and uses less power.\nSlightly lower quality at the same file size.\nWithout a usable chip (AV1 needs a recent one), the video is encoded as usual.",
+  "presets.turn_upright": "Turn phone videos upright",
+  "presets.turn_upright_hint": "Encodes vertical phone videos again so they stand upright on TVs and players that show them sideways.\nUses the preset's quality, takes longer.\nVideos without a rotation note are unaffected.",
   "presets.caption_video": "Generate subtitles (Whisper)",
   "presets.caption_video_hint": "Transcribes speech in videos and audio to an SRT subtitle file using Whisper. Converting to TXT gives only the spoken text, without times.",
   "presets.spoken_language": "Spoken language",

@@ -26,6 +26,8 @@ ko: 모양 정보가 없는 주석(형광펜, 메모 등)이 있는 PDF도 PDF/A
 en: PDFs with highlights or notes that carry no appearance now pass PDF/A checks
 ko: 비스듬히 스캔하거나 찍은 페이지로 만든 검색 가능한 PDF도 TXT로 변환하면 텍스트가 나와요
 en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT with their text
+ko: 동영상 프리셋에서 휴대폰 세로 동영상을 화질 저하 없이 똑바로 돌려 저장할 수 있어요
+en: Video presets can turn vertical phone videos upright without lowering the quality
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -48,6 +50,10 @@ en: Searchable PDFs of pages scanned or photographed at an angle convert to TXT 
   "Recognize text". PDFs with visible text read as before.
 - **rustyfiles** counts as a file manager for gestures (#1714): with the default *File managers and desktop* scope, a
   Ctrl + drag out of rustyfiles opens the donut, as in Explorer (Windows).
+- **Turn phone videos upright** (#1586). A video preset can now turn vertical phone videos upright without lowering
+  their quality (*Turn phone videos upright* in the video card, off by default). Videos saved with a rotation note are
+  encoded again at the preset's quality so the picture itself stands upright on TVs and players that ignore the note;
+  videos without a rotation note are still copied as usual.
 
 ## 2.5.0
 

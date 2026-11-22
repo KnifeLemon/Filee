@@ -1343,6 +1343,36 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Turn_upright_encodes_rotated_videos_and_copies_upright_ones()
+    {
+        var turnUpright = new MediaOptions { TurnUpright = true };
+        var defaults = new MediaOptions();
+
+        foreach (var rotation in new[] { 90, -90, 180, 270, -270 })
+        {
+            var rotated = new VideoStreamInfo(1920, 1080, 1, rotation, 30, "h264", "yuv420p", HeaderHash: "MD5:1");
+            Assert.False(MediaEncoding.CanCopyVideo("mp4", rotated, turnUpright));
+            Assert.True(MediaEncoding.CanCopyVideo("mp4", rotated, defaults));
+
+            var info = new MediaInfo(TimeSpan.FromSeconds(10), rotated, new AudioStreamInfo(2, 48000, "aac"), null);
+            Assert.Equal("libx264", After(Args("mp4", turnUpright, info), "-c:v"));
+            Assert.Equal("copy", After(Args("mp4", defaults, info), "-c:v"));
+            Assert.False(MediaJoining.CanCopyVideos([info, info], turnUpright));
+            Assert.True(MediaJoining.CanCopyVideos([info, info], defaults));
+        }
+
+        foreach (var rotation in new[] { 0, 360, -360 })
+        {
+            var upright = new VideoStreamInfo(1920, 1080, 1, rotation, 30, "h264", "yuv420p", HeaderHash: "MD5:1");
+            Assert.True(MediaEncoding.CanCopyVideo("mp4", upright, turnUpright));
+
+            var info = new MediaInfo(TimeSpan.FromSeconds(10), upright, new AudioStreamInfo(2, 48000, "aac"), null);
+            Assert.Equal("copy", After(Args("mp4", turnUpright, info), "-c:v"));
+            Assert.True(MediaJoining.CanCopyVideos([info, info], turnUpright));
+        }
+    }
+
+    [Fact]
     public void Hevc_and_av1_presets_encode_with_x265_and_svt_av1()
     {
         var hevc = Args("mp4", new MediaOptions { VideoCodec = VideoCodec.Hevc });
@@ -2602,5 +2632,34 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var job = await fx.ConvertAsync([input], new Preset { TargetFormat = "mp4" });
         Assert.Equal(JobState.Failed, job.State);
         Assert.Empty(job.Outputs);
+    }
+
+    [Fact]
+    public async Task Turn_upright_rotates_the_picture_and_clears_the_display_matrix()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var landscape = await MakeClipAsync(folder, "landscape.mp4", seconds: 1, size: "64x48", audio: false,
+            extra: ["-c:v", "libx264", "-pix_fmt", "yuv420p"]);
+        var rotated = Path.Combine(folder, "rotated.mp4");
+        await RunAsync(Tools!.Value.Ffmpeg,
+            ["-hide_banner", "-nostdin", "-v", "error", "-y", "-display_rotation:v:0", "90", "-i", landscape, "-c", "copy", rotated]);
+
+        var sourceInfo = await MediaInfo.ProbeAsync(Tools.Value.Ffprobe, rotated, TestContext.Current.CancellationToken);
+        Assert.NotNull(sourceInfo.Video);
+        Assert.Equal((64, 48), (sourceInfo.Video.Width, sourceInfo.Video.Height));
+        Assert.NotEqual(0, sourceInfo.Video.Rotation % 360);
+
+        var uprightOutput = await ConvertAsync(rotated, "mp4", new MediaOptions { TurnUpright = true });
+        var uprightInfo = await MediaInfo.ProbeAsync(Tools.Value.Ffprobe, uprightOutput, TestContext.Current.CancellationToken);
+        Assert.NotNull(uprightInfo.Video);
+        Assert.Equal(0, uprightInfo.Video.Rotation);
+        Assert.Equal((48, 64), (uprightInfo.Video.Width, uprightInfo.Video.Height));
+
+        var copiedOutput = await ConvertAsync(rotated, "mp4", new MediaOptions { TurnUpright = false });
+        var copiedInfo = await MediaInfo.ProbeAsync(Tools.Value.Ffprobe, copiedOutput, TestContext.Current.CancellationToken);
+        Assert.NotNull(copiedInfo.Video);
+        Assert.NotEqual(0, copiedInfo.Video.Rotation % 360);
+        Assert.Equal((64, 48), (copiedInfo.Video.Width, copiedInfo.Video.Height));
     }
 }

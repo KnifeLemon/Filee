@@ -1507,6 +1507,14 @@ public sealed class MediaOptions
     /// </summary>
     public bool HardwareEncoding { get; set; }
 
+    /// <summary>
+    /// Encode a video saved with a rotation note (phones record portrait video this way) again at the preset's quality
+    /// so its picture itself stands upright and plays upright on TVs and players that ignore the note (#1586). Videos
+    /// without a rotation note are still copied as usual. Off by default (and for presets saved before it existed), so
+    /// results never change without the user asking for it.
+    /// </summary>
+    public bool TurnUpright { get; set; }
+
     /// <summary>Picture formats a video's frames can be saved as (<see cref="SaveEveryFrame"/>).</summary>
     public static readonly IReadOnlyList<string> FrameTargets = ["png", "jpg"];
 

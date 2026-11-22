@@ -624,13 +624,15 @@ internal static partial class MediaEncoding
     /// <summary>
     /// True when the video stream can be copied: the target container takes its codec in a pixel format players
     /// decode, it needs no scaling down, and the preset does not ask for a small file (Small always re-encodes; High
-    /// and Balanced only describe how a video that has to be encoded anyway is encoded). A preset that asks for HEVC
-    /// or AV1 copies only a video in that codec (an AV1 video goes into MP4 then too).
+    /// and Balanced only describe how a video that has to be encoded anyway is encoded) or to turn a rotated video
+    /// upright (<see cref="MediaOptions.TurnUpright"/>). A preset that asks for HEVC or AV1 copies only a video in
+    /// that codec (an AV1 video goes into MP4 then too).
     /// </summary>
     internal static bool CanCopyVideo(string target, VideoStreamInfo video, MediaOptions options)
     {
         // A size limit encodes the video, so its bitrate can be capped (ForSizeLimit).
         if (options.Quality == MediaQuality.Small || options.MaxSizeMb > 0 || options.MaxSizePercent > 0 || options.MaxHeight > 0 && video.DisplayHeight > Math.Max(16, options.MaxHeight)
+            || options.TurnUpright && video.Rotation % 360 != 0
             || video.Codec is not { } codec || !Remuxable.TryGetValue(target, out var codecs))
             return false;
         var takes = MediaCodecs.Effective(target, options.VideoCodec) switch

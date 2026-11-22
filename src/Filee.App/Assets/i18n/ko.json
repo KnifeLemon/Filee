@@ -1168,6 +1168,8 @@
   "presets.video_codec.av1": "AV1 (가장 작게, 느림)",
   "presets.hardware_encoding": "하드웨어 가속 사용 (그래픽 칩)",
   "presets.hardware_encoding_hint": "H.264, HEVC, AV1을 그래픽 칩으로 인코딩해요.\n훨씬 빠르고 전력도 덜 써요.\n같은 용량이면 화질이 조금 낮아요.\n쓸 수 있는 칩이 없으면(AV1은 최신 칩이 필요해요) 평소처럼 인코딩해요.",
+  "presets.turn_upright": "휴대폰 세로 동영상 똑바로 돌리기",
+  "presets.turn_upright_hint": "휴대폰으로 찍은 세로 동영상을 다시 인코딩해서 옆으로 누워 보이는 TV나 플레이어에서도 똑바로 재생되게 해요.\n프리셋과 같은 화질로 저장되고 시간이 더 걸려요.\n회전 정보가 없는 동영상은 그대로예요.",
   "presets.caption_video": "자막 생성 (Whisper)",
   "presets.caption_video_hint": "Whisper로 비디오와 오디오의 말소리를 SRT 자막 파일로 변환해요. 형식을 TXT로 하면 시간 없이 말한 내용만 적어요.",
   "presets.spoken_language": "음성 언어",

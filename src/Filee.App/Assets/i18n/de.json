@@ -1153,6 +1153,8 @@
   "presets.video_codec.av1": "AV1 (am kleinsten, langsam)",
   "presets.hardware_encoding": "Hardwarebeschleunigung nutzen (Grafikchip)",
   "presets.hardware_encoding_hint": "Kodiert H.264, HEVC und AV1 auf dem Grafikchip.\nDeutlich schneller und stromsparender.\nEtwas geringere Qualität bei gleicher Dateigröße.\nOhne geeigneten Chip (AV1 benötigt einen neueren) wird das Video wie gewohnt kodiert.",
+  "presets.turn_upright": "Handyvideos aufrecht drehen",
+  "presets.turn_upright_hint": "Kodiert hochkant gefilmte Handyvideos neu, damit sie auch auf Fernsehern und Playern aufrecht laufen, die sie sonst quer zeigen.\nGleiche Qualität wie im Profil, dauert länger.\nVideos ohne Drehungsvermerk bleiben unverändert.",
   "presets.caption_video": "Untertitel erstellen (Whisper)",
   "presets.caption_video_hint": "Transkribiert Sprache in Videos und Audio mit Whisper in eine SRT-Untertiteldatei. Mit TXT als Format wird nur der gesprochene Text geschrieben, ohne Zeitangaben.",
   "presets.spoken_language": "Gesprochene Sprache",
