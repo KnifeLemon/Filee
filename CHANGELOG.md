@@ -34,6 +34,8 @@ ko: 클립 자르기에서 음악을 클립이 끝날 때까지 반복할 수 �
 en: Cut a clip can loop its music until the clip ends
 ko: 바로 가기를 변환하면 결과가 대상 파일 옆이 아니라 바로 가기 옆에 저장돼요
 en: A shortcut's results are saved next to the shortcut, not next to the file it points to
+ko: SRTM 고도 타일(.hgt)을 GeoTIFF나 흑백 이미지로 변환할 수 있어요
+en: SRTM elevation tiles (.hgt) convert to signed 16-bit GeoTIFF and grayscale images
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -75,6 +77,12 @@ en: A shortcut's results are saved next to the shortcut, not next to the file it
 - **Cut a clip can loop its music** (#1432). With music on A2, **Loop music** next to **Music** plays the song again
   from its start each time it ends, until the clip ends, and fades it out with the clip. Off, the music stops when the
   song ends, as before. Several songs one after another on A2 are not there yet.
+
+- **SRTM elevation tiles (`.hgt`) convert to GeoTIFF and pictures** (#1793). Headerless NASA SRTM / DEM `.hgt` grids
+  (big-endian signed 16-bit metres) convert straight to single-channel signed 16-bit TIFFs that keep the exact
+  elevations, `-32768` voids (`GDAL_NODATA`), and WGS 84 GeoTIFF placement tags when the file name encodes a tile
+  corner such as `N37W122.hgt` or `S12E045.hgt`. Converting to PNG, JPG or other picture formats stretches the valid
+  elevations to grayscale with voids in black. The format is read-only and belongs to the Maps field.
 
 ## 2.5.0
 

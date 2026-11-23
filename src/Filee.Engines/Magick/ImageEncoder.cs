@@ -12,19 +12,21 @@ internal static class ImageEncoder
 {
     /// <summary>
     /// Image formats ImageMagick can read (see <see cref="ImageReader"/> for RAW, layered and metafile sources).
-    /// Camera RAW is decoded by LibRaw; HEIC, DICOM, Photo CD, OpenEXR, Radiance HDR and FITS are read only. EMF/WMF
-    /// are Windows metafiles, which ImageMagick renders through GDI+ on Windows only (<see cref="Metafiles"/>). APNG is
-    /// read and written by Filee's own <see cref="Apng"/> (its frames decoded and encoded by ImageMagick); FITS is read
-    /// by Filee's own <see cref="Fits"/> and written to TIFF by <see cref="FitsRendering"/>. ANI (an animated cursor) is
-    /// read by Filee's own <see cref="Ani"/>, its frames decoded by ImageMagick. GIMP's XCF is read and written by Filee's
-    /// own <see cref="Xcf"/> and <see cref="XcfWriter"/>.
+    /// Camera RAW is decoded by LibRaw; HEIC, DICOM, Photo CD, OpenEXR, Radiance HDR, FITS and SRTM HGT are read only.
+    /// EMF/WMF are Windows metafiles, which ImageMagick renders through GDI+ on Windows only
+    /// (<see cref="Metafiles"/>). APNG is read and written by Filee's own <see cref="Apng"/> (its frames decoded and
+    /// encoded by ImageMagick); FITS is read by Filee's own <see cref="Fits"/> and written to TIFF by
+    /// <see cref="FitsRendering"/>; SRTM HGT is read by Filee's own <see cref="Hgt"/> (signed 16-bit GeoTIFF via
+    /// <see cref="TiffWriter"/>, stretched grayscale for other targets).
+    /// ANI (an animated cursor) is read by Filee's own <see cref="Ani"/>, its frames decoded by ImageMagick. GIMP's XCF
+    /// is read and written by Filee's own <see cref="Xcf"/> and <see cref="XcfWriter"/>.
     /// </summary>
     public static readonly string[] Readable =
     [
         "png", "jpg", "webp", "tiff", "bmp", "gif", "ico", "avif", "heic",
         "jxl", "jp2", "psd", "psb", "tga", "ppm", "xcf", "raw",
         "apng", "mng", "qoi", "dds", "pcx", "cur", "xpm", "xbm", "wbmp", "pam", "pfm", "sgi", "ras", "miff",
-        "dcm", "pcd", "exr", "hdr", "fits", "ani",
+        "dcm", "pcd", "exr", "hdr", "fits", "hgt", "ani",
     ];
 
     /// <summary>Vector metafiles ImageMagick rasterizes (Windows only: it uses GDI+).</summary>
@@ -59,13 +61,13 @@ internal static class ImageEncoder
     /// The edge an image engine offers from a picture in <paramref name="source"/> to <paramref name="target"/>. GIF
     /// holds 256 colours, so a still picture costs more there: it reaches video through a full-colour PNG instead
     /// (FFmpeg), while animations and multi-page files still go through GIF and keep their frames. Still picture → APNG
-    /// costs as much, so photos never reach video as a one-frame animation. FITS → TIFF is the data for further
-    /// processing (linear by default, 16 or 32 bits): it costs a little more, so FITS reaches other formats through a
+    /// costs as much, so photos never reach video as a one-frame animation. FITS → TIFF and HGT → TIFF keep raw
+    /// scientific/elevation data for further processing: they cost a little more, so other formats are reached through a
     /// stretched PNG or JPG instead.
     /// </summary>
     public static ConversionEdge Edge(string source, string target) =>
         new(source, target, target is "gif" or "apng" && !MultiFrame.Contains(source) && !Animated.Contains(source) ? 12
-            : source == "fits" && target == "tiff" ? 11 : 10);
+            : source is "fits" or "hgt" && target == "tiff" ? 11 : 10);
 
     /// <summary>True when frames of <paramref name="sourceFormat"/> are written as one animation in <paramref name="targetFormat"/>.</summary>
     public static bool KeepsAnimation(string sourceFormat, string targetFormat) =>

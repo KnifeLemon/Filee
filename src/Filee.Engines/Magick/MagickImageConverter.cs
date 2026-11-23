@@ -13,7 +13,7 @@ namespace Filee.Engines.Magick;
 /// Converts between PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, APNG, MNG, QOI,
 /// DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster and MIFF, reads and writes Paint.NET's PDN and GIMP's XCF
 /// (Filee's own readers and writers, keeping layers between PDN, XCF and PSD), and reads HEIC, camera RAW, DICOM,
-/// Photo CD, OpenEXR, Radiance HDR, FITS, animated cursors (ANI) and (on Windows) EMF/WMF.
+/// Photo CD, OpenEXR, Radiance HDR, FITS, SRTM elevation tiles (HGT), animated cursors (ANI) and (on Windows) EMF/WMF.
 /// </summary>
 public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransformer, IImageJoiner
 {
@@ -103,6 +103,9 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
             // FITS → TIFF keeps the file's depth (16 or 32 bits), which the Q8 build can't: Filee writes it.
             if (step.From == "fits" && step.To == "tiff")
                 return FitsRendering.WriteTiff(step, progress, cancellationToken);
+            // SRTM .hgt → TIFF keeps signed 16-bit elevations, voids and GeoTIFF placement, which the Q8 build can't.
+            if (step.From == "hgt" && step.To == "tiff")
+                return Hgt.WriteTiff(step, progress, cancellationToken);
             // A program's icon as ICO is the icon itself, with the sizes drawn for it, unless the preset changes it.
             if (step.From == FormatRegistry.Program && step.To == "ico" && ProgramIcon.KeptAsItIs(step.Preset.Image))
                 return ProgramIcon.Save(step, progress);
