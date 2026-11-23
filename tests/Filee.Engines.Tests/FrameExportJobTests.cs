@@ -10,6 +10,18 @@ using ImageMagick;
 
 namespace Filee.Engines.Tests;
 
+/// <summary>
+/// Tests that set the process's default regional format (<see cref="CultureInfo.DefaultThreadCurrentCulture"/>), so the
+/// job queue's threads see it. Nothing else runs beside them: a calendar test running alongside would read its dates in
+/// the Persian or Umm al-Qura calendar.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class SetsTheRegionalFormat
+{
+    public const string Name = "Sets the regional format";
+}
+
+[Collection(SetsTheRegionalFormat.Name)]
 public class FrameExportJobTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     private const string FrameWord = "frame {0}";
