@@ -821,14 +821,15 @@ have no semibold) instead of the app's embedded Noto fonts.
 - **In-app updates** (`UpdateService`): an installed copy downloads `Filee-<v>-SHA256SUMS.txt`, its `.sig` and
   `Filee-<v>-win[-arm64]-Setup.exe` from the GitHub release, checks the signature with the update key, the Setup's
   SHA-256 and its Authenticode publisher, and runs it with `/SILENT /NORESTART`. Portable Windows copies (`win-portable`,
-  `win-arm64-portable`) download `Filee-<v>-win[-arm64]-Portable.zip`, verify its SHA-256 (and `.sig`), safely extract the
-  archive verifying path traversal (Zip Slip defense), and delegate file replacement to a background helper script
-  (`powershell.exe -ExecutionPolicy Bypass -File update-portable.ps1`), preserving the user's `data` folder and `filee.portable`
-  marker before restarting Filee with `--background --whats-new`. A file GitHub doesn't hand out (an HTTP error, a timeout,
-  a cut connection) is taken from the download mirror, `https://dl.filee.sh/<v>/<file name>` (`UpdateService.MirrorRoot`,
-  filled by `build/sign-release.ps1`); after one GitHub failure, the update's other files try the mirror first. The checks
-  don't depend on the source. A file that arrived and was refused is not fetched again from the other source. Linux and macOS
-  files aren't on the mirror.
+  `win-arm64-portable`) marked with `filee.portable` download `Filee-<v>-win[-arm64]-Portable.zip`, verify its SHA-256 (and `.sig`),
+  safely extract the archive verifying path traversal (Zip Slip defense), and delegate file replacement to the staged
+  `Filee.exe --update-swap` transactional helper. The helper waits for the parent process to exit, moves existing files aside to
+  `.backup-<pid>` (excluding the `data` folder), copies updated files in place, deletes the backup, and restarts Filee with
+  `--background --whats-new` (or automatically rolls back from `.backup-<pid>` on failure). A file GitHub doesn't hand out (an
+  HTTP error, a timeout, a cut connection) is taken from the download mirror, `https://dl.filee.sh/<v>/<file name>`
+  (`UpdateService.MirrorRoot`, filled by `build/sign-release.ps1`); after one GitHub failure, the update's other files
+  try the mirror first. The checks don't depend on the source. A file that arrived and was refused is not fetched again
+  from the other source. Linux files aren't on the mirror.
 - **Testing**: `Filee.Setup.Tests` runs installs, updates (also over a simulated 1.x installation) and uninstalls
   against `MemoryRegistry`, a fake `ISetupSystem` and scratch folders, and renders every page. `/SANDBOX=<folder>`
   runs the real Setup with a registry file and all folders inside `<folder>`; `build-installer.ps1 -CheckOnly` (CI)
@@ -858,13 +859,6 @@ and standalone shell scripts (`install.sh`, `uninstall.sh`).
   (`~/.local/share/Filee/engines`) and user settings (`~/.config/Filee`) remain untouched.
 - **Uninstallation**: `uninstall.sh` removes the application directory, desktop launcher, and `~/.local/bin/filee` symlink
   after verifying the `.filee-package` marker. User settings and converted files are kept.
-
-## macOS app bundle and updates
-
-On macOS, Filee is packaged as `Filee.app` and distributed as a self-contained archive (`Filee-<version>-<rid>.tar.gz` for `osx-arm64` and `osx-x64`) and disk image (`.dmg`).
-
-- **In-app updates** (`UpdateService`): Running from a `Filee.app` bundle enables self-updating (`CanSelfUpdate`). Checks GitHub releases for matching `<rid>.tar.gz` and `<rid>-SHA256SUMS.txt` assets. Verifies archive SHA-256 and `.sig` before extraction. Archive extraction validates that all entries stay within the secure staging directory.
-- **Atomic bundle replacement**: `UpdateAsync` stages the new `Filee.app` in a private temporary workspace, spawns a detached `/bin/sh` helper script, and requests application shutdown (`App.Quit`). Once Filee exits, the helper backs up the existing `.app` bundle, synchronizes the new bundle with `/usr/bin/ditto` (preserving bundle structure and code signatures), clears quarantine attributes via `/usr/bin/xattr -dr com.apple.quarantine`, refreshes the `~/.local/bin/filee` CLI link if present, and launches the updated application with `open -n` and `--background --whats-new` (falling back to direct executable launch). On failure, the helper automatically rolls back to the previous bundle, records diagnostics, and writes an update failure marker.
 
 ## Filee Connect
 

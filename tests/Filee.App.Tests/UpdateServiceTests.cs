@@ -219,19 +219,6 @@ public class UpdateServiceTests
     }
 
     [Theory]
-    [InlineData("osx-arm64", "Filee-9.9.9-osx-arm64.tar.gz", "Filee-9.9.9-osx-arm64-SHA256SUMS.txt")]
-    [InlineData("osx-x64", "Filee-9.9.9-osx-x64.tar.gz", "Filee-9.9.9-osx-x64-SHA256SUMS.txt")]
-    public void Mac_takes_its_own_files_next_to_windows_and_linux_builds(string target, string expectedInstaller, string expectedSums)
-    {
-        using var release = ReleaseWithEveryPlatform();
-
-        var (installer, checksums) = UpdateService.FindFiles(release.RootElement, target);
-
-        Assert.Equal(expectedInstaller, installer?.Name);
-        Assert.Equal(expectedSums, checksums?.Name);
-    }
-
-    [Theory]
     [InlineData("win-portable", "Filee-9.9.9-win-Portable.zip", "Filee-9.9.9-SHA256SUMS.txt")]
     [InlineData("win-arm64-portable", "Filee-9.9.9-win-arm64-Portable.zip", "Filee-9.9.9-SHA256SUMS.txt")]
     public void Windows_portable_takes_portable_zip_and_shared_windows_checksums(string target, string expectedInstaller, string expectedSums)
@@ -242,28 +229,6 @@ public class UpdateServiceTests
 
         Assert.Equal(expectedInstaller, installer?.Name);
         Assert.Equal(expectedSums, checksums?.Name);
-    }
-
-    [Fact]
-    public void The_macos_target_follows_the_process_architecture()
-    {
-        Assert.Equal("osx-arm64", UpdateService.GetMacOsRid(Architecture.Arm64));
-        Assert.Equal("osx-x64", UpdateService.GetMacOsRid(Architecture.X64));
-        Assert.Throws<PlatformNotSupportedException>(() => UpdateService.GetMacOsRid(Architecture.X86));
-    }
-
-    [Fact]
-    public void GetMacAppBundlePath_locates_bundle_from_nested_or_direct_path()
-    {
-        var temp = TempFolder();
-        var appPath = Path.Combine(temp, "Filee.app");
-        var nestedBinary = Path.Combine(appPath, "Contents", "MacOS", "Filee");
-        Directory.CreateDirectory(Path.GetDirectoryName(nestedBinary)!);
-        File.WriteAllText(nestedBinary, "binary");
-
-        Assert.Equal(appPath, UpdateService.GetMacAppBundlePath(nestedBinary));
-        Assert.Equal(appPath, UpdateService.GetMacAppBundlePath(appPath));
-        Assert.Null(UpdateService.GetMacAppBundlePath(temp));
     }
 
     [Fact]
@@ -881,7 +846,7 @@ public class UpdateServiceTests
     }
 
     [AvaloniaFact]
-    public async Task UpdateAsync_on_windows_portable_downloads_extracts_and_spawns_powershell_helper()
+    public async Task UpdateAsync_on_windows_portable_downloads_extracts_and_spawns_swap_helper()
     {
         var zipBytes = CreateZip(archive =>
         {
@@ -918,15 +883,13 @@ public class UpdateServiceTests
         Assert.Single(processes);
 
         var helperPsi = processes[0];
-        Assert.Equal("powershell.exe", helperPsi.FileName);
-        Assert.Contains("-ExecutionPolicy", helperPsi.ArgumentList);
-        Assert.Contains("Bypass", helperPsi.ArgumentList);
-        Assert.Contains("-File", helperPsi.ArgumentList);
-        Assert.Equal(Environment.ProcessId.ToString(), helperPsi.ArgumentList[6]);
-        Assert.Equal(mockInstallDir, helperPsi.ArgumentList[8]);
-        Assert.EndsWith(".log", helperPsi.ArgumentList[9]);
-        Assert.EndsWith(".update-failed", helperPsi.ArgumentList[11]);
-        Assert.Equal(Path.Combine(mockInstallDir, "Filee.exe"), helperPsi.ArgumentList[12]);
+        Assert.EndsWith("Filee.exe", helperPsi.FileName);
+        Assert.Equal("--update-swap", helperPsi.ArgumentList[0]);
+        Assert.Equal(Environment.ProcessId.ToString(), helperPsi.ArgumentList[1]);
+        Assert.Equal(mockInstallDir, helperPsi.ArgumentList[2]);
+        Assert.EndsWith(".log", helperPsi.ArgumentList[3]);
+        Assert.EndsWith(".update-failed", helperPsi.ArgumentList[4]);
+        Assert.EndsWith("payload", helperPsi.ArgumentList[5]);
         Assert.True(shutdownRequested, "Application shutdown must be requested before portable file swap");
     }
 
@@ -959,106 +922,14 @@ public class UpdateServiceTests
         var shutdownRequested = false;
         updates.RequestApplicationShutdown = () => shutdownRequested = true;
 
-        updates.StartProcess = psi => throw new Win32Exception("Cannot spawn PowerShell helper");
+        updates.StartProcess = psi => throw new Win32Exception("Cannot spawn helper");
 
         await updates.UpdateAsync();
 
         Assert.Equal(UpdateStep.Failed, updates.Step);
         Assert.Equal(1, failedCount);
         Assert.NotNull(updates.LastError);
-        Assert.Contains("Cannot spawn PowerShell helper", updates.LastError.Message);
-        Assert.False(shutdownRequested, "Application shutdown must not be requested when helper fails to start");
-    }
-
-    [AvaloniaFact]
-    public async Task UpdateAsync_on_macos_downloads_extracts_and_delegates_to_detached_helper()
-    {
-        var tarBytes = CreateTarGz(writer =>
-        {
-            AddFileEntry(writer, "Filee-9.9.9-osx-arm64/Filee.app/Contents/MacOS/Filee", "#!/bin/sh\nexit 0\n");
-            AddFileEntry(writer, "Filee-9.9.9-osx-arm64/Filee.app/Contents/Info.plist", "<plist/>");
-        });
-        var hash = Sha256(tarBytes);
-        var network = new FakeArchiveRelease(tarBytes, hash, "Filee-9.9.9-osx-arm64.tar.gz", "Filee-9.9.9-osx-arm64-SHA256SUMS.txt");
-
-        var mockBundle = Path.Combine(TempFolder(), "Filee.app");
-
-        var updates = new UpdateService(NullLogger<UpdateService>.Instance, network)
-        {
-            InstallsItself = true,
-            TargetPlatform = "osx-arm64",
-            MacAppBundleOverride = mockBundle,
-        };
-        updates.UseRelease(
-            new UpdateService.ReleaseFile("Filee-9.9.9-osx-arm64.tar.gz", Base + "Filee-9.9.9-osx-arm64.tar.gz", tarBytes.Length),
-            new UpdateService.ReleaseFile("Filee-9.9.9-osx-arm64-SHA256SUMS.txt", Base + "Filee-9.9.9-osx-arm64-SHA256SUMS.txt", 100));
-
-        var processes = new List<ProcessStartInfo>();
-        var shutdownRequested = false;
-        updates.RequestApplicationShutdown = () => shutdownRequested = true;
-        updates.StartProcess = psi =>
-        {
-            processes.Add(psi);
-            return null;
-        };
-
-        await updates.UpdateAsync();
-
-        Assert.Equal(UpdateStep.Installing, updates.Step);
-        Assert.Single(processes);
-
-        var helperPsi = processes[0];
-        Assert.Equal("/bin/sh", helperPsi.FileName);
-        Assert.Equal("-c", helperPsi.ArgumentList[0]);
-        Assert.Contains("ditto", helperPsi.ArgumentList[1]);
-        Assert.Contains("xattr -dr com.apple.quarantine", helperPsi.ArgumentList[1]);
-        Assert.Equal(Environment.ProcessId.ToString(), helperPsi.ArgumentList[3]);
-        Assert.EndsWith("Filee.app", helperPsi.ArgumentList[4]);
-        Assert.Equal(mockBundle, helperPsi.ArgumentList[5]);
-        Assert.EndsWith(".log", helperPsi.ArgumentList[6]);
-        Assert.EndsWith(".update-failed", helperPsi.ArgumentList[8]);
-        Assert.Equal(Path.Combine(mockBundle, "Contents", "MacOS", "Filee"), helperPsi.ArgumentList[9]);
-
-        Assert.True(shutdownRequested, "Application shutdown must be requested before macOS bundle swap");
-    }
-
-    [AvaloniaFact]
-    public async Task UpdateAsync_on_macos_handles_helper_start_failure()
-    {
-        var tarBytes = CreateTarGz(writer =>
-        {
-            AddFileEntry(writer, "Filee-9.9.9-osx-arm64/Filee.app/Contents/MacOS/Filee", "#!/bin/sh\nexit 0\n");
-            AddFileEntry(writer, "Filee-9.9.9-osx-arm64/Filee.app/Contents/Info.plist", "<plist/>");
-        });
-        var hash = Sha256(tarBytes);
-        var network = new FakeArchiveRelease(tarBytes, hash, "Filee-9.9.9-osx-arm64.tar.gz", "Filee-9.9.9-osx-arm64-SHA256SUMS.txt");
-
-        var mockBundle = Path.Combine(TempFolder(), "Filee.app");
-
-        var updates = new UpdateService(NullLogger<UpdateService>.Instance, network)
-        {
-            InstallsItself = true,
-            TargetPlatform = "osx-arm64",
-            MacAppBundleOverride = mockBundle,
-        };
-        updates.UseRelease(
-            new UpdateService.ReleaseFile("Filee-9.9.9-osx-arm64.tar.gz", Base + "Filee-9.9.9-osx-arm64.tar.gz", tarBytes.Length),
-            new UpdateService.ReleaseFile("Filee-9.9.9-osx-arm64-SHA256SUMS.txt", Base + "Filee-9.9.9-osx-arm64-SHA256SUMS.txt", 100));
-
-        var failedCount = 0;
-        updates.UpdateFailed += (_, _) => failedCount++;
-
-        var shutdownRequested = false;
-        updates.RequestApplicationShutdown = () => shutdownRequested = true;
-
-        updates.StartProcess = psi => throw new Win32Exception("Cannot spawn macOS helper process");
-
-        await updates.UpdateAsync();
-
-        Assert.Equal(UpdateStep.Failed, updates.Step);
-        Assert.Equal(1, failedCount);
-        Assert.NotNull(updates.LastError);
-        Assert.Contains("Cannot spawn macOS helper process", updates.LastError.Message);
+        Assert.Contains("Cannot spawn helper", updates.LastError.Message);
         Assert.False(shutdownRequested, "Application shutdown must not be requested when helper fails to start");
     }
 
@@ -1181,39 +1052,91 @@ public class UpdateServiceTests
     }
 
     [Fact]
-    public void ExtractMacArchive_valid_payload_extracts_and_returns_app_bundle()
+    public void PortableUpdateHelper_Run_performs_clean_swap_and_preserves_data_and_portable_marker()
     {
-        var folder = TempFolder();
-        var archiveFile = Path.Combine(folder, "package.tar.gz");
-        var destFolder = Path.Combine(folder, "extracted");
+        var targetDir = TempFolder();
+        var stagingDir = TempFolder();
+        var logFile = Path.Combine(TempFolder(), "update.log");
+        var markerFile = Path.Combine(TempFolder(), ".update-failed");
 
-        var tarBytes = CreateTarGz(writer =>
-        {
-            AddFileEntry(writer, "Filee-1.0.0-osx-arm64/Filee.app/Contents/MacOS/Filee", "#!/bin/sh\nexit 0\n");
-            AddFileEntry(writer, "Filee-1.0.0-osx-arm64/Filee.app/Contents/Info.plist", "<plist/>");
-        });
-        File.WriteAllBytes(archiveFile, tarBytes);
+        File.WriteAllText(Path.Combine(targetDir, "Filee.exe"), "old_exe");
+        File.WriteAllText(Path.Combine(targetDir, "old_obsolete.dll"), "obsolete");
+        File.WriteAllText(Path.Combine(targetDir, "filee.portable"), "");
+        var dataDir = Path.Combine(targetDir, "data");
+        Directory.CreateDirectory(dataDir);
+        File.WriteAllText(Path.Combine(dataDir, "settings.json"), "{\"keep\": true}");
 
-        var appBundle = UpdateService.ExtractMacArchive(archiveFile, destFolder);
+        File.WriteAllText(Path.Combine(stagingDir, "Filee.exe"), "new_exe");
+        File.WriteAllText(Path.Combine(stagingDir, "new_feature.dll"), "feature");
+        File.WriteAllText(Path.Combine(stagingDir, "filee.portable"), "");
 
-        Assert.Equal(Path.Combine(destFolder, "Filee-1.0.0-osx-arm64", "Filee.app"), appBundle);
-        Assert.True(File.Exists(Path.Combine(appBundle, "Contents", "MacOS", "Filee")));
+        ProcessStartInfo? startedPsi = null;
+        var exitCode = PortableUpdateHelper.Run(
+            new UpdateSwapOptions(
+                TargetPid: 9999999,
+                TargetDir: targetDir,
+                LogFile: logFile,
+                MarkerFile: markerFile,
+                StagingDir: stagingDir),
+            psi =>
+            {
+                startedPsi = psi;
+                return true;
+            });
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal("new_exe", File.ReadAllText(Path.Combine(targetDir, "Filee.exe")));
+        Assert.Equal("feature", File.ReadAllText(Path.Combine(targetDir, "new_feature.dll")));
+        Assert.False(File.Exists(Path.Combine(targetDir, "old_obsolete.dll")), "Obsolete files must be cleaned up in transactional swap");
+        Assert.True(File.Exists(Path.Combine(targetDir, "filee.portable")));
+        Assert.True(File.Exists(Path.Combine(dataDir, "settings.json")), "User data directory must be untouched");
+        Assert.Equal("{\"keep\": true}", File.ReadAllText(Path.Combine(dataDir, "settings.json")));
+        Assert.Empty(Directory.GetDirectories(targetDir, ".backup-*"));
+        Assert.False(File.Exists(markerFile));
+        Assert.NotNull(startedPsi);
+        Assert.Equal(Path.Combine(targetDir, "Filee.exe"), startedPsi.FileName);
+        Assert.Equal(["--background", "--whats-new"], startedPsi.ArgumentList);
     }
 
     [Fact]
-    public void ExtractMacArchive_rejects_missing_executable()
+    public void PortableUpdateHelper_Run_rolls_back_on_error_and_writes_failure_marker()
     {
-        var folder = TempFolder();
-        var archiveFile = Path.Combine(folder, "invalid.tar.gz");
-        var destFolder = Path.Combine(folder, "extracted");
+        var targetDir = TempFolder();
+        var nonExistentStaging = Path.Combine(TempFolder(), "does_not_exist");
+        var logFile = Path.Combine(TempFolder(), "update.log");
+        var markerFile = Path.Combine(TempFolder(), ".update-failed");
 
-        var tarBytes = CreateTarGz(writer =>
-        {
-            AddFileEntry(writer, "Filee-1.0.0-osx-arm64/Filee.app/Contents/Info.plist", "<plist/>");
-        });
-        File.WriteAllBytes(archiveFile, tarBytes);
+        File.WriteAllText(Path.Combine(targetDir, "Filee.exe"), "original_exe");
+        File.WriteAllText(Path.Combine(targetDir, "original.dll"), "keep_me");
+        var dataDir = Path.Combine(targetDir, "data");
+        Directory.CreateDirectory(dataDir);
+        File.WriteAllText(Path.Combine(dataDir, "settings.json"), "{\"preserved\": true}");
 
-        Assert.Throws<InvalidDataException>(() => UpdateService.ExtractMacArchive(archiveFile, destFolder));
+        ProcessStartInfo? restartedPsi = null;
+        var exitCode = PortableUpdateHelper.Run(
+            new UpdateSwapOptions(
+                TargetPid: 9999999,
+                TargetDir: targetDir,
+                LogFile: logFile,
+                MarkerFile: markerFile,
+                StagingDir: nonExistentStaging),
+            psi =>
+            {
+                restartedPsi = psi;
+                return true;
+            });
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("original_exe", File.ReadAllText(Path.Combine(targetDir, "Filee.exe")));
+        Assert.Equal("keep_me", File.ReadAllText(Path.Combine(targetDir, "original.dll")));
+        Assert.Equal("{\"preserved\": true}", File.ReadAllText(Path.Combine(dataDir, "settings.json")));
+        Assert.True(File.Exists(markerFile), "Failure marker must be written on update failure");
+        Assert.Equal(logFile, File.ReadAllText(markerFile).Trim());
+        Assert.True(File.Exists(logFile));
+        Assert.Contains("Update failed:", File.ReadAllText(logFile));
+        Assert.NotNull(restartedPsi);
+        Assert.Equal(Path.Combine(targetDir, "Filee.exe"), restartedPsi.FileName);
+        Assert.Equal(["--background"], restartedPsi.ArgumentList);
     }
 
     [Fact]

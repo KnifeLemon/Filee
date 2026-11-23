@@ -48,6 +48,11 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        if (CommandLine.TryParseUpdateSwap(args, out var swapOptions))
+        {
+            return PortableUpdateHelper.Run(swapOptions!);
+        }
+
         IDisposable? portable;
         try { portable = PortableMode.Initialize(); }
         catch (PortableStorageException ex)

@@ -106,7 +106,7 @@ winget install KnifeLemon.Filee
 
 Portable releases keep their data beside the app; see [portable mode](docs/PORTABLE.md).
 
-Filee shows new releases in its menu and updates itself in-place across Windows (both Setup and Portable), macOS app bundles, and Linux, keeping your settings and engines without redirecting to manual download pages.
+Filee shows new releases in its menu and updates itself in-place across Windows (both Setup and Portable) and Linux, keeping your settings and engines without redirecting to manual download pages.
 After an update, a few slides show what's new.
 
 **Windows: Filee doesn't start (no window, no error)?**
