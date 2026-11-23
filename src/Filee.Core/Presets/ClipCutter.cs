@@ -334,6 +334,13 @@ public sealed class ClipCutter
             Change(() => _music = WithMusic(m => m.Volume = value), join: "music volume");
     }
 
+    /// <summary>The music plays again from its start until the clip ends (<see cref="ClipMusic.Loop"/>), or stops when it ends.</summary>
+    public void SetMusicLoop(bool loop)
+    {
+        if (_music is not null && _music.Loop != loop)
+            Change(() => _music = WithMusic(m => m.Loop = loop));
+    }
+
     private ClipMusic WithMusic(Action<ClipMusic> change)
     {
         var copy = _music!.Clone();
@@ -416,8 +423,8 @@ public sealed class ClipCutter
     private bool Same(State state) =>
         state.Pieces.SequenceEqual(_pieces) && state.FadeIn == _fadeIn && state.FadeOut == _fadeOut
         && (state.Music is null ? _music is null
-            : _music is not null && (state.Music.Path, state.Music.Offset, state.Music.Volume, state.Music.From)
-                == (_music.Path, _music.Offset, _music.Volume, _music.From));
+            : _music is not null && (state.Music.Path, state.Music.Offset, state.Music.Volume, state.Music.From, state.Music.Loop)
+                == (_music.Path, _music.Offset, _music.Volume, _music.From, _music.Loop));
 
     /// <summary>Takes back the last change.</summary>
     public bool Undo() => Step(_undo, _redo);

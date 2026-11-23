@@ -19,7 +19,7 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
     private static readonly string[] ArchiveTargets = ["zip", "7z", "tar", "tgz", "tbz2", "txz", "gma", .. GamePacks.Formats];
 
     /// <summary>Compressed single files (no names or folders inside); they convert among each other.</summary>
-    private static readonly string[] SingleFileSources = ["gz", "bz2", "xz", "lzma", "z", "lz"];
+    private static readonly string[] SingleFileSources = ["gz", "bz2", "xz", "lzma", "z", "lz", "zst"];
 
     private SevenZip? _sevenZip;
 
@@ -80,7 +80,7 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 return await new FolderIsoConverter().ConvertAsync(
-                    step with { InputPath = unpacked, From = FormatRegistry.Folder },
+                    step with { InputPath = unpacked, From = FormatRegistry.Folder, OriginalSourcePath = step.OriginalSourcePath ?? step.InputPath },
                     Scaled(progress, 0.5, 1), cancellationToken);
             }
             if (GamePacks.Formats.Contains(step.To))

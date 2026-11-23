@@ -3090,8 +3090,16 @@ public class RenderTests
             Assert.Equal(7.7 + 7 + 15.3 / 2, vm.Length, 6); // the gap stays until closed
             Assert.True(window.ClipTimeline.Bounds.Width > 600);
             Assert.True(window.ClipTimeline.XOf(vm.Start) < window.ClipTimeline.XOf(vm.End));
+            // "Mark this frame" under the picture, whole in every language, and clear of the picture and the card.
+            var mark = window.FindControl<Button>("MarkFrameButton")!;
+            Assert.True(mark.IsEffectivelyVisible);
+            var label = mark.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == AppHost.Get<ILocalizer>()["clip.mark_frame"]);
+            Assert.True(label.DesiredSize.Width <= label.Bounds.Width + 0.5, $"'{label.Text}' is cut off");
+            var markBox = new Avalonia.Rect(Avalonia.VisualExtensions.TranslatePoint(mark, default, window)!.Value, mark.Bounds.Size);
+            var picture = window.FindControl<Border>("PreviewFrame")!;
+            Assert.False(markBox.Intersects(new Avalonia.Rect(Avalonia.VisualExtensions.TranslatePoint(picture, default, window)!.Value, picture.Bounds.Size)));
             Save(window, $"clip-{language}-{(dark ? "dark" : "light")}.png");
-        });
+        }, annotate: (_, _) => { });
     }
 
     internal static void Pump()

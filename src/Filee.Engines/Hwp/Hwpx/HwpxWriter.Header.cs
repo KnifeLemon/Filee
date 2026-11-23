@@ -309,22 +309,25 @@ internal sealed partial class HwpxWriter
             left = (list.Level + 1) * Hanging;
             firstLine ??= list.Numbered ? -Hanging : 0;
         }
-        SetSpacing(node, left, format.Right, firstLine, format.Before, format.After, format.LineSpacing);
+        var after = format.After;
+        if (_rhwpPdf && format.Borders is { Bottom.Style: not HBorderStyle.None } && format.BorderOffsets is { Bottom: > 0 } offset)
+            after = (after ?? 0) + offset.Bottom; // rhwp positions the rule but does not reserve its offset in the flow.
+        SetSpacing(node, left, format.Right, firstLine, format.Before, after, format.LineSpacing);
 
         if (format.Tabs is { Count: > 0 } tabs)
             node.SetAttributeValue("tabPrIDRef", TabPrId(tabs));
 
         if (format.Borders is { } borders)
         {
-            // Word's usual distance from the text at the sides; rhwp keeps no room for one above and below.
+            var offsets = format.BorderOffsets;
             var border = node.Element(Hh + "border");
             if (border is null)
                 node.Add(border = new XElement(Hh + "border"));
             border.SetAttributeValue("borderFillIDRef", BorderFillId(borders, null));
-            border.SetAttributeValue("offsetLeft", borders.Left.Style == HBorderStyle.None ? 0 : 400);
-            border.SetAttributeValue("offsetRight", borders.Right.Style == HBorderStyle.None ? 0 : 400);
-            border.SetAttributeValue("offsetTop", 0);
-            border.SetAttributeValue("offsetBottom", 0);
+            border.SetAttributeValue("offsetLeft", offsets?.Left ?? (borders.Left.Style == HBorderStyle.None ? 0 : 400));
+            border.SetAttributeValue("offsetRight", offsets?.Right ?? (borders.Right.Style == HBorderStyle.None ? 0 : 400));
+            border.SetAttributeValue("offsetTop", offsets?.Top ?? 0);
+            border.SetAttributeValue("offsetBottom", offsets?.Bottom ?? 0);
             border.SetAttributeValue("connect", 0);
             border.SetAttributeValue("ignoreMargin", 0);
         }

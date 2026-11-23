@@ -331,12 +331,15 @@ public static class FormatRegistry
         new("tar7z", "TAR.7Z", FormatCategory.Archive, ["tar.7z"], Writable: false),
         new("tlz", "TAR.LZ", FormatCategory.Archive, ["tar.lz", "tlz"], Writable: false),
         new("tz", "TAR.Z", FormatCategory.Archive, ["tar.z", "tz"], Writable: false),
+        // Zstandard (#1646): Arch Linux packages, release tarballs, backups. Read by the bundled 7-Zip.
+        new("tzst", "TAR.ZST", FormatCategory.Archive, ["tar.zst", "tzst"], Writable: false),
         new("gz", "GZ", FormatCategory.Archive, ["gz"]),
         new("bz2", "BZ2", FormatCategory.Archive, ["bz2", "bz"]),
         new("xz", "XZ", FormatCategory.Archive, ["xz"]),
         new("lz", "LZ", FormatCategory.Archive, ["lz"], Writable: false),
         new("lzma", "LZMA", FormatCategory.Archive, ["lzma"], Writable: false),
         new("z", "Z", FormatCategory.Archive, ["z"], Writable: false),
+        new("zst", "ZST", FormatCategory.Archive, ["zst"], Writable: false),
         new("jar", "JAR", FormatCategory.Archive, ["jar"], Writable: false),
         // Adobe extension packages for After Effects, Premiere Pro, Photoshop … (#1382): signed ZIPs. Never a target,
         // since installing one needs the signature its developer makes with Adobe's ZXPSignCmd.
@@ -419,6 +422,11 @@ public static class FormatRegistry
         new("3mf", "3MF", FormatCategory.Model3D, ["3mf"]),
         new("ply", "PLY", FormatCategory.Model3D, ["ply"]),
         new("fbx", "FBX", FormatCategory.Model3D, ["fbx"], Writable: false),
+        // Source engine models (Garry's Mod and other Source games), read with the .vvd and .vtx beside them and their
+        // textures from the "materials" folder above them.
+        new("mdl", "Source model (MDL)", FormatCategory.Model3D, ["mdl"], Writable: false),
+        // Studiomdl data, the text the Source engine's model compiler reads (from an MDL with its bones and weights).
+        new("smd", "Studiomdl data (SMD)", FormatCategory.Model3D, ["smd"]),
 
         // Geospatial vector data (CSV with coordinates is a Data format and reaches these through the geo engine)
         new("geojson", "GeoJSON", FormatCategory.Geo, ["geojson"]),

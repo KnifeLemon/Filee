@@ -85,6 +85,22 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     private readonly string _workFolder;
     private readonly bool _ringtone;
 
+    /// <summary>
+    /// Where "Mark this frame" puts the frames it takes, and Annotate, which opens them (the frame and a note about
+    /// it); null: no marking.
+    /// </summary>
+    private readonly MarkedFrames? _marks;
+    private readonly Action<string, string?>? _annotate;
+
+    /// <summary>
+    /// Cancelled when the window closes, unless it closed after the last video (F, then Enter): a frame being taken
+    /// still opens after Save or Skip moves on, and after the last one.
+    /// </summary>
+    private readonly CancellationTokenSource _markCts = new();
+
+    /// <summary>The window closed after the last video, which keeps a frame being taken.</summary>
+    private bool _keepsMarking;
+
     private CancellationTokenSource _fileCts = new();
     private CancellationTokenSource? _previewCts;
     private CancellationTokenSource? _playCts;
@@ -113,6 +129,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// <summary>Reading the video (its length): the timeline and the buttons wait.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanEdit))]
+    [NotifyCanExecuteChangedFor(nameof(MarkFrameCommand))]
     private bool _isLoading;
 
     [ObservableProperty]
@@ -126,12 +143,14 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(StartText))]
     [NotifyPropertyChangedFor(nameof(PreviewTime))]
     [NotifyPropertyChangedFor(nameof(PreviewLabel))]
+    [NotifyPropertyChangedFor(nameof(FrameTimeText))]
     private double _start;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EndText))]
     [NotifyPropertyChangedFor(nameof(PreviewTime))]
     [NotifyPropertyChangedFor(nameof(PreviewLabel))]
+    [NotifyPropertyChangedFor(nameof(FrameTimeText))]
     private double _end;
 
     /// <summary>How long the clip plays (its pieces at their speeds, without those cut out).</summary>
@@ -144,6 +163,8 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsEndActive))]
     [NotifyPropertyChangedFor(nameof(PreviewTime))]
     [NotifyPropertyChangedFor(nameof(PreviewLabel))]
+    [NotifyPropertyChangedFor(nameof(FrameTimeText))]
+    [NotifyPropertyChangedFor(nameof(IsMarkerFrame))]
     private ClipHandle _activeHandle;
 
     /// <summary>Where the playhead stands in the video: where the blade cuts and playing starts.</summary>
@@ -151,6 +172,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(PlayheadText))]
     [NotifyPropertyChangedFor(nameof(PreviewTime))]
     [NotifyPropertyChangedFor(nameof(PreviewLabel))]
+    [NotifyPropertyChangedFor(nameof(FrameTimeText))]
     private double _playhead;
 
     /// <summary>The pieces between the start and the end (a copy, new after each change).</summary>
@@ -190,6 +212,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// <summary>The music under the clip (a copy), or null.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMusic))]
+    [NotifyPropertyChangedFor(nameof(LoopMusic))]
     private ClipMusic? _music;
 
     /// <summary>The loudness of the whole music file, for A2.</summary>
@@ -207,6 +230,11 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsSoundOnly))]
     [NotifyPropertyChangedFor(nameof(TimelineHeight))]
+    [NotifyPropertyChangedFor(nameof(ShowsMarkFrame))]
+    [NotifyPropertyChangedFor(nameof(FrameTimeText))]
+    [NotifyPropertyChangedFor(nameof(IsMarkerFrame))]
+    [NotifyPropertyChangedFor(nameof(PreviewLabel))]
+    [NotifyCanExecuteChangedFor(nameof(MarkFrameCommand))]
     private bool _hasPicture = true;
 
     /// <summary>The loudness of the sound over the video (0 to 1), empty until read or without sound.</summary>
@@ -253,6 +281,13 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsBusy))]
     private bool _isFindingSilence;
 
+    /// <summary>"Mark this frame" is taking the frame at full size.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BusyText))]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
+    [NotifyCanExecuteChangedFor(nameof(MarkFrameCommand))]
+    private bool _isMarkingFrame;
+
     /// <summary>A short note after an action (silences removed, nowhere to cut), shown for a moment.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMessage))]
@@ -266,6 +301,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEditing))]
     [NotifyPropertyChangedFor(nameof(CanEdit))]
+    [NotifyCanExecuteChangedFor(nameof(MarkFrameCommand))]
     private bool _isFinished;
 
     [ObservableProperty] private string _summary = "";
@@ -295,9 +331,10 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     public string BusyText => IsBuffering ? _loc["clip.preparing"]
         : IsFindingSilence ? _loc["clip.finding_silence"]
         : IsAddingMusic ? _loc["clip.loading_music"]
+        : IsMarkingFrame ? _loc["clip.marking_frame"]
         : "";
 
-    public bool IsBusy => IsBuffering || IsFindingSilence || IsAddingMusic;
+    public bool IsBusy => IsBuffering || IsFindingSilence || IsAddingMusic || IsMarkingFrame;
 
     /// <summary>"3 pieces selected" when several are, else empty.</summary>
     public string SelectionText => SelectedIndices.Count > 1 ? _loc.Format("clip.selected_count", SelectedIndices.Count) : "";
@@ -317,6 +354,21 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     public string LengthText => ClipRange.Display(Length);
     public string DurationText => ClipRange.Display(Duration);
     public string PlayheadText => ClipRange.Display(Playhead);
+
+    /// <summary>
+    /// The time beside Play: the time of the frame in the large picture, so of the frame "Mark this frame" takes: the
+    /// start's, or the clip's last frame for the end, while that handle is chosen (<see cref="IsMarkerFrame"/>), else
+    /// the playhead's; a sound, with no picture, always the playhead's.
+    /// </summary>
+    public string FrameTimeText => IsMarkerFrame ? ClipRange.Display(PreviewTime) : PlayheadText;
+
+    /// <summary>
+    /// The picture shows the start's or the end's frame: the time beside Play is tinted as that field is.
+    /// </summary>
+    public bool IsMarkerFrame => HasPicture && ActiveHandle is ClipHandle.Start or ClipHandle.End;
+
+    /// <summary>"Mark this frame" under the picture: a video's frames, with Annotate to open them in.</summary>
+    public bool ShowsMarkFrame => HasPicture && _marks is not null && _annotate is not null && !_ringtone;
     public string ViewStartText => ClipRange.Display(ViewStart);
     public string ViewEndText => ClipRange.Display(ViewEnd);
     public bool Can15 => Duration > QuickLengths[0];
@@ -482,13 +534,12 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>"Start 0:12.4" over the large picture.</summary>
-    public string PreviewLabel => ActiveHandle switch
-    {
-        ClipHandle.Start => $"{_loc["clip.start"]} {StartText}",
-        ClipHandle.End => $"{_loc["clip.end"]} {EndText}",
-        _ => $"{_loc["clip.playhead"]} {PlayheadText}",
-    };
+    /// <summary>
+    /// "Start 0:12.4": which frame the large picture shows, what a screen reader says for the time beside Play.
+    /// </summary>
+    public string PreviewLabel => IsMarkerFrame
+        ? $"{_loc[ActiveHandle == ClipHandle.Start ? "clip.start" : "clip.end"]} {FrameTimeText}"
+        : $"{_loc["clip.playhead"]} {PlayheadText}";
 
     /// <summary>"15 s", "30 s", "60 s" on the quick length buttons.</summary>
     public string Length15Text => _loc.Format("clip.seconds", QuickLengths[0]);
@@ -505,10 +556,17 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// <param name="ringtone">
     /// <paramref name="tool"/> is a ringtone preset (<see cref="AskedRingtone"/>) and the window only picks the part of each sound.
     /// </param>
+    /// <param name="marks">Where "Mark this frame" writes its frames; used with <paramref name="annotate"/>.</param>
+    /// <param name="annotate">
+    /// Opens a frame "Mark this frame" took in Annotate, with a note about it; null: the window offers no marking.
+    /// </param>
     public ClipWindowViewModel(IReadOnlyList<string> files, Preset tool, ILocalizer loc, UserDataStore store, IVideoFrameSource frames,
-        Func<string, string> targetFor, Action<string, Preset> export, ILogger? log = null, bool ringtone = false)
+        Func<string, string> targetFor, Action<string, Preset> export, ILogger? log = null, bool ringtone = false,
+        MarkedFrames? marks = null, Action<string, string?>? annotate = null)
     {
         _ringtone = ringtone;
+        _marks = marks;
+        _annotate = annotate;
         _files = files;
         _tool = tool;
         _loc = loc;
@@ -984,6 +1042,19 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>The music plays again from its start until the clip ends (#1432), or stops when it ends.</summary>
+    public bool LoopMusic
+    {
+        get => Music?.Loop == true;
+        set
+        {
+            if (_syncing || !CanEdit || _cutter?.Music is null || _cutter.Music.Loop == value)
+                return;
+            StopPlaying();
+            _cutter.SetMusicLoop(value);
+        }
+    }
+
     /// <summary>The music's volume line dragged on A2.</summary>
     public void SetMusicVolume(double volume)
     {
@@ -1417,9 +1488,77 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         await LoadFileAsync(CurrentIndex + 1);
     }
 
-    /// <summary>Close (Esc). Clips already started go on in the toast.</summary>
+    // ───────────────────────── Mark this frame ─────────────────────────
+
+    private bool CanMarkFrame() => ShowsMarkFrame && CanEdit && !IsMarkingFrame && !_closed;
+
+    /// <summary>
+    /// "Mark this frame" (F): the frame in the large picture at the size the video is shown at, opened in Annotate.
+    /// While the clip plays, playing stops first, on the frame shown. The window stays open, to mark more; a frame
+    /// being taken still opens when the window moves to the next video or closes (F, then Enter).
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanMarkFrame))]
+    public async Task MarkFrameAsync()
+    {
+        if (!CanMarkFrame() || _marks is null || _annotate is null)
+            return;
+        StopPlaying();
+        var video = _files[CurrentIndex];
+        var seconds = PreviewTime;
+        string? frame = null;
+        void Discard()
+        {
+            if (frame is not null)
+                _marks.Discard(frame);
+        }
+        void Fail()
+        {
+            Discard();
+            if (!_closed)
+                ShowMessage(_loc["clip.mark_frame_failed"]);
+        }
+        IsMarkingFrame = true;
+        try
+        {
+            frame = _marks.NewPath(video, seconds);
+            var still = await _frames.WriteStillAsync(video, seconds, frame, _markCts.Token);
+            // Dropped meanwhile: the window closed, or Filee is quitting and took the frames.
+            if (_markCts.IsCancellationRequested || !_marks.IsWanted(frame))
+                Discard();
+            else if (still.Written)
+                // Said in Annotate, which opens over this window.
+                _annotate(frame, still.ColorsNotConverted ? _loc["clip.mark_frame_hdr"] : null);
+            else
+            {
+                // FFmpeg said why in the log; the window may have closed (F, then Enter) and can't say it.
+                _log?.LogWarning("Could not mark the frame at {Seconds} s of {File}", seconds, video);
+                Fail();
+            }
+        }
+        catch (OperationCanceledException) when (_markCts.IsCancellationRequested)
+        {
+            Discard();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _log?.LogError(ex, "Could not mark the frame at {Seconds} s of {File}", seconds, video);
+            Fail();
+        }
+        finally
+        {
+            IsMarkingFrame = false;
+        }
+    }
+
+    /// <summary>
+    /// Close (Esc). Clips already started go on in the toast; a frame still being taken is dropped, unless the window
+    /// shows the summary after the last video.
+    /// </summary>
     [RelayCommand]
-    public void Cancel()
+    public void Cancel() => Close();
+
+    /// <summary>Closes the window.</summary>
+    private void Close()
     {
         Shutdown();
         CloseRequested?.Invoke();
@@ -1539,12 +1678,16 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         StatusNotice = line;
     }
 
-    /// <summary>Closes after the last file, or stays open on the summary when a file could not be opened.</summary>
+    /// <summary>
+    /// Closes after the last file, or stays open on the summary when a file could not be opened. Either way, a frame
+    /// still being taken opens in Annotate, also when the summary is then closed.
+    /// </summary>
     private void Finish()
     {
+        _keepsMarking = true;
         if (Problems.Count == 0)
         {
-            Cancel();
+            Close();
             return;
         }
         IsLoading = false;
@@ -1578,6 +1721,8 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         if (_closed)
             return;
         _closed = true;
+        if (!_keepsMarking)
+            _markCts.Cancel();
         _playCts?.Cancel();
         _detailCts?.Cancel();
         _fileCts.Cancel();

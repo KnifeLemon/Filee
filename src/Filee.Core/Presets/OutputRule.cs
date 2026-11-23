@@ -96,6 +96,14 @@ public sealed class OutputRule
     public string? SourceFolder { get; set; }
 
     /// <summary>
+    /// The folder "next to the source" means for single sources of this job, by their full path, ahead of
+    /// <see cref="SourceFolder"/>: a file that came in through a shortcut is saved next to the shortcut, not next to
+    /// the file it points to (#1706). Set per job, never saved with a preset.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyDictionary<string, string>? SourceFolders { get; set; }
+
+    /// <summary>
     /// Pack what a conversion writes for one file (a Shapefile's .shp, .shx, .dbf, .prj and .cpg, or a single file)
     /// into one ZIP named by the rule, instead of leaving the files themselves. The ZIP is the only output.
     /// </summary>

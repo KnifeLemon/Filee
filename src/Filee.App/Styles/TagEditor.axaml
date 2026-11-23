@@ -89,6 +89,16 @@
     </ControlTheme>
   </Styles.Resources>
 
+  <!-- Material You draws every input with the SurfaceAlt fill, a faint outline and the Softness radius (Window.material-you
+       TextBox in Soft.axaml). The chip box takes the same at rest, instead of Fluent's own text box colours (a near-black fill
+       and a light grey outline). Hover and focus keep the rules of the control theme above: the accent outline and the
+       fill a faint step lighter, as for a text box. -->
+  <Style Selector="Window.material-you c|TagEditor">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource SoftRadius}" />
+  </Style>
+
   <!-- The text box inside the chip box: no frame of its own. -->
   <Style Selector="TextBox.bare">
     <Setter Property="Background" Value="Transparent" />
