@@ -1,5 +1,5 @@
 // Markdown → HTML/TXT and plain-text aliases → TXT, in-process without executing source scripts.
-// Markdown rendering uses Markdig (BSD-2-Clause) and works without any optional engine.
+// Markdown rendering uses Markdig (BSD-2-Clause). On Windows, Edge/Chrome can print offline MathJax equations to PDF.
 // The HTML also serves as an intermediate step (Markdown → HTML → PDF / DOCX through LibreOffice), so local images
 // get absolute file URIs whenever the page is written away from the Markdown file.
 
@@ -15,15 +15,20 @@ using Markdig.Syntax.Inlines;
 
 namespace Filee.Engines.Text;
 
-/// <summary>Markdown to HTML/TXT and plain text to UTF-8 TXT without external programs.</summary>
+/// <summary>Markdown to HTML/TXT, Markdown to PDF with offline math, and plain text to UTF-8 TXT.</summary>
 public sealed class MarkdownConverter : IConverter
 {
     public string Id => "markdown";
     public string DisplayName => "Text & Markdown (built-in)";
-    public int MaxParallelism => 0;
+    public int MaxParallelism => 2; // PDF jobs each run a browser process.
+
+    // Baseline document-engine tests must not depend on whether the host has a browser installed.
+    internal bool BrowserPdfEnabled { get; init; } = true;
 
     // Cheaper than Pandoc's Markdown edges, so the built-in path wins for HTML and TXT.
-    public IReadOnlyList<ConversionEdge> Edges { get; } = [new("md", "html", 4), new("md", "txt", 5), new("txt", "txt", 4)];
+    public IReadOnlyList<ConversionEdge> Edges => BrowserPdfEnabled && MarkdownPdfRenderer.LocateBrowser() is not null
+        ? [new("md", "pdf", 1, DirectOnly: true), new("md", "html", 4), new("md", "txt", 5), new("txt", "txt", 4)]
+        : [new("md", "html", 4), new("md", "txt", 5), new("txt", "txt", 4)];
 
     public EngineStatus GetStatus() => EngineStatus.Available(version: EngineVersions.Library("Markdig", typeof(Markdown)));
 
@@ -34,6 +39,13 @@ public sealed class MarkdownConverter : IConverter
         var output = step.Output.Allocate(step.To);
         if (output is null)
             return [];
+
+        if (step.To == "pdf")
+        {
+            await MarkdownPdfRenderer.RenderAsync(markdown, step.InputPath, output, step.WorkDirectory, cancellationToken);
+            progress?.Report(1);
+            return [output];
+        }
 
         var content = step.To switch
         {

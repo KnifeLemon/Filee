@@ -25,6 +25,7 @@ Each component remains under its own license.
 | QRCoder | MIT | https://github.com/codebude/QRCoder |
 | Unhwp | MIT | https://github.com/iyulab/unhwp |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |
+| MathJax 3.2.2 (offline TeX/SVG bundle for Markdown PDFs) | Apache-2.0 | https://github.com/mathjax/MathJax/tree/3.2.2; licence in `src/Filee.Engines/Text/MathJax/LICENSE` |
 | ExifTool (optional engine, downloaded on request: the Metadata tool reads and writes with it) | Perl's licence (Artistic or GPL), separate program | https://exiftool.org |
 | ExcelNumberFormat | MIT | https://github.com/andersnm/ExcelNumberFormat |
 | ExcelDataReader | MIT | https://github.com/ExcelDataReader/ExcelDataReader |
