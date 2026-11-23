@@ -1850,5 +1850,7 @@
   "connect.pin_label": "پین:",
   "connect.firewall_hint_generic": "توجه: اگر تلفن شما متصل نمی‌شود، به Filee در فایروال سیستم اجازه دسترسی دهید.",
   "connect.no_network_message": "Filee Connect راه‌اندازی نشد. لطفاً مطمئن شوید این دستگاه به شبکه Wi-Fi یا اترنت محلی متصل است.",
-  "connect.save_as": "ذخیره به عنوان…"
+  "connect.save_as": "ذخیره به عنوان…",
+  "whats_new.2_4_0.folder_icon.title": "تغییر آیکون پوشه",
+  "whats_new.2_4_0.folder_icon.text": "پوشهای را به دایره بکشید و تصویری انتخاب کنید — Filee آن را به آیکون پوشه تبدیل میکند و بلافاصله نمایش میدهد."
 }

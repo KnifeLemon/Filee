@@ -1874,5 +1874,7 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Observação: se o seu celular não conseguir se conectar, permita o Filee no firewall do sistema.",
   "connect.no_network_message": "Não foi possível iniciar o Filee Connect. Certifique-se de que este dispositivo esteja conectado a uma rede Wi-Fi ou Ethernet local.",
-  "connect.save_as": "Salvar como…"
+  "connect.save_as": "Salvar como…",
+  "whats_new.2_4_0.folder_icon.title": "Altere o ícone da pasta",
+  "whats_new.2_4_0.folder_icon.text": "Arraste uma pasta para o donut e escolha uma imagem: o Filee a transforma no ícone da pasta e o Explorador a mostra na hora."
 }

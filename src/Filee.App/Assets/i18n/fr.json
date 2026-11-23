@@ -1874,5 +1874,7 @@
   "connect.pin_label": "Code PIN :",
   "connect.firewall_hint_generic": "Remarque : Si votre téléphone ne peut pas se connecter, autorisez Filee dans le pare-feu du système.",
   "connect.no_network_message": "Impossible de démarrer Filee Connect. Veuillez vous assurer que cet appareil est connecté à un réseau Wi-Fi ou Ethernet local.",
-  "connect.save_as": "Enregistrer sous…"
+  "connect.save_as": "Enregistrer sous…",
+  "whats_new.2_4_0.folder_icon.title": "Changer l'icône d'un dossier",
+  "whats_new.2_4_0.folder_icon.text": "Glissez un dossier dans la roue et choisissez une image : Filee la transforme en icône de dossier et l'Explorateur la montre aussitôt."
 }

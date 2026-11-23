@@ -1182,10 +1182,10 @@ internal static class SettingsMigrations
                 changed = true;
             }
             // A library already containing our tool may have deliberately taken its slice off the folders donut.
-            if (!hadIconTool && profiles.FirstOrDefault(p => p.Id == "folders") is { } folders && !folders.PresetIds.Contains(BuiltInData.FolderIconId))
+            if (!hadIconTool && profiles.FirstOrDefault(p => p.Id == "folders") is { } foldersProfile && !foldersProfile.PresetIds.Contains(BuiltInData.FolderIconId))
             {
-                var at = folders.PresetIds.IndexOf("to-iso");
-                folders.PresetIds.Insert(at >= 0 ? at : folders.PresetIds.Count, BuiltInData.FolderIconId);
+                var at = foldersProfile.PresetIds.IndexOf("to-iso");
+                foldersProfile.PresetIds.Insert(at >= 0 ? at : foldersProfile.PresetIds.Count, BuiltInData.FolderIconId);
                 changed = true;
             }
         }

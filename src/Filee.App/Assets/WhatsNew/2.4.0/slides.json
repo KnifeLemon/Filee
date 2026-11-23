@@ -1,0 +1,11 @@
+{
+  "version": "2.4.0",
+  "slides": [
+    {
+      "id": "folder_icon",
+      "media": "folder_icon.webp",
+      "title": "whats_new.2_4_0.folder_icon.title",
+      "text": "whats_new.2_4_0.folder_icon.text"
+    }
+  ]
+}

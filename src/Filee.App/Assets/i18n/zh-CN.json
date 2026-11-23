@@ -1874,5 +1874,7 @@
   "connect.pin_label": "PIN 码：",
   "connect.firewall_hint_generic": "注意：如果您的手机无法连接，请在系统防火墙中允许 Filee。",
   "connect.no_network_message": "无法启动 Filee Connect。请确保此设备已连接到本地 Wi-Fi 或有线以太网。",
-  "connect.save_as": "另存为…"
+  "connect.save_as": "另存为…",
+  "whats_new.2_4_0.folder_icon.title": "更改文件夹图标",
+  "whats_new.2_4_0.folder_icon.text": "将文件夹拖入环形菜单并选择图片 —— Filee 将其转换为文件夹图标，Explorer 会立即显示。"
 }

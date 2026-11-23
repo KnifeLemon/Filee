@@ -1874,5 +1874,7 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Lưu ý: Nếu điện thoại không thể kết nối, hãy cho phép Filee trong tường lửa hệ thống.",
   "connect.no_network_message": "Không thể khởi động Filee Connect. Vui lòng đảm bảo thiết bị này được kết nối với mạng Wi-Fi hoặc Ethernet cục bộ.",
-  "connect.save_as": "Lưu dưới dạng…"
+  "connect.save_as": "Lưu dưới dạng…",
+  "whats_new.2_4_0.folder_icon.title": "Đổi biểu tượng thư mục",
+  "whats_new.2_4_0.folder_icon.text": "Kéo thư mục vào vòng donut và chọn ảnh — Filee đổi nó thành biểu tượng thư mục và Explorer hiển thị ngay lập tức."
 }

@@ -1874,5 +1874,7 @@
   "connect.pin_label": "PIN 碼：",
   "connect.firewall_hint_generic": "注意：如果您的手機無法連線，請在系統防火牆中允許 Filee。",
   "connect.no_network_message": "無法啟動 Filee Connect。請確認此裝置已連線至本機 Wi-Fi 或乙太網路。",
-  "connect.save_as": "另存為…"
+  "connect.save_as": "另存為…",
+  "whats_new.2_4_0.folder_icon.title": "更改資料夾圖示",
+  "whats_new.2_4_0.folder_icon.text": "將資料夾拖入環形選單並選擇圖片 —— Filee 會將其轉換為資料夾圖示，檔案總管會立即顯示。"
 }

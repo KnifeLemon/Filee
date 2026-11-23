@@ -1852,5 +1852,7 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Hinweis: Wenn dein Smartphone keine Verbindung herstellen kann, erlaube Filee in der System-Firewall.",
   "connect.no_network_message": "Filee Connect konnte nicht gestartet werden. Bitte stelle sicher, dass dieses Gerät mit einem lokalen WLAN- oder Ethernet-Netzwerk verbunden ist.",
-  "connect.save_as": "Speichern unter…"
+  "connect.save_as": "Speichern unter…",
+  "whats_new.2_4_0.folder_icon.title": "Ordner-Symbol ändern",
+  "whats_new.2_4_0.folder_icon.text": "Ziehe einen Ordner in den Ring und wähle ein Bild: Filee macht daraus das Ordner-Symbol und der Explorer zeigt es sofort."
 }

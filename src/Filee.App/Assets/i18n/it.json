@@ -1851,5 +1851,7 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Nota: se il telefono non si connette, autorizza Filee nel firewall di sistema.",
   "connect.no_network_message": "Impossibile avviare Filee Connect. Assicurati che questo dispositivo sia connesso a una rete Wi-Fi o Ethernet locale.",
-  "connect.save_as": "Salva con nome…"
+  "connect.save_as": "Salva con nome…",
+  "whats_new.2_4_0.folder_icon.title": "Cambia l'icona della cartella",
+  "whats_new.2_4_0.folder_icon.text": "Trascina una cartella nella ruota e scegli un'immagine: Filee la trasforma in icona di cartella e l'esploratore la mostra subito."
 }

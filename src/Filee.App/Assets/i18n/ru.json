@@ -1874,5 +1874,7 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Примечание: если телефон не подключается, разрешите Filee в системном брандмауэре.",
   "connect.no_network_message": "Не удалось запустить Filee Connect. Убедитесь, что это устройство подключено к локальной сети Wi-Fi или Ethernet.",
-  "connect.save_as": "Сохранить как…"
+  "connect.save_as": "Сохранить как…",
+  "whats_new.2_4_0.folder_icon.title": "Изменить значок папки",
+  "whats_new.2_4_0.folder_icon.text": "Перетащите папку в кольцо и выберите картинку — Filee сделает её значком папки, а проводник покажет её сразу."
 }

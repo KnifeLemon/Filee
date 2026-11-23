@@ -1828,5 +1828,7 @@
   "connect.pin_label": "ПИН:",
   "connect.firewall_hint_generic": "Тэмдэглэл: Хэрэв таны утас холбогдохгүй бол системийн галт хана (firewall) дотор Filee-г зөвшөөрнө үү.",
   "connect.no_network_message": "Filee Connect-ийг эхлүүлж чадсангүй. Энэ төхөөрөмж дотоод Wi-Fi эсвэл Ethernet сүлжээнд холбогдсон эсэхийг шалгана уу.",
-  "connect.save_as": "Өөрөөр хадгалах…"
+  "connect.save_as": "Өөрөөр хадгалах…",
+  "whats_new.2_4_0.folder_icon.title": "Хэлт хэлхий хуудасны дүрс эргэн",
+  "whats_new.2_4_0.folder_icon.text": "Хэлт хэлээр хуудасны дүрсийг эргэн бүрт хуудасны дүрсийг Filee эргэн оруулна."
 }

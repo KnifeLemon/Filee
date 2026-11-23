@@ -1874,5 +1874,7 @@
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "참고: 휴대폰이 연결되지 않으면 시스템 방화벽에서 Filee를 허용하세요.",
   "connect.no_network_message": "Filee Connect를 시작할 수 없습니다. 이 기기가 로컬 Wi-Fi 또는 이더넷 네트워크에 연결되어 있는지 확인하세요.",
-  "connect.save_as": "다른 이름으로 저장…"
+  "connect.save_as": "다른 이름으로 저장…",
+  "whats_new.2_4_0.folder_icon.title": "폴더 아이콘 변경",
+  "whats_new.2_4_0.folder_icon.text": "도너에 폴더를 드래그하고 그림을 선택하세요 — 파일이 해당 폴더의 아이콘으로 바뀌고 즉시 표시됩니다."
 }
