@@ -324,7 +324,7 @@
                       Focusable="False" IsTabStop="False">
                 <c:SaveFeedback x:Name="PreviewSaveFeedback" Text="{DynamicResource common.save}" />
               </Button>
-              <Button x:Name="PreviewSecondaryButton" Classes="danger" Content="{DynamicResource common.cancel}"
+              <Button x:Name="PreviewSecondaryButton" Content="{DynamicResource common.cancel}"
                       Focusable="False" IsTabStop="False" />
             </StackPanel>
             <!-- On / Off come from the ToggleSwitch style, in the user's language. -->

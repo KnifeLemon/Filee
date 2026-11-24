@@ -153,6 +153,16 @@ public class ThemePageTests
                 Assert.NotNull(button);
                 Assert.False(button.Focusable);
                 Assert.False(button.IsTabStop);
+
+                // They take the pointer (hover and press look), but a click does nothing.
+                Assert.True(button.IsHitTestVisible);
+                Assert.True(((Control)button.Parent!).IsHitTestVisible);
+                var buttonPoint = button.TranslatePoint(
+                    new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), window)!.Value;
+                window.MouseDown(buttonPoint, MouseButton.Left);
+                window.MouseUp(buttonPoint, MouseButton.Left);
+                RenderTests.Pump();
+                Assert.Equal(settingsBefore, System.Text.Json.JsonSerializer.Serialize(store.Settings));
             }
         }
         finally
