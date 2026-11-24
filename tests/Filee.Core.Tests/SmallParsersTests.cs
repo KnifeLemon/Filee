@@ -16,12 +16,6 @@ public class PageRangeTests
     [InlineData("4-2", 5, new[] { 1, 2, 3 })]
     [InlineData("9-12", 5, new[] { 0, 1, 2, 3, 4 })] // nothing valid → everything
     [InlineData("x, 2", 5, new[] { 1 })]
-    [InlineData("2\u20135", 10, new[] { 1, 2, 3, 4 })] // en dash
-    [InlineData("2\u20145", 10, new[] { 1, 2, 3, 4 })] // em dash
-    [InlineData("\u0662-\u0665", 10, new[] { 1, 2, 3, 4 })] // Arabic-Indic digits
-    [InlineData("\uFF12\uFF0D\uFF14", 10, new[] { 1, 2, 3 })] // full-width digits and dash
-    [InlineData("1\u060C3", 10, new[] { 0, 2 })] // Arabic comma
-    [InlineData("1\uFF0C3", 10, new[] { 0, 2 })] // full-width comma
     public void Parses_ranges(string expression, int pages, int[] expected) =>
         Assert.Equal(expected, PageRange.Parse(expression, pages));
 }

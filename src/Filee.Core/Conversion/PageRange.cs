@@ -15,8 +15,6 @@ public static class PageRange
     {
         if (pageCount <= 0)
             return [];
-        // Other keyboards' digits, dashes and commas, as Check reads them: "2–5" is pages 2 to 5, not every page.
-        expression = Normalize(expression ?? "");
         if (string.IsNullOrWhiteSpace(expression))
             return Enumerable.Range(0, pageCount).ToList();
 
@@ -27,7 +25,7 @@ public static class PageRange
             int start, end;
             if (dash < 0)
             {
-                if (!int.TryParse(raw, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out start))
+                if (!int.TryParse(raw, out start))
                     continue;
                 end = start;
             }
@@ -35,8 +33,8 @@ public static class PageRange
             {
                 var left = raw[..dash].Trim();
                 var right = raw[(dash + 1)..].Trim();
-                start = left.Length == 0 ? 1 : int.TryParse(left, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var l) ? l : -1;
-                end = right.Length == 0 ? pageCount : int.TryParse(right, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var r) ? r : -1;
+                start = left.Length == 0 ? 1 : int.TryParse(left, out var l) ? l : -1;
+                end = right.Length == 0 ? pageCount : int.TryParse(right, out var r) ? r : -1;
                 if (start < 0 || end < 0)
                     continue;
             }
