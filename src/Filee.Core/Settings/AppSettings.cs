@@ -19,6 +19,16 @@ public enum ThemeStyle
     MaterialYou,
 }
 
+/// <summary>How the donut's progress ring looks while a conversion runs (Settings → Theme).</summary>
+public enum ProgressRingStyle
+{
+    /// <summary>A round arc that grows around the percentage.</summary>
+    Arc,
+
+    /// <summary>A dial of 60 short ticks that light up clockwise.</summary>
+    Ticks,
+}
+
 /// <summary>What closing the main window does (Settings → General).</summary>
 public enum CloseAction
 {
@@ -60,6 +70,12 @@ public sealed class ThemeSettings
     /// value reads as off, so it needs no schema step.
     /// </summary>
     public bool UseSystemFont { get; set; }
+
+    /// <summary>
+    /// The look of the donut's progress ring: the arc as before, or a dial of ticks. A missing value (settings from
+    /// before it) reads as the arc, so it needs no schema step.
+    /// </summary>
+    public ProgressRingStyle ProgressRing { get; set; } = ProgressRingStyle.Arc;
 
     public ThemeSettings Clone() => (ThemeSettings)MemberwiseClone();
 }

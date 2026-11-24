@@ -1,6 +1,7 @@
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using ImageMagick;
+using ImageMagick.Drawing;
 using PdfSharp.Pdf.IO;
 
 namespace Filee.Engines.Tests;
@@ -303,6 +304,53 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
         AssertDone(job);
         using var icons = new MagickImageCollection(job.Outputs.Single());
         Assert.Equal([64u, 32u, 16u], icons.Select(i => i.Width));
+    }
+
+    [Fact]
+    public async Task Ico_stores_its_256_px_size_as_png()
+    {
+        // #1783: a 10 KB PNG became a 362 KB icon, every size an uncompressed bitmap. The 256 px size is a PNG (as Windows
+        // writes it since Vista); the smaller ones stay bitmaps, which every reader opens.
+        var dir = fx.NewFolder();
+        var source = Path.Combine(dir, "logo.png");
+        using (var logo = new MagickImage(MagickColors.Transparent, 256, 256))
+        {
+            new Drawables().FillColor(new MagickColor("#1D9E75")).Ellipse(128, 128, 100, 100, 0, 360).Draw(logo);
+            logo.Write(source, MagickFormat.Png);
+        }
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "ico" });
+
+        AssertDone(job);
+        var data = File.ReadAllBytes(job.Outputs.Single());
+        var entries = IconEntries(data);
+        Assert.Equal([256, 128, 64, 48, 32, 16], entries.Select(e => e.Side));
+        Assert.True(entries[0].Png, "the 256 px size is not a PNG");
+        Assert.All(entries.Skip(1), e => Assert.False(e.Png, $"the {e.Side} px size is not a bitmap"));
+        // As a bitmap the 256 px size is 73 KB here (a palette of a few colours; 264 KB in full colour), and the icon 174 KB.
+        // As a PNG it is a few KB; the five bitmaps add about 100 KB.
+        Assert.True(entries[0].Length < 20_000, $"256 px: {entries[0].Length} bytes");
+        Assert.True(data.Length < 120_000, $"{data.Length} bytes");
+        using var icons = new MagickImageCollection(job.Outputs.Single());
+        Assert.Equal([256u, 128u, 64u, 48u, 32u, 16u], icons.Select(i => i.Width));
+        Assert.Equal(new MagickColor("#1D9E75"), icons[0].GetPixels().GetPixel(128, 128).ToColor());
+    }
+
+    /// <summary>Each size of an .ico: its side (0 in the directory means 256), its bytes and whether they are a PNG.</summary>
+    private static List<(int Side, int Length, bool Png)> IconEntries(byte[] data)
+    {
+        Assert.Equal(0, BitConverter.ToUInt16(data, 0));
+        Assert.Equal(1, BitConverter.ToUInt16(data, 2));
+        var count = BitConverter.ToUInt16(data, 4);
+        byte[] signature = [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        return [.. Enumerable.Range(0, count).Select(i =>
+        {
+            var entry = 6 + i * 16;
+            var offset = (int)BitConverter.ToUInt32(data, entry + 12);
+            var size = (int)BitConverter.ToUInt32(data, entry + 8);
+            Assert.True(offset + size <= data.Length, $"entry {i} runs past the end");
+            return (data[entry] == 0 ? 256 : data[entry], size, data.AsSpan(offset, 8).SequenceEqual(signature));
+        })];
     }
 
     [Fact]

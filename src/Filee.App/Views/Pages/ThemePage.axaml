@@ -264,6 +264,34 @@
           </StackPanel>
         </Border>
 
+        <!-- The look of the donut's progress ring while a conversion runs: the arc (default) or a dial of ticks. -->
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <TextBlock Classes="label" Text="{DynamicResource theme.progress_ring}" />
+            <Grid ColumnDefinitions="*,12,*">
+              <Button Classes="choice-card" Classes.selected="{Binding !IsTickRing}"
+                      Command="{Binding SetProgressRingCommand}" CommandParameter="{x:Static settings:ProgressRingStyle.Arc}"
+                      AutomationProperties.Name="{DynamicResource theme.progress_ring.Arc}"
+                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                <StackPanel Spacing="4" HorizontalAlignment="Center">
+                  <c:ProgressRingPreview Tick="False" Value="0.72" HorizontalAlignment="Center" IsHitTestVisible="False" />
+                  <TextBlock Classes="choice-title" HorizontalAlignment="Center" Text="{DynamicResource theme.progress_ring.Arc}" />
+                </StackPanel>
+              </Button>
+              <Button Grid.Column="2" Classes="choice-card" Classes.selected="{Binding IsTickRing}"
+                      Command="{Binding SetProgressRingCommand}" CommandParameter="{x:Static settings:ProgressRingStyle.Ticks}"
+                      AutomationProperties.Name="{DynamicResource theme.progress_ring.Ticks}"
+                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                <StackPanel Spacing="4" HorizontalAlignment="Center">
+                  <c:ProgressRingPreview Tick="True" Value="0.72" HorizontalAlignment="Center" IsHitTestVisible="False" />
+                  <TextBlock Classes="choice-title" HorizontalAlignment="Center" Text="{DynamicResource theme.progress_ring.Ticks}" />
+                </StackPanel>
+              </Button>
+            </Grid>
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.progress_ring_hint}" />
+          </StackPanel>
+        </Border>
+
         <!-- The system's UI font instead of the embedded Noto fonts, which still draw the scripts it lacks (#1065). -->
         <Border Classes="card">
           <StackPanel Spacing="4">

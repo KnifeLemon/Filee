@@ -404,7 +404,8 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                         start += 0.05;
                     }
                 }
-                if (MediaJoining.CanCopyVideos([.. videos.Select(c => c.Info)], media))
+                if (MediaJoining.CanCopyVideos([.. videos.Select(c => c.Info)], media)
+                && MediaJoining.CanUseConcatList(videos.Select(c => c.Path)))
                 {
                     var list = Path.Combine(scratch, "clips.txt");
                     await File.WriteAllTextAsync(list, MediaJoining.ConcatList(videos.Select(c => c.Path)), cancellationToken);
