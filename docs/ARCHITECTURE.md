@@ -481,6 +481,21 @@ hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
   and never replaces or trashes the frame; the frame goes once its marked copy is saved, cancelled or skipped, when
   Annotate closes with it unsaved, and when Filee quits. Annotate sits above the clip window, which stays on top, while
   frames from it wait. The time beside Play is the time of the frame in the picture.
+- A marked copy says what it is (#1205 step 3): the video's name, length and size, the frame's time as the playhead had
+  it, its number (counted from 0 as FFmpeg's `n`, from packet times without decoding, or decoding where packets have no
+  display time: `KeyFrames.FrameNumberAsync`) and the note typed in Annotate, as one PNG text, `Filee:Frame`, holding
+  ASCII JSON (`Core/Presets/FrameTags`; `ImageOptions.Frame`, written by `ImageEncoder.ApplyOptions` after metadata is
+  dropped, and removed from any other picture made from a copy through the image step). The save waits for the number.
+- Cut a clip's "Marked frames" button lists a video's copies, found by that text (`FrameTags.ReadFile` reads the text
+  chunks only) in the folder Annotate's rules, with the app-wide output settings, give a frame saved alone, and in the
+  last 500 folders copies were saved to (`marked-frames.json` in Filee's data folder); ticks mark them on both
+  timelines. Marking a frame again replaces its copy: an earlier copy of that frame, named as Annotate named it, goes
+  to the Trash (with the Overwrite rule the new copy takes its place). The list's ✕ moves a copy to the Trash.
+- The export is two ordinary conversions over the copies (`Core/Presets/FrameExport`): one PDF (A4, Letter in the US,
+  pages numbered, frames wider than 1920 px as JPEG), each page drawing the frame's time, number and note under the
+  picture as outlines (`Engines/Pdf/FramePage`); or a folder of PNGs, each copy with a strip below the picture holding
+  the same (`ImageOptions.FrameCaption`, `Engines/Annotations/FrameCaption`). Both lay the text out as Annotate's labels
+  are (`LabelText`).
 
 ## Crop video
 

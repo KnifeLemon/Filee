@@ -36,6 +36,13 @@ public partial class AnnotateWindow : Window
             Place(moved);
         };
         TextEditor.LostFocus += (_, _) => FinishTyping(keep: true);
+        FrameNoteBox.KeyDown += OnNoteKeyDown;
+        // The picture keeps clear of the bottom stack, however tall it is (its 12 px margin and a 12 px gap).
+        BottomStack.SizeChanged += (_, e) =>
+        {
+            if (DataContext is AnnotateViewModel vm)
+                vm.BottomRoom = e.NewSize.Height + 24;
+        };
         // The tag follows the box's width; the box stays centred on the tag.
         TextTag.SizeChanged += (_, e) =>
         {
@@ -190,6 +197,21 @@ public partial class AnnotateWindow : Window
         };
     }
 
+    /// <summary>A frame's note is being typed.</summary>
+    private bool NoteHasFocus => FrameNoteBox.IsFocused;
+
+    /// <summary>Enter in the note, which the box and its input method left alone, saves.</summary>
+    private void OnNoteKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Handled || e.Key != Key.Enter || e.KeyModifiers != KeyModifiers.None || ViewModel is not { } vm)
+            return;
+        if (vm.SaveCommand.CanExecute(null))
+            vm.SaveCommand.Execute(null);
+        e.Handled = true;
+    }
+
+    internal TextBox NoteBox => FrameNoteBox;
+
     /// <summary>A control in the bar has the focus from the keyboard.</summary>
     private bool InBar => _focusByKeyboard && FocusManager?.GetFocusedElement() is Control control && control != this && control != TextEditor;
 
@@ -203,6 +225,20 @@ public partial class AnnotateWindow : Window
     {
         if (ViewModel is not { } vm || TextEditor.IsVisible || ControlTakes(e))
             return;
+        // Typing a frame's note: its keys are the note's (no tool, no moving a mark); Enter still saves, and Esc goes
+        // back to the picture rather than closing.
+        if (NoteHasFocus)
+        {
+            if (e.Key == Key.Escape)
+            {
+                FocusManager?.Focus(null);
+                _focusByKeyboard = false;
+                e.Handled = true;
+            }
+            // Enter saves from the note box itself (OnNoteKeyDown), after the box has had it: an input method that
+            // uses Enter to finish a word (Japanese, Chinese, Korean) keeps it.
+            return;
+        }
         var shiftOnly = (e.KeyModifiers & ~KeyModifiers.Shift) == KeyModifiers.None;
         switch (e.Key)
         {
@@ -276,7 +312,7 @@ public partial class AnnotateWindow : Window
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (e.Handled || ViewModel is not { } vm || TextEditor.IsVisible)
+        if (e.Handled || ViewModel is not { } vm || TextEditor.IsVisible || NoteHasFocus)
             return;
         var command = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
         var plain = e.KeyModifiers == KeyModifiers.None;

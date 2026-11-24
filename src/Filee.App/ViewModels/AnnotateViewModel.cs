@@ -256,6 +256,143 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
             PictureNote = note;
     }
 
+    // ───────── A marked frame's time and note (#1205 step 3) ─────────
+
+    /// <summary>
+    /// The frames from Cut a clip among the pictures: the time and number shown, and the note typed with each.
+    /// </summary>
+    private readonly Dictionary<string, (string Label, string Note)> _frames = [];
+
+    /// <summary>The longest a note may be, in characters as they are seen (an emoji is one).</summary>
+    public const int MaxNote = 300;
+
+    /// <summary>The longest a note may be in UTF-16 code units, whatever its characters.</summary>
+    public const int MaxNoteUnits = 1000;
+
+    /// <summary>
+    /// <paramref name="path"/> is a frame from Cut a clip: <paramref name="label"/> (its time and number) shows beside
+    /// a note field. It can be saved with only a note or with nothing drawn.
+    /// </summary>
+    public void SetFrame(string path, string label)
+    {
+        _frames[path] = (label, _frames.GetValueOrDefault(path).Note ?? "");
+        if (_files[CurrentIndex] == path)
+            ShowFrame(path);
+    }
+
+    /// <summary>
+    /// The note of an earlier copy of the frame <paramref name="path"/>, found once Annotate is open: offered only
+    /// while no note has been typed for it.
+    /// </summary>
+    public void OfferEarlierNote(string path, string note)
+    {
+        if (!_frames.TryGetValue(path, out var frame) || frame.Note.Length > 0)
+            return;
+        _frames[path] = frame with { Note = Clean(note) };
+        if (_files[CurrentIndex] == path)
+            ShowFrame(path);
+    }
+
+    /// <summary>The time and number shown for <paramref name="path"/>, once its number is known.</summary>
+    public void SetFrameLabel(string path, string label)
+    {
+        if (!_frames.TryGetValue(path, out var frame))
+            return;
+        _frames[path] = frame with { Label = label };
+        if (_files[CurrentIndex] == path)
+            FrameLabel = label;
+    }
+
+    /// <summary>
+    /// The note typed with the frame <paramref name="path"/>; empty for none (or only spaces), or for any other
+    /// picture.
+    /// </summary>
+    public string FrameNoteFor(string path) => _frames.TryGetValue(path, out var frame) ? frame.Note.Trim() : "";
+
+    /// <summary>The picture shown is a frame from Cut a clip (the time and note bar shows).</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    [NotifyPropertyChangedFor(nameof(PicturePadding))]
+    private bool _isFrame;
+
+    [ObservableProperty] private string _frameLabel = "";
+
+    private string _frameNote = "";
+
+    /// <summary>
+    /// The note typed with the frame shown: one line, at most <see cref="MaxNote"/> characters, without control
+    /// characters (a tab or line break becomes a space).
+    /// </summary>
+    public string FrameNote
+    {
+        get => _frameNote;
+        set
+        {
+            var clean = Clean(value ?? "");
+            if (IsFrame && _frames.TryGetValue(_files[CurrentIndex], out var frame))
+                _frames[_files[CurrentIndex]] = frame with { Note = clean };
+            _frameNote = clean;
+            // Raised even when unchanged: a box that held more than is kept shows what is kept.
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Room round the picture: more below for a frame, so the time and note bar never covers it, and more again when
+    /// the window's bottom stack is taller than that (a notice about the picture above the tools, a long language).
+    /// </summary>
+    public Avalonia.Thickness PicturePadding => new(36, 70, 36, Math.Max(IsFrame ? 170 : 118, BottomRoom));
+
+    /// <summary>
+    /// How much of the window's foot its bottom stack takes, with a gap above it (set by the window).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PicturePadding))]
+    private double _bottomRoom;
+
+    private void ShowFrame(string path)
+    {
+        var frame = _frames.GetValueOrDefault(path);
+        IsFrame = _frames.ContainsKey(path);
+        FrameLabel = frame.Label ?? "";
+        _frameNote = frame.Note ?? "";
+        OnPropertyChanged(nameof(FrameNote));
+    }
+
+    /// <summary>
+    /// A note as kept: control characters and halves of a broken pair out, tabs and line breaks as spaces, cut to
+    /// <see cref="MaxNote"/> characters and <see cref="MaxNoteUnits"/> code units (pasted text stacking marks on each
+    /// letter stays small enough to be read back).
+    /// </summary>
+    internal static string Clean(string note)
+    {
+        var kept = new System.Text.StringBuilder(note.Length);
+        for (var i = 0; i < note.Length; i++)
+        {
+            var c = note[i];
+            if (char.IsHighSurrogate(c) && i + 1 < note.Length && char.IsLowSurrogate(note[i + 1]))
+            {
+                kept.Append(c).Append(note[++i]);
+                continue;
+            }
+            if (char.IsSurrogate(c))
+                continue;
+            if (c is '\t' or '\n' or '\r')
+                kept.Append(' ');
+            else if (!char.IsControl(c))
+                kept.Append(c);
+        }
+        var cut = new System.Text.StringBuilder();
+        var count = 0;
+        var elements = System.Globalization.StringInfo.GetTextElementEnumerator(kept.ToString());
+        while (elements.MoveNext() && count < MaxNote && cut.Length + elements.GetTextElement().Length <= MaxNoteUnits)
+        {
+            cut.Append(elements.GetTextElement());
+            count++;
+        }
+        return cut.ToString();
+    }
+
     /// <summary>
     /// The pictures whose marked copy wasn't started: skipped, failed, or not reached when the window closed.
     /// </summary>
@@ -292,6 +429,7 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
         var path = _files[index];
         CurrentFileName = Path.GetFileName(path);
         PictureNote = _notes.GetValueOrDefault(path, "");
+        ShowFrame(path);
         CounterText = _loc.Format("crop.page_counter", index + 1, _files.Count);
         OnPropertyChanged(nameof(SaveText));
         Marks.Reset();
@@ -323,9 +461,10 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Only with a mark on the picture, as "Pixelate / blur" only with a part: Skip moves on without one.
+    /// Only with a mark on the picture, as "Pixelate / blur" only with a part: Skip moves on without one. A frame from
+    /// Cut a clip is the exception: "this frame", with a note or without, is worth saving as it is.
     /// </summary>
-    private bool CanSave() => !IsBusy && PreviewImage is not null && Marks.Marks.Any(AnnotateTool.IsDrawable);
+    private bool CanSave() => !IsBusy && PreviewImage is not null && (IsFrame || Marks.Marks.Any(AnnotateTool.IsDrawable));
 
     /// <summary>
     /// Starts the conversion that writes the picture with its marks (shown in the toast), keeps the colour and width,

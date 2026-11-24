@@ -201,13 +201,13 @@ public static class AnnotationPainter
     /// Draws <paramref name="text"/> from <paramref name="x"/> (or centred on it), its letters' height centred on
     /// <paramref name="middle"/>. Shaped as typed: Arabic joined and right to left, Indic and Thai marks in place.
     /// </summary>
-    private static void DrawText(SKCanvas canvas, string text, float size, float x, float middle, bool centred, SKColor ink)
+    internal static void DrawText(SKCanvas canvas, string text, float size, float x, float middle, bool centred, SKColor ink, bool bold = true)
     {
         middle = LabelText.BaselineFor(text, size, middle);
         if (centred)
-            x -= LabelText.Lay(text, size, null, 0, 0) / 2;
+            x -= LabelText.Lay(text, size, null, 0, 0, bold) / 2;
         using var builder = new SKTextBlobBuilder();
-        LabelText.Lay(text, size, builder, x, middle);
+        LabelText.Lay(text, size, builder, x, middle, bold);
         using var blob = builder.Build();
         if (blob is null)
             return;
@@ -226,6 +226,12 @@ public static class AnnotationPainter
     /// typed in does it.
     /// </summary>
     public static void UseFallback(Func<int, (SKTypeface Face, bool MadeBold)?> fallback) => LabelText.UseFallback(fallback);
+
+    /// <summary>
+    /// The regular face of a label font's family (an embedded font's, which the system doesn't know), for text drawn
+    /// regular: the note under an exported frame.
+    /// </summary>
+    public static void UseRegular(Func<SKTypeface, SKTypeface?> regular) => LabelText.UseRegular(regular);
 
     /// <summary>Reads the fonts labels will need ahead (off the UI thread), so the first label doesn't wait.</summary>
     public static void WarmFonts() => LabelText.Warm();

@@ -199,6 +199,12 @@ public sealed class AppSettings
     public bool KeepHistory { get; set; } = true;
 
     /// <summary>
+    /// Marked video frames (#1205) are exported as one PDF (true) or a folder of PNGs (false), as chosen last. Missing
+    /// in older settings, which reads as a PDF, so it needs no schema step.
+    /// </summary>
+    public bool FrameExportAsPdf { get; set; } = true;
+
+    /// <summary>
     /// How many finished conversions the history keeps, newest first (<see cref="MinHistoryLimit"/> to
     /// <see cref="MaxHistoryLimit"/>; a value outside is taken as the nearest end). The home page lists the latest
     /// ones and searches all of them.

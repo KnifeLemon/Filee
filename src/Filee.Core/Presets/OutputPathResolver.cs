@@ -140,6 +140,42 @@ public static partial class OutputPathResolver
     [GeneratedRegex(@"\{(name|ext|preset|date|time|index)\}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex Token();
 
+    /// <summary>
+    /// <paramref name="name"/> as a pattern that writes it as it is: a pattern has no escape, so a token in it
+    /// ("Minutes {date}") becomes "(date)" rather than today's date.
+    /// </summary>
+    public static string Literal(string name) => Token().Replace(name, "($1)");
+
+    /// <summary>
+    /// <paramref name="name"/> cut to whole characters within <paramref name="maxBytes"/> UTF-8 bytes, so a longer name
+    /// built from it still fits the 255 bytes a file name may have.
+    /// </summary>
+    public static string Shortened(string name, int maxBytes)
+    {
+        if (Encoding.UTF8.GetByteCount(name) <= maxBytes)
+            return name;
+        var kept = new StringBuilder();
+        var bytes = 0;
+        var characters = System.Globalization.StringInfo.GetTextElementEnumerator(name);
+        while (characters.MoveNext())
+        {
+            var character = characters.GetTextElement();
+            bytes += Encoding.UTF8.GetByteCount(character);
+            if (bytes > maxBytes)
+                break;
+            kept.Append(character);
+        }
+        return kept.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// A name without the number <see cref="Resolve"/> gives a name already taken ("photo (2)" → "photo").
+    /// </summary>
+    public static string WithoutCopyNumber(string name) => CopyNumber().Replace(name, "");
+
+    [GeneratedRegex(@" \(\d+\)$", RegexOptions.CultureInvariant)]
+    private static partial Regex CopyNumber();
+
     /// <summary>Removes characters that are invalid in file names on any supported OS.</summary>
     public static string Sanitize(string name, string fallback)
     {

@@ -3045,6 +3045,179 @@ public class RenderTests
         Assert.Equal(Filee.Core.Presets.LivePhotoKind.None, preset.Media.LivePhoto);
     }
 
+    /// <summary>
+    /// Every language at the window's smallest size, where text has the least room, with the list closed, open and the
+    /// export card; dark and the usual size in a short, a CJK and a right-to-left language.
+    /// </summary>
+    public static TheoryData<string, bool, bool, string> MarkedFrameLooks
+    {
+        get
+        {
+            var looks = new TheoryData<string, bool, bool, string>();
+            foreach (var language in LocalizationService.Languages.Select(l => l.Code))
+                foreach (var state in new[] { "closed", "list", "export" })
+                    looks.Add(language, false, true, state);
+            foreach (var language in new[] { "en", "ja", "ar" })
+                foreach (var state in new[] { "list", "export" })
+                    looks.Add(language, true, false, state);
+            return looks;
+        }
+    }
+
+    /// <summary>
+    /// Cut a clip with a video's marked frames (#1205 step 3): the "Marked frames" button beside "Mark this frame", the
+    /// list open below the buttons, over the timeline, and the export card; ticks on both timelines; in short and long
+    /// languages and right to left, light and dark, at the window's usual size and its smallest. Every text is whole
+    /// and nothing is cut off by the window.
+    /// </summary>
+    [AvaloniaTheory]
+    [MemberData(nameof(MarkedFrameLooks))]
+    public void Clip_window_with_marked_frames_renders(string language, bool dark, bool smallest, string state)
+    {
+        ClipWindowTests.WithClipWindow(language, dark, ["Site walk.mp4"], (window, vm, frames, _) =>
+        {
+            if (smallest)
+                (window.Width, window.Height) = (960, 680);
+            vm.MoveHandle(ClipHandle.Start, 120.5);
+            vm.SetLength(9);
+            vm.MovePlayhead(124.7);
+            ClipWindowTests.WaitFor(() => frames.Times.Contains(vm.PreviewTime));
+            ClipWindowTests.WaitFor(() => vm.DetailStart == vm.Start && vm.DetailEnd == vm.End && vm.DetailThumbnails.All(d => d is not null));
+            ClipWindowTests.MarkedCopy(vm, 41.633, "Crack above the door frame");
+            ClipWindowTests.MarkedCopy(vm, 124.7, language switch
+            {
+                "ar" => "كابل مفكوك على يسار اللوحة",
+                "ja" => "パネル左側のケーブルが緩んでいる",
+                "ru" => "Ослабленный кабель слева от панели",
+                "de" => "Lockeres Kabel links neben der Schalttafel",
+                _ => "Loose cable, left of the panel",
+            });
+            ClipWindowTests.MarkedCopy(vm, 247.267);
+            ClipWindowTests.Reload(vm);
+            if (state == "list")
+            {
+                vm.ToggleTrayCommand.Execute(null);
+                ClipWindowTests.WaitFor(() => vm.MarkedFrames.All(f => f.Thumbnail is not null));
+            }
+            else if (state == "export")
+            {
+                vm.ExportAsPdf = true;
+                vm.OpenExportCommand.Execute(null);
+            }
+            Pump();
+
+            var loc = AppHost.Get<ILocalizer>();
+            // Shown whole: the laid-out text fits the room it was given (not cut, not trimmed to "…"), and lies inside
+            // the window, across and down.
+            void Whole(Control root, string text)
+            {
+                var block = root.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == text);
+                Assert.True(block.IsEffectivelyVisible, $"'{text}' isn't shown");
+                var layout = block.TextLayout;
+                Assert.True(layout.Width <= block.Bounds.Width + 1 && layout.Height <= block.Bounds.Height + 1
+                            && !layout.TextLines.Any(line => line.HasCollapsed), $"'{text}' is cut off");
+                var box = new Avalonia.Rect(Avalonia.VisualExtensions.TranslatePoint(block, default, window)!.Value, block.Bounds.Size);
+                Assert.True(box.X >= 0 && box.Y >= 0 && box.Right <= window.Bounds.Width && box.Bottom <= window.Bounds.Height,
+                    $"'{text}' runs past the window ({box})");
+            }
+            var button = window.FindControl<Button>("MarkedFramesButton")!;
+            Assert.True(button.IsEffectivelyVisible);
+            Whole(button, loc["clip.marked_frames"]);
+            Whole(window.FindControl<Button>("MarkFrameButton")!, loc["clip.mark_frame"]);
+            if (state == "list")
+            {
+                var list = window.FindControl<Border>("MarkedFramesList")!;
+                Assert.Equal(3, list.GetVisualDescendants().OfType<Image>().Count(i => i.Source is not null));
+                Whole(list, vm.MarkedFrames[1].Label);
+                Whole(list, vm.ExportFramesText);
+            }
+            if (state == "export")
+            {
+                var card = window.FindControl<Border>("ExportCard")!;
+                Whole(card, loc["clip.export_pdf"]);
+                Whole(card, loc["clip.export_pngs"]);
+                Whole(card, "Site walk frames.pdf");
+            }
+            Save(window, $"clip-marked-{state}-{language}-{(dark ? "dark" : "light")}{(smallest ? "-smallest" : "")}.png");
+        }, annotate: (_, _) => { }, frameExports: []);
+    }
+
+    /// <summary>
+    /// Every language at Annotate's smallest size; dark and the usual size in a short, a CJK and a right-to-left one.
+    /// </summary>
+    public static TheoryData<string, bool, bool> AnnotateFrameLooks
+    {
+        get
+        {
+            var looks = new TheoryData<string, bool, bool>();
+            foreach (var language in LocalizationService.Languages.Select(l => l.Code))
+                looks.Add(language, false, true);
+            foreach (var language in new[] { "en", "ja", "ar" })
+                looks.Add(language, true, false);
+            return looks;
+        }
+    }
+
+    /// <summary>
+    /// Annotate on a frame from Cut a clip (#1205 step 3): the bar with its time and number and the note under the
+    /// tools, the time and number whole, the picture clear of everything at the foot, in every language, light and
+    /// dark.
+    /// </summary>
+    [AvaloniaTheory]
+    [MemberData(nameof(AnnotateFrameLooks))]
+    public void Annotate_on_a_frame_renders(string language, bool dark, bool smallest)
+    {
+        TestServices.EnsureInitialized(language);
+        var theme = AppHost.Get<ThemeService>();
+        if (dark)
+            theme.Apply(new ThemeSettings { Mode = ThemeMode.Dark }, language);
+        var folder = Directory.CreateTempSubdirectory("filee-annotate-frame-").FullName;
+        try
+        {
+            var path = Path.Combine(folder, "Site walk 2m04.700s.png");
+            using (var image = new ImageMagick.MagickImage(new ImageMagick.MagickColor("#5B7FA8"), 1280, 720))
+            {
+                new ImageMagick.Drawing.Drawables().FillColor(new ImageMagick.MagickColor("#2E6B3A")).Rectangle(0, 470, 1280, 720)
+                    .FillColor(new ImageMagick.MagickColor("#F3E9C8")).Rectangle(600, 470, 660, 720).Draw(image);
+                image.Write(path, ImageMagick.MagickFormat.Png);
+            }
+            var store = AppHost.Get<UserDataStore>();
+            var vm = new AnnotateViewModel([path], Filee.Core.Presets.BuiltInData.AnnotatePresets().Single(), AppHost.Get<ILocalizer>(), store,
+                _ => Filee.Core.Presets.BuiltInData.SameAsSource, (_, _) => { });
+            var window = new AnnotateWindow { DataContext = vm, Width = 1040, Height = 720 };
+            if (smallest)
+                (window.Width, window.Height) = (window.MinWidth, window.MinHeight);
+            window.Show();
+            ClipWindowTests.WaitFor(() => vm.PreviewImage is not null && !vm.IsBusy);
+            var loc = AppHost.Get<ILocalizer>();
+            vm.SetFrame(path, $"2:04.700 · {string.Format(CultureInfo.CurrentCulture, loc["clip.frame_number"], "3,741")}");
+            if (language != "en")
+                vm.FrameNote = language switch { "ar" => "كابل مفكوك على يسار اللوحة", "ja" => "パネル左側のケーブルが緩んでいる", _ => "Lockeres Kabel links" };
+            Pump();
+            var box = window.FindControl<TextBox>("FrameNoteBox")!;
+            Assert.True(box.IsEffectivelyVisible);
+            var label = window.FindControl<TextBlock>("FrameLabelText")!;
+            Assert.True(label.TextLayout.Width <= label.Bounds.Width + 1 && !label.TextLayout.TextLines.Any(line => line.HasCollapsed),
+                "the time and number are cut off");
+            var picture = window.AnnotationCanvas.CalculateImageBounds();
+            var pictureBottom = Avalonia.VisualExtensions.TranslatePoint(window.AnnotationCanvas, new Avalonia.Point(0, picture.Bottom), window)!.Value.Y;
+            var foot = window.GetVisualDescendants().OfType<Control>().First(c => c.Name == "BottomStack");
+            var footTop = foot.GetVisualChildren().OfType<Control>().Where(c => c.IsEffectivelyVisible && c.Bounds.Height > 0)
+                .Min(c => Avalonia.VisualExtensions.TranslatePoint(c, default, window)!.Value.Y);
+            Assert.True(pictureBottom <= footTop, $"the foot covers the picture ({pictureBottom} against {footTop})");
+            var boxBottom = Avalonia.VisualExtensions.TranslatePoint(box, new Avalonia.Point(0, box.Bounds.Height), window)!.Value.Y;
+            Assert.True(boxBottom <= window.Bounds.Height, "the note runs past the window");
+            Save(window, $"annotate-frame-{language}-{(dark ? "dark" : "light")}{(smallest ? "-smallest" : "")}.png");
+            window.Close();
+        }
+        finally
+        {
+            if (dark)
+                theme.Apply(new ThemeSettings(), language);
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
     public static TheoryData<string, bool> ClipLooks => new()
     {
         { "en", false }, { "en", true }, { "ru", false }, { "ru", true }, { "ar", false }, { "ar", true }, { "ja", false }, { "hi", true },

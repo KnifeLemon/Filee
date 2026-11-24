@@ -182,7 +182,7 @@ public sealed class PresetGalleryCheckTests
         var leftOut = SharedPresetRules.Paths(SharedPresetRules.PresetFields).Where(p => p.LeftOut).Select(p => p.Path).ToHashSet();
         Assert.Equal(["gallery", "image.backdrop.picture", "image.backdrop.pictureLength", "image.backdrop.pictureWritten",
             "image.backdropLook.picture", "image.backdropLook.pictureLength", "image.backdropLook.pictureWritten",
-            "media.clip.music.path", "output.customFolder", "output.keepFoldersFrom", "pdf.password"], leftOut.Order());
+            "image.frame", "image.frameCaption", "media.clip.music.path", "output.customFolder", "output.keepFoldersFrom", "pdf.jpegAboveWidth", "pdf.password"], leftOut.Order());
     }
 
     /// <summary>The allow-list has every field of <paramref name="type"/>, but none inside a field it leaves out.</summary>

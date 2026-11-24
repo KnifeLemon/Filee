@@ -102,8 +102,15 @@ public static class Annotator
             canvas.Translate(-band.Left, -band.Top);
             AnnotationPainter.Paint(canvas, marks, width, height);
         }
-        // Skia draws premultiplied; ImageMagick reads straight alpha.
-        var info = new SKImageInfo(band.Width, band.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+        return ToMagick(bitmap);
+    }
+
+    /// <summary>
+    /// A Skia bitmap as a Magick image, its alpha straight (Skia draws premultiplied; ImageMagick reads straight).
+    /// </summary>
+    internal static MagickImage ToMagick(SKBitmap bitmap)
+    {
+        var info = new SKImageInfo(bitmap.Width, bitmap.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
         var pixels = new byte[info.BytesSize];
         var pinned = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
         try
@@ -115,7 +122,7 @@ public static class Annotator
             pinned.Free();
         }
         var layer = new MagickImage();
-        layer.ReadPixels(pixels, new PixelReadSettings((uint)band.Width, (uint)band.Height, StorageType.Char, PixelMapping.RGBA));
+        layer.ReadPixels(pixels, new PixelReadSettings((uint)bitmap.Width, (uint)bitmap.Height, StorageType.Char, PixelMapping.RGBA));
         return layer;
     }
 }

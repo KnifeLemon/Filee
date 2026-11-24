@@ -139,6 +139,19 @@ public sealed class OutputRule
     /// </summary>
     public bool MoveInsteadOfCopy { get; set; }
 
+    /// <summary>
+    /// This rule for a single output file: with <see cref="SubfolderOnlyForSeveralFiles"/> it is saved next to the
+    /// source instead of in the subfolder.
+    /// </summary>
+    public OutputRule ForOneFile()
+    {
+        if (!SubfolderOnlyForSeveralFiles || Location != OutputLocation.Subfolder)
+            return this;
+        var single = Clone();
+        single.Location = OutputLocation.SameFolder;
+        return single;
+    }
+
     public OutputRule Clone()
     {
         var clone = (OutputRule)MemberwiseClone();

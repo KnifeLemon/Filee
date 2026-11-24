@@ -2,6 +2,7 @@
 // compression itself is in PdfCompressor, with Ghostscript as an optional second try) and removes their metadata.
 // It also finishes every PDF a job writes with a watermark, page numbers or a password (PdfFinishing).
 
+using System.Globalization;
 using System.Runtime.ExceptionServices;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -99,7 +100,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             }
         }
         structure.Write(ct);
-        output.Save(outputPath);
+        SaveDated(output, outputPath);
     }
 
     /// <summary>Places every frame of an image (TIFF pages, ...) on its own PDF page.</summary>
@@ -118,6 +119,11 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             var dpi = frame.Density.Units == DensityUnit.PixelsPerInch && frame.Density.X > 0 ? frame.Density.X
                 : frame.Density.Units == DensityUnit.PixelsPerCentimeter && frame.Density.X > 0 ? frame.Density.X * 2.54
                 : 96.0;
+
+            // A marked video frame's time and note, drawn under it as outlines (#1205); read before its text is
+            // dropped.
+            var facts = options.FrameCaption is { } && pdfOptions.PageSize != PdfPageSize.FitImage
+                ? FrameTags.FromText(frame.GetAttribute(FrameTags.Key)) : null;
 
             // "pdf" as target: resize / grayscale / metadata apply, no format-specific encoding settings.
             ImageEncoder.ApplyOptions(frame, options, "pdf");
@@ -140,6 +146,13 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             var drawHeight = imageHeightPt * scale;
 
             var box = new XRect(margin + (boxWidth - drawWidth) / 2, margin + (boxHeight - drawHeight) / 2, drawWidth, drawHeight);
+            FramePage.Layout? caption = null;
+            if (facts is not null)
+            {
+                caption = FramePage.Place(new XRect(margin, margin, boxWidth, boxHeight - FramePage.FooterRoom), imageWidthPt, imageHeightPt,
+                    facts, options.FrameCaption!);
+                box = caption.Picture;
+            }
             if (CmykPictures.Keeps(frame))
             {
                 // Print work keeps its colours: CMYK (and its profile) in the PDF too (#1027).
@@ -147,10 +160,15 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             }
             else
             {
-                using var stream = EncodeForPdf(frame, step.From, options);
+                using var stream = EncodeForPdf(frame, step.From, options, pdfOptions);
                 using var ximage = XImage.FromStream(stream);
                 using var gfx = XGraphics.FromPdfPage(page);
                 gfx.DrawImage(ximage, box);
+            }
+            if (caption is not null)
+            {
+                using var gfx = XGraphics.FromPdfPage(page, XGraphicsPdfPageOptions.Append);
+                FramePage.Draw(gfx, caption, facts!, pageWidth, pageHeight, margin);
             }
 
             progress?.Report((i + 1.0) / frames.Count);
@@ -159,8 +177,28 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         var path = step.Output.Allocate("pdf");
         if (path is null)
             return [];
-        document.Save(path);
+        SaveDated(document, path);
         return [path];
+    }
+
+    /// <summary>
+    /// Saves <paramref name="document"/> with its dates written as the PDF format writes them. PDFsharp writes them in
+    /// the thread's calendar: under a regional format with another calendar (Umm al-Qura, Thai Buddhist, Persian) the
+    /// file got that calendar's year as a Gregorian one, and the next save of it threw where that year is outside the
+    /// calendar (1448 under Saudi Arabia's).
+    /// </summary>
+    internal static void SaveDated(PdfDocument document, string path)
+    {
+        var culture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            document.Save(path);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
     }
 
     /// <summary>"Pages per sheet" (PdfSheets): the pages of the range, several to a sheet, in one new PDF.</summary>
@@ -485,7 +523,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     /// Encodes a frame for embedding. JPEG sources stay JPEG (no generational loss beyond one re-encode at high quality);
     /// everything else is embedded losslessly as PNG.
     /// </summary>
-    private static MemoryStream EncodeForPdf(IMagickImage<byte> frame, string sourceFormat, ImageOptions options)
+    private static MemoryStream EncodeForPdf(IMagickImage<byte> frame, string sourceFormat, ImageOptions options, PdfOptions pdf)
     {
         // PDFsharp takes grey and RGB pictures; CMYK ones are placed by CmykPictures, this is only a safety net (#1055).
         PdfPictures.ToRgb(frame);
@@ -495,6 +533,13 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             frame.Quality = JpegQuality(options);
             frame.Write(stream, MagickFormat.Jpeg);
         }
+        else if (pdf.JpegAboveWidth is { } above && frame.Width > above && !frame.HasAlpha)
+        {
+            // Asked for (the export of marked video frames, #1205): wide pictures as a high-quality JPEG, four to five
+            // times smaller than lossless.
+            frame.Quality = JpegAboveQuality;
+            frame.Write(stream, MagickFormat.Jpeg);
+        }
         else
         {
             PdfPictures.WritePng(frame, stream);
@@ -502,6 +547,9 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         stream.Position = 0;
         return stream;
     }
+
+    /// <summary>The quality of a picture put in a PDF as JPEG for <see cref="PdfOptions.JpegAboveWidth"/>.</summary>
+    private const uint JpegAboveQuality = 92;
 
     /// <summary>A JPEG source goes into the PDF as JPEG again, at the preset's quality but never below 85.</summary>
     private static uint JpegQuality(ImageOptions options) => (uint)Math.Clamp(Math.Max(options.Quality, 85), 1, 100);

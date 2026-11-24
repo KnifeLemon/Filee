@@ -22,6 +22,12 @@ public interface IVideoFrameSource
     Task<FrameStill> WriteStillAsync(string path, double seconds, string output, CancellationToken cancellationToken);
 
     /// <summary>
+    /// The number of the frame <see cref="WriteStillAsync"/> writes for <paramref name="seconds"/>, counted from 0 as
+    /// FFmpeg counts; null when it can't be counted.
+    /// </summary>
+    Task<long?> FrameNumberAsync(string path, double seconds, CancellationToken cancellationToken);
+
+    /// <summary>
     /// The loudness of the sound from <paramref name="start"/> to <paramref name="end"/> seconds in
     /// <paramref name="count"/> steps (0 to 1); empty without sound.
     /// </summary>
@@ -51,6 +57,9 @@ public sealed class FfmpegFrameSource : IVideoFrameSource
 
     public Task<FrameStill> WriteStillAsync(string path, double seconds, string output, CancellationToken cancellationToken) =>
         VideoFrames.WriteStillAsync(path, seconds, output, cancellationToken);
+
+    public Task<long?> FrameNumberAsync(string path, double seconds, CancellationToken cancellationToken) =>
+        VideoFrames.FrameNumberAsync(path, seconds, cancellationToken);
 
     public Task<float[]> ReadLoudnessAsync(string path, double start, double end, int count, string workFolder, CancellationToken cancellationToken) =>
         ClipPreview.ReadLoudnessAsync(path, start, end, count, workFolder, cancellationToken);

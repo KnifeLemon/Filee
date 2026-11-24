@@ -1,5 +1,6 @@
 // Opens windows and dialogs: the main (settings) window, the preset popup, confirmations and toasts.
 
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -449,7 +450,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         var vm = new ClipWindowViewModel(videos, preset, loc, store, new FfmpegFrameSource(),
             path => ClipTool.TargetFor(FormatRegistry.Detect(path)?.Id ?? ClipTool.FallbackTarget, catalog.CreatePlanner()),
             (path, conversion) => conversions.Start([path], conversion), log, ringtone,
-            services.GetRequiredService<MarkedFrames>(), AnnotateFrame);
+            services.GetRequiredService<MarkedFrames>(), AnnotateFrame, (copies, export) => conversions.Start(copies, export));
         var win = new ClipWindow { DataContext = vm };
         win.PositionOnScreen(near);
         win.Closed += (_, _) =>
@@ -577,9 +578,16 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         var conversions = services.GetRequiredService<ConversionService>();
         var marks = services.GetRequiredService<MarkedFrames>();
         var planner = services.GetRequiredService<ConverterCatalog>().CreatePlanner();
-        var vm = new AnnotateViewModel(pictures, preset, loc, services.GetRequiredService<UserDataStore>(),
+        AnnotateViewModel? vm = null;
+        vm = new AnnotateViewModel(pictures, preset, loc, services.GetRequiredService<UserDataStore>(),
             path => AnnotateTool.TargetFor(FormatRegistry.Detect(path)?.Id ?? "", planner),
-            (path, conversion) => conversions.Start([path], marks.Apply(path, conversion)), services.GetService<ILogger<AnnotateViewModel>>());
+            (path, conversion) =>
+            {
+                if (marks.VideoOf(path) is null)
+                    conversions.Start([path], marks.Apply(path, conversion));
+                else
+                    _ = SaveFrameAsync(path, conversion, vm!.FrameNoteFor(path), marks, conversions);
+            }, services.GetService<ILogger<AnnotateViewModel>>());
         var win = new AnnotateWindow { DataContext = vm };
         PrepareWindow(win);
         win.Closed += (_, _) =>
@@ -600,6 +608,8 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         };
         if (pictures.Any(file => marks.VideoOf(file) is not null))
             KeepAnnotateAboveClip(); // above the clip window from the start, not a moment after
+        foreach (var picture in pictures)
+            PrepareFrame(vm, picture);
         win.Show();
         win.Activate();
         return vm;
@@ -615,18 +625,83 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         if (_annotateWindow is { DataContext: AnnotateViewModel { IsDone: false } open } window)
         {
             open.Add(frame, note);
+            PrepareFrame(open, frame);
             KeepAnnotateAboveClip();
             if (window.WindowState == WindowState.Minimized)
                 window.WindowState = WindowState.Normal;
             window.Activate();
             return;
         }
-        var tool = services.GetRequiredService<UserDataStore>().FindPreset(BuiltInData.AnnotateId) is { IsAnnotateTool: true } saved
-            ? saved : BuiltInData.AnnotatePresets().Single();
+        var tool = services.GetRequiredService<UserDataStore>().AnnotateTool();
         if (OpenAnnotateWindow([frame], tool) is { } opened)
             opened.SetNote(frame, note);
         else
             services.GetRequiredService<MarkedFrames>().Discard(frame); // nothing can open it: it isn't needed
+    }
+
+    /// <summary>
+    /// A frame's save (#1205 step 3): once its number is counted, the conversion with the frame's facts and the note
+    /// typed with it, so its copy is found again in Cut a clip's tray and exported with its time and note.
+    /// </summary>
+    private async Task SaveFrameAsync(string frame, Preset conversion, string note, MarkedFrames marks, ConversionService conversions)
+    {
+        try
+        {
+            conversions.Start([frame], await marks.ApplyAsync(frame, conversion, note, CancellationToken.None));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            services.GetService<ILogger<WindowService>>()?.LogError(ex, "Could not save the marked frame {Frame}", frame);
+            // Annotate has moved on by now: said here, as it would have said it (step 2's save started at once).
+            await MessageAsync(_annotateWindow, loc["error.conversion_failed"]);
+        }
+    }
+
+    /// <summary>
+    /// A frame from Cut a clip in Annotate: its time shows at once, its number once counted, and the note of an earlier
+    /// copy of the same frame is offered while none is typed; any other picture is left alone.
+    /// </summary>
+    private void PrepareFrame(AnnotateViewModel vm, string frame)
+    {
+        var marks = services.GetRequiredService<MarkedFrames>();
+        if (marks.FrameOf(frame) is not { } info)
+            return;
+        var word = loc["clip.frame_number"];
+        vm.SetFrame(frame, FrameTags.Label(info.Seconds, "…", word, CultureInfo.CurrentCulture));
+        _ = NumberAsync();
+        _ = EarlierNoteAsync();
+
+        // The number and the earlier note each as soon as found: the note isn't held up by a slow count.
+        async Task NumberAsync()
+        {
+            long? number;
+            try
+            {
+                number = await info.Number;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                number = null;
+            }
+            vm.SetFrameLabel(frame, FrameTags.Label(info.Seconds, number?.ToString("N0", CultureInfo.CurrentCulture), word, CultureInfo.CurrentCulture));
+        }
+
+        async Task EarlierNoteAsync()
+        {
+            try
+            {
+                var copies = await marks.CopiesOfAsync(info.Video, info.VideoSeconds, services.GetRequiredService<UserDataStore>().AnnotateToolAsSaved(),
+                    CancellationToken.None);
+                var at = FrameTags.Milliseconds(info.Seconds);
+                if (copies.FirstOrDefault(c => FrameTags.Milliseconds(c.Facts.FrameSeconds) == at) is { } earlier
+                    && !string.IsNullOrWhiteSpace(earlier.Facts.Note))
+                    vm.OfferEarlierNote(frame, earlier.Facts.Note);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                services.GetService<ILogger<WindowService>>()?.LogWarning(ex, "Could not read the earlier copies of the marked frame {Frame}", frame);
+            }
+        }
     }
 
     /// <summary>

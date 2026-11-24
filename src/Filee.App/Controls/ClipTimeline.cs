@@ -90,6 +90,10 @@ public sealed class ClipTimeline : Control
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
         AvaloniaProperty.Register<ClipTimeline, IBrush?>(nameof(Foreground), Brushes.Black);
 
+    /// <summary>The times of the video's marked frames (#1205): a tick at each.</summary>
+    public static readonly StyledProperty<IReadOnlyList<double>?> MarkedTimesProperty =
+        AvaloniaProperty.Register<ClipTimeline, IReadOnlyList<double>?>(nameof(MarkedTimes));
+
     public double Duration { get => GetValue(DurationProperty); set => SetValue(DurationProperty, value); }
     public double Start { get => GetValue(StartProperty); set => SetValue(StartProperty, value); }
     public double End { get => GetValue(EndProperty); set => SetValue(EndProperty, value); }
@@ -110,6 +114,7 @@ public sealed class ClipTimeline : Control
     public IBrush? TrackBrush { get => GetValue(TrackBrushProperty); set => SetValue(TrackBrushProperty, value); }
     public IBrush? StageBrush { get => GetValue(StageBrushProperty); set => SetValue(StageBrushProperty, value); }
     public IBrush? Foreground { get => GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
+    public IReadOnlyList<double>? MarkedTimes { get => GetValue(MarkedTimesProperty); set => SetValue(MarkedTimesProperty, value); }
 
     /// <summary>A handle was dragged (or the strip pressed beside the clip): the end it moves and where to.</summary>
     public event Action<ClipHandle, double>? HandleMoved;
@@ -155,7 +160,7 @@ public sealed class ClipTimeline : Control
     {
         AffectsRender<ClipTimeline>(DurationProperty, StartProperty, EndProperty, PlayheadProperty, ActiveHandleProperty, PiecesProperty,
             SelectedIndexProperty, LoudnessProperty, WaveformProperty, FadeInProperty, FadeOutProperty, ViewStartProperty, ViewEndProperty, ThumbnailsProperty, AccentBrushProperty,
-            OnAccentBrushProperty, TrackBrushProperty, StageBrushProperty, ForegroundProperty);
+            OnAccentBrushProperty, TrackBrushProperty, StageBrushProperty, ForegroundProperty, MarkedTimesProperty);
         FocusableProperty.OverrideDefaultValue<ClipTimeline>(false);
     }
 
@@ -243,6 +248,7 @@ public sealed class ClipTimeline : Control
         if (Duration <= 0)
             return;
         DrawClipFrame(context, strip, accent);
+        MarkTicks.Draw(context, MarkedTimes, RawX, strip.Left, strip.Right, RulerHeight, strip.Bottom, accent);
         DrawPlayhead(context, strip);
     }
 
