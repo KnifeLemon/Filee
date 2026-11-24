@@ -42,7 +42,11 @@ public class NumberFormatterTests(EngineFixture fx) : IClassFixture<EngineFixtur
     public void System_long_time_follows_the_system_culture()
     {
         Assert.Equal("18:05:09", For("zh-CN").Format(Evening, "[$-F400]h:mm:ss AM/PM"));
-        Assert.Equal("6:05:09 PM", For("en-US").Format(Evening, "[$-x-systime]h:mm:ss AM/PM"));
+        // The culture's own long time pattern: ICU (Linux, macOS) puts a narrow no-break space before "PM", Windows a space.
+        var us = CultureInfo.GetCultureInfo("en-US");
+        Assert.Equal(new DateTime(2026, 11, 23, 18, 5, 9).ToString(us.DateTimeFormat.LongTimePattern, us),
+            For("en-US").Format(Evening, "[$-x-systime]h:mm:ss AM/PM"));
+        Assert.StartsWith("6:05:09", For("en-US").Format(Evening, "[$-x-systime]h:mm:ss AM/PM"));
         Assert.True(For("zh-CN").IsDate("[$-F400]h:mm:ss AM/PM"));
     }
 
