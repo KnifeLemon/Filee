@@ -172,7 +172,10 @@ exec ""$REAL_MV"" ""$@""
 
         var desktopPath = Path.Combine(env.DataDir, "applications", "com.filee.app.desktop");
         Assert.True(File.Exists(desktopPath));
-        Assert.Contains("X-Filee-Managed=true", File.ReadAllText(desktopPath));
+        var desktopEntry = File.ReadAllText(desktopPath);
+        Assert.Contains("X-Filee-Managed=true", desktopEntry);
+        // GNOME picks the taskbar icon by matching the window's WM_CLASS to StartupWMClass.
+        Assert.Contains("StartupWMClass=Filee", desktopEntry);
     }
 
     [Fact]

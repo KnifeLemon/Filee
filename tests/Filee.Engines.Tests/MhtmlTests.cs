@@ -320,7 +320,10 @@ public class MhtmlTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Contains("<p>첫 문단에 한글이 있습니다.</p>", html);
         Assert.Contains($"src=\"data:image/png;base64,{Convert.ToBase64String(Photo)}\"", html);
         Assert.DoesNotContain("cid:", html);
-        Assert.DoesNotContain("svg", html);
+        // The svg picture is left out: neither its type nor its data stays. Not "svg" alone, which the photo's base64
+        // can hold.
+        Assert.DoesNotContain("image/svg", html);
+        Assert.DoesNotContain("PHN2Zz48L3N2Zz4=", html);
 
         var docx = await ConvertAsync(path, "docx");
         DocxAssert.ValidPackage(docx);

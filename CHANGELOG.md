@@ -34,6 +34,10 @@ ko: 클립 자르기에서 음악을 클립이 끝날 때까지 반복할 수 �
 en: Cut a clip can loop its music until the clip ends
 ko: 바로 가기를 변환하면 결과가 대상 파일 옆이 아니라 바로 가기 옆에 저장돼요
 en: A shortcut's results are saved next to the shortcut, not next to the file it points to
+ko: PowerPoint를 Markdown으로 바꾸면 슬라이드마다 한 구역이 되고 제목, 목록, 표, 그림, 발표자 노트가 남아요 (reveal.js)
+en: PowerPoint to Markdown keeps the slides, titles, lists, tables, pictures and speaker notes, ready for reveal.js
+ko: PNG를 ICO로 바꿀 때 256 크기를 PNG로 저장해서 아이콘 파일이 훨씬 작아져요
+en: Icons (ICO) are much smaller: the 256 px size is stored as PNG
 ko: 동영상 프리셋에서 휴대폰 세로 동영상을 화질 저하 없이 똑바로 돌려 저장할 수 있어요
 en: Video presets can turn vertical phone videos upright without lowering the quality
 -->
@@ -77,6 +81,17 @@ en: Video presets can turn vertical phone videos upright without lowering the qu
 - **Cut a clip can loop its music** (#1432). With music on A2, **Loop music** next to **Music** plays the song again
   from its start each time it ends, until the clip ends, and fades it out with the clip. Off, the music stops when the
   song ends, as before. Several songs one after another on A2 are not there yet.
+
+- **PowerPoint → Markdown keeps the slides, ready for reveal.js** (#1702). A presentation converted to Markdown now
+  has one section per slide with `---` between them, the slide titles as headings, bullet and numbered lists at
+  their levels, links, bold and italic, tables, the pictures next to the file and the speaker notes after `Note:`,
+  which is what [reveal.js](https://revealjs.com/markdown/) reads. Before, the text of all slides ran together with
+  titles as plain paragraphs. Charts, SmartArt and equations aren't converted.
+
+- **Icons (ICO) are much smaller** (#1783). Filee stored every size of an `.ico` as an uncompressed bitmap, so a 10 KB
+  PNG became a 362 KB icon. The 256 px size is now stored as PNG, as Windows does it since Vista; the smaller sizes
+  stay bitmaps, which every program that reads icons opens. The same icon is now about a third of that size, most of
+  it the 128 px size. Cursors (CUR) are written as before.
 
 - **Turn phone videos upright** (#1586). A video preset can now turn vertical phone videos upright without lowering
   their quality (*Turn phone videos upright* in the video card, off by default). Videos saved with a rotation note are
