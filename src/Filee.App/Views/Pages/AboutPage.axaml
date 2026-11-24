@@ -26,6 +26,43 @@
       <Setter Property="Grid.ColumnSpan" Value="2" />
       <Setter Property="Margin" Value="0,18,0,0" />
     </Style>
+    <!-- The four ways to help: small tiles, an icon on the left and a title with one line beside it. -->
+    <Style Selector="Button.help-tile">
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadius}" />
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="Margin" Value="3" />
+      <Setter Property="MinWidth" Value="176" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.help-tile:pointerover">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    </Style>
+    <Style Selector="Button.help-tile Border.help-icon">
+      <Setter Property="Width" Value="30" />
+      <Setter Property="Height" Value="30" />
+      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    </Style>
+    <Style Selector="Button.help-tile:pointerover Border.help-icon">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+    </Style>
+    <Style Selector="Button.help-tile TextBlock.help-title">
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.help-tile TextBlock.help-hint">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
   </UserControl.Styles>
   <StackPanel Spacing="18">
     <TextBlock Classes="h1" Text="{DynamicResource about.title}" />
@@ -97,20 +134,51 @@
       </StackPanel>
     </Border>
     <Border Classes="card">
-      <StackPanel Spacing="10">
-        <TextBlock Classes="h2" Text="{DynamicResource about.support_title}" />
-        <TextBlock Classes="muted" TextWrapping="Wrap" Text="{DynamicResource about.support_text}" />
-        <WrapPanel>
-          <Button Classes="accent" Click="OnStar" Margin="0,0,8,0" Content="{DynamicResource feedback.star}" />
-          <Button Click="OnIssue" Content="{DynamicResource feedback.issue}" Margin="0,0,8,0" />
-          <Button Click="OnSponsor">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Heart}" Foreground="#D4537E" />
-              <TextBlock Text="{DynamicResource about.sponsor}" />
-            </StackPanel>
+      <!-- The text on the left, the four ways to help as small tiles on the right. -->
+      <Grid ColumnDefinitions="*,20,Auto">
+        <StackPanel Spacing="10" VerticalAlignment="Center">
+          <TextBlock Classes="h2" Text="{DynamicResource about.support_title}" />
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="{DynamicResource about.support_text}" />
+        </StackPanel>
+        <UniformGrid Grid.Column="2" Columns="2" VerticalAlignment="Center">
+          <Button Classes="help-tile" Click="OnStar">
+            <Grid ColumnDefinitions="Auto,10,*">
+              <Border Classes="help-icon"><PathIcon Width="16" Height="16" Data="{StaticResource Icon.Star}" Foreground="#E8B923" /></Border>
+              <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="1">
+                <TextBlock Classes="help-title" Text="{DynamicResource about.tile_star}" />
+                <TextBlock Classes="help-hint" Text="{DynamicResource about.tile_star_hint}" />
+              </StackPanel>
+            </Grid>
           </Button>
-        </WrapPanel>
-      </StackPanel>
+          <Button Classes="help-tile" Click="OnReport">
+            <Grid ColumnDefinitions="Auto,10,*">
+              <Border Classes="help-icon"><PathIcon Width="16" Height="16" Data="{StaticResource Icon.Bug}" Foreground="#3FB68B" /></Border>
+              <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="1">
+                <TextBlock Classes="help-title" Text="{DynamicResource about.tile_report}" />
+                <TextBlock Classes="help-hint" Text="{DynamicResource about.tile_report_hint}" />
+              </StackPanel>
+            </Grid>
+          </Button>
+          <Button Classes="help-tile" Click="OnSuggest">
+            <Grid ColumnDefinitions="Auto,10,*">
+              <Border Classes="help-icon"><PathIcon Width="16" Height="16" Data="{StaticResource Icon.Lightbulb}" Foreground="{DynamicResource AccentBrush}" /></Border>
+              <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="1">
+                <TextBlock Classes="help-title" Text="{DynamicResource about.tile_suggest}" />
+                <TextBlock Classes="help-hint" Text="{DynamicResource about.tile_suggest_hint}" />
+              </StackPanel>
+            </Grid>
+          </Button>
+          <Button Classes="help-tile" Click="OnSponsor">
+            <Grid ColumnDefinitions="Auto,10,*">
+              <Border Classes="help-icon"><PathIcon Width="16" Height="16" Data="{StaticResource Icon.Heart}" Foreground="#D4537E" /></Border>
+              <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="1">
+                <TextBlock Classes="help-title" Text="{DynamicResource about.sponsor}" />
+                <TextBlock Classes="help-hint" Text="{DynamicResource about.tile_sponsor_hint}" />
+              </StackPanel>
+            </Grid>
+          </Button>
+        </UniformGrid>
+      </Grid>
     </Border>
     <Border Classes="card">
       <StackPanel Spacing="8">
