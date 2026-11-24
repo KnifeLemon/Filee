@@ -38,6 +38,8 @@ ko: PowerPoint를 Markdown으로 바꾸면 슬라이드마다 한 구역이 되�
 en: PowerPoint to Markdown keeps the slides, titles, lists, tables, pictures and speaker notes, ready for reveal.js
 ko: PNG를 ICO로 바꿀 때 256 크기를 PNG로 저장해서 아이콘 파일이 훨씬 작아져요
 en: Icons (ICO) are much smaller: the 256 px size is stored as PNG
+ko: JSP 파일(.jsp)을 텍스트처럼 PDF, Word 등으로 바꿀 수 있어요
+en: JavaServer Pages (.jsp) convert like text, to PDF, Word and more
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -90,6 +92,9 @@ en: Icons (ICO) are much smaller: the 256 px size is stored as PNG
   PNG became a 362 KB icon. The 256 px size is now stored as PNG, as Windows does it since Vista; the smaller sizes
   stay bitmaps, which every program that reads icons opens. The same icon is now about a third of that size, most of
   it the 128 px size. Cursors (CUR) are written as before.
+
+- **JavaServer Pages (`.jsp`) convert like text** (#1789). A `.jsp` page is read as its source code, never run, so
+  it becomes a PDF, DOCX, HTML, Markdown or the other text formats, like Java and the other source files.
 
 ## 2.5.0
 
