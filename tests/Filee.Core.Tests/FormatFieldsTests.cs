@@ -145,7 +145,7 @@ public class FormatFieldsTests
             {
                 [FormatGrade.Everyday] = 19,
                 [FormatGrade.General] = 99,
-                [FormatGrade.Specialist] = 136,
+                [FormatGrade.Specialist] = 137,
                 [FormatGrade.Legacy] = 52,
             },
             counts);
