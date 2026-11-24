@@ -12,7 +12,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, pages per sheet (N-up), spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
-| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
+| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, CXLOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
@@ -33,7 +33,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
-| Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ, the packs**; ALZ, EGG, lzip, GMA, VPK read in-process; "Compress into one archive" for any files |
+| Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), Minecraft and Modrinth packs, Garry's Mod addons (GMA), Valve paks (VPK), the files packed into Source maps (BSP), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ, the packs, GMA**; ALZ, EGG, lzip, GMA, VPK read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT), Markdown and markup → PPTX slides |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it; PDF/A-2b for PDF/A presets; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
@@ -1127,9 +1127,39 @@ file became and once on a merged PDF, so the box means the same whichever engine
   output intent; the profile is Magick.NET's sRGB, written into the prelude as a hex string so safe mode needn't read
   a file. Colours become RGB, fonts are embedded, what PDF/A forbids is left out (policy 1), and a tagged PDF loses its
   tags (part B doesn't need them).
+- **Annotations** (`PdfPrintableAnnotations`): Ghostscript reads a copy in which visible annotations print, since PDF/A
+  keeps only printing ones. PDF/A also wants an appearance stream on every annotation but links, popups and zero-size
+  ones, which Ghostscript doesn't make (#1566): when a printing annotation has none, the prelude ends with
+  `/PreserveAnnotTypes` set to Ghostscript's default types without that annotation's type, so annotations of that type
+  are drawn into the page with their look and the rest (links included) stay annotations. This goes by type: a
+  highlight with an appearance next to one without is drawn into the page too.
 - **Without Ghostscript**: a preset whose files are all PDFs is greyed out with the usual engine reason. Other files
   are converted and the PDF is left as it is, with `notice.pdfa_needs_ghostscript` in the result, unless LibreOffice
   made it PDF/A.
+
+## Slides → Markdown (reveal.js)
+
+The slides engine (`Office/Slides/SlidesMarkdownConverter.cs`, id `slides-md`, #1702) writes a PowerPoint file (PPTX,
+PPTM, POTX, POTM, PPSX; PPT and ODP through LibreOffice first) as Markdown that [reveal.js](https://revealjs.com/markdown/)
+shows as a deck and any editor reads as a document. Before it, PPTX → Markdown went through HWPX and Unhwp, which
+placed the slides' objects on pages and lost the slides, titles and lists.
+
+- One section per visible slide, `---` between them. A slide with nothing to show (blank, or a chart only) stays an
+  empty section, so the slide count matches (an empty first slide gets `<!-- slide 1 -->` so the file never starts with
+  `---`).
+- The title placeholder leads the slide: `#` on a title slide (`ctrTitle`), `##` otherwise.
+- Text in the slide's order: body and content placeholders are bullet lists unless a paragraph has no bullet
+  (`buNone`); text boxes are paragraphs unless a paragraph has one. Levels become indented items, automatic numbering
+  becomes `1.`, `2.`; runs keep bold, italic and web/mail links. Text that would read as Markdown, a slide break
+  (`---`) or a `Note:` marker is escaped.
+- Tables become pipe tables (the first row as header, a cell's paragraphs joined by `<br>`, merged cells keeping
+  columns aligned).
+- Pictures go into `<name>_files` next to the file (one file per picture part, even when reused across slides), like the
+  other Markdown outputs; **Leave out pictures** leaves them out.
+- The speaker notes follow a `Note:` line, which reveal.js shows in its speaker view.
+- Right-to-left and other scripts are written as they are; Markdown has no direction of its own.
+
+Not converted: charts, SmartArt, equations, animations, hidden slides, and footer / date / slide-number placeholders.
 
 ## Office Open XML variants
 
@@ -1434,8 +1464,8 @@ to draw). G-code is a read-only CAD format (fields: 3D models and CAD).
 
 ## 3D models
 
-`Filee.Engines/Models3D` converts GLB, glTF, STL, OBJ, 3MF and PLY into each other, and FBX into any of them, in
-managed code: every reader
+`Filee.Engines/Models3D` converts GLB, glTF, STL, OBJ, 3MF and PLY into each other, FBX and Source engine models (MDL)
+into any of them, and studiomdl data (SMD) to and from them, in managed code: every reader
 fills one in-memory model (`Model3D`: parts with positions, normals, UVs, vertex colours and triangles; materials
 with a base colour and a base colour texture) and every writer takes it, so each pair is one step. glTF and GLB are
 read and written with [SharpGLTF](https://github.com/vpenades/SharpGLTF) (MIT); STL, OBJ/MTL, PLY, 3MF and the FBX
@@ -1469,6 +1499,8 @@ What each format keeps:
 | OBJ + MTL | `o` / `g` / `usemtl` as parts, `v` (+ r g b), `vt`, `vn`, faces of any size; `mtllib` with `Kd`, `d` / `Tr`, `map_Kd` (options skipped) next to the file | **the `.mtl` and the textures are written next to the `.obj`** (`name.obj`, `name.mtl`, `name_texture.png`, named like the output); vertex colours as `v x y z r g b` |
 | 3MF | objects, components (also in other model parts, as Bambu Studio writes them), build transforms, base materials, colour groups (materials extension); `support` / `other` objects skipped | one object per part, base materials from material colours, a colour group from vertex colours |
 | FBX (read only) | binary 6.x–7.x (64-bit records from 7.5, zlib-compressed arrays) and ASCII; mesh geometry with polygons of any size, the first normal, UV, colour and material layer (by polygon vertex, control point or polygon, or all the same; direct or indexed); the model hierarchy from the connections with translation, rotation (every Euler order, pre- / post-rotation, pivots and offsets), scaling and geometric transforms; property templates from Definitions; material `DiffuseColor` and `Opacity`; the diffuse texture embedded (Video `Content`) or named next to the file; animation, skins, blend shapes, NURBS, cameras and lights skipped (the rest pose is read) | — (not written) |
+| SMD (studiomdl data) | the triangles of a reference SMD, one part per material (bones and weights not kept) | from an MDL: its bones, bind pose and weights (see below); from the others: a static prop with one root bone |
+| MDL (Source engine, read only) | versions 44–49 with the `.vvd` and `.dx90.vtx` (else `.vtx`, `.dx80.vtx`, `.sw.vtx`) beside it (see below) | — (needs Valve's studiomdl) |
 | PLY | ASCII, binary little / big endian; vertex position, normal, UV (`s`/`t`, `u`/`v`, `texture_u`/`texture_v`), colours of any type; face lists with per-corner `texcoord` and face colours; `comment TextureFile`; other elements skipped | binary little endian, one mesh; material colours become vertex colours |
 
 Lost on the way (no place in the target): **STL** keeps only the triangles (no colours, UVs, normals or materials);
@@ -1482,6 +1514,67 @@ a clear message, as do damaged files ("cut short", an index that does not exist,
 FBX's texture names) are read only from the model's folder or a folder below it. A path that climbs out (`../`) or
 points anywhere else is looked up by its name in the model's folder instead, so a downloaded model cannot pull a
 picture from elsewhere on the disk into its output.
+
+**Source engine models** (`.mdl`, #1526, the Games field; `Models3D/SourceModel.cs`): Garry's Mod, Counter-Strike:
+Source, Team Fortress 2 and Half-Life 2 models are three files studiomdl writes side by side: the `.mdl` (bones,
+textures, texture folders, the skin table, body parts → models → meshes), the `.vvd` (vertices with up to three bone
+weights; fixups say which runs make LOD 0) and the `.dx90.vtx` (per mesh, strip groups of triangle lists or strips
+indexing the mesh's vertices). All three must have the `.mdl`'s checksum, else the files belong to different builds and
+the model is refused; a missing `.vvd` or `.vtx` is named. The model is read in its bind pose with its default body
+groups (the first model of each body part), the first skin and LOD 0; animations, flexes, attachments and the physics
+mesh (`.phy`) are not read. Source is Z up and measured in inches (25.4 mm), its triangles are clockwise and its UVs
+start at the top left, so the model is turned to Filee's Y up, millimetres, counter-clockwise and bottom-left UVs; each
+mesh becomes a part named after its model, with one material per texture. Later branches' 8-byte-longer strip groups
+(CS:GO) are read when the indices of the usual layout don't fit.
+The textures are found as Garry's Mod finds them: in the addon's or game's own layout, the `materials` folder beside the
+`models` folder the model is in, `materials/<texture folder>/<texture>.vmt` for each of the model's texture folders
+(`$cdmaterials`), letter case aside, then the material's `$basetexture` (also through a `patch` material's `include`) as
+a `.vtf`, decoded by the VTF reader into a PNG texture; `$nocull` makes the material double-sided. Only `.vmt` and
+`.vtf` files below that `materials` folder are read, never through `..`. A model outside such a layout, or one whose
+materials come from the game itself (the HL2 textures), keeps plain materials. OBJ output writes the textures beside the
+`.obj`, GLB embeds them.
+
+**Studiomdl data** (`.smd`, #1526, the Games field; `Models3D/SmdFormat.cs`): the text Valve's studiomdl compiles models
+from (`nodes`, a `skeleton` at `time 0`, `triangles`: a material line and three vertex lines of parent bone, position,
+normal, UV and bone weights), Z up, in inches, counter-clockwise, UVs from the bottom left. An MDL becomes a reference
+SMD that studiomdl can compile again: its bones with their bind pose (position and rotation relative to the parent), its
+triangles with up to three bone weights per vertex and the textures as materials, read straight from the model so the
+skeleton is kept (Filee's own 3D model has no place for it). Any other model becomes a static prop: one `root` bone,
+every vertex weighted to it, the material's (or texture's) name as the material line, normals computed where the model
+has none. Reading takes the triangles of a reference SMD as a static model; an animation SMD (no triangles) is refused
+with "no triangles", a broken line with its number. The "SMD" preset is in the palette, after glTF.
+
+**Decompiling Source engine models** (#1526, `Models3D/SourceDecompiler.cs`, with `SourceModelDetails`,
+`SourceAnimation` and `SourcePhysics`): the "QC + SMD" preset (in the palette after "SMD", settings schema 101; only
+a `.mdl` takes it) turns a model into a folder named after it with what studiomdl builds it from:
+
+| File | Holds |
+|---|---|
+| `<model>.qc` | in the order and layout decompiled QCs commonly have: `$modelname`, `$staticprop`, `$bodygroup`s, `$lod`/`$shadowlod` blocks, `$surfaceprop`, `$contents`, `$illumposition` and `$eyeposition` (turned back the quarter turn studiomdl gives them), the other flags (`$opaque`, `$mostlyopaque` …), `$cdmaterials`, `$texturegroup` (the textures that differ between skins), `$attachment`s, `$cbox`, `$bbox`, a `$definebone` per bone, `$hboxset`/`$hbox`es (not when studiomdl made them), `$poseparameter`s, `$sectionframes`, a `$sequence` per sequence (its animations, activity and weight, fade times, fps, `loop`/`snap`/`delta`/… options, motion flags, blend parameters, events), `$includemodel`s (without the `models/` studiomdl adds), `$collisionmodel` or `$collisionjoints` with its settings, `$keyvalues` |
+| `<body model>.smd` | one reference SMD per body group model with triangles (blank models are `blank` in the QC) |
+| `<body model>_lod<n>.smd` | a model's triangles at LOD *n*, written only when they differ from the LOD before; a model a LOD drops is `removemodel` |
+| `<model>_physics.smd` | the convex pieces of the `.phy`, every vertex on its piece's bone (material `phy`) |
+| `<model>_anims/<animation>.smd` | every frame of every bone of each animation |
+
+LODs use the LOD 0 vertices with each LOD's own triangles from the `.vtx` (each mesh's vertex numbers count from the
+same start in every LOD; checked against the six LODs of a Garry's Mod vehicle). Animations are decoded from the `.mdl`,
+or the `.ani` file beside it when they are in animation blocks, section by section: each animated bone has a raw
+rotation (Quaternion64 or Quaternion48), run-length encoded rotation tracks, a raw position (three half floats) or
+position tracks, scaled by the bone's scales and added to its bind pose (not for delta animations); bones an animation
+doesn't touch keep their bind pose, and the linear motion studiomdl took out of the root bones (movements) is added back.
+Rotations are Source's Euler angles (rotation about X, then Y, then Z), as in the bones and SMDs. The `.phy`'s solids
+are walked through their IVP ledge trees; points are in metres in IVP's axes (Source x = x, y = z, z = −y), turned into
+inches. A solid named after a bone (`$collisionjoints`, a ragdoll) is in that bone's space and is moved into the model's
+with the bind pose; the joint limits (`ragdollconstraint`) become `$jointconstrain` lines. A `.phy` with another
+checksum than the `.mdl` is left out with a comment in the QC. Not written: flexes (`.vta`), eyeballs, IK rules and
+chains, bone controllers and procedural bones; a model that has them still compiles from the QC, without them.
+Compiling a QC back into an MDL needs Valve's studiomdl, which only the games and their SDKs ship.
+
+Every count in the `.mdl`, `.phy` and `.ani` is capped and every offset checked against the file before it is used or
+anything is allocated: frames (100,000 per animation), bone entries per frame, track runs, sequences and their blend
+grids (4,096 animations), events, LODs (8), attachments, hitboxes, solids (1,024), ledge tree nodes (65,536, walked
+without recursion so a looping tree stops), points per piece (65,536); a damaged file is refused and the half-written
+folder removed.
 
 **3D → pictures**: a small software rasteriser (`MeshRenderer`) draws an isometric view from the front right, above,
 with one light and flat shading per triangle, vertex colours or the texture interpolated across it, and a z-buffer,
@@ -1829,15 +1922,15 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 | TAR | 7-Zip | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
 | TAR.GZ | 7-Zip, in two stages | in-process (PAX TAR + GZipStream) |
 | TAR.BZ2, TAR.XZ | 7-Zip, in two stages | TAR in-process, compressed by 7-Zip |
-| TAR.7Z, TAR.Z | 7-Zip, in two stages | — |
+| TAR.7Z, TAR.Z, TAR.ZST (TZST) | 7-Zip, in two stages | — |
 | LZ, TAR.LZ (lzip) | Filee: each member rewritten as a .lzma file for 7-Zip's LZMA decoder, stopped at the size its trailer states, CRC checked | — |
 | GZ, BZ2, XZ | 7-Zip | 7-Zip; one file only (from another single-file format, or "Compress into one archive" with one file) |
-| LZMA, Z | 7-Zip | — |
+| LZMA, Z, ZST (Zstandard) | 7-Zip | — |
 | RAR 4/5, CAB, CPIO, DEB, RPM, DMG, ISO, IMG, LHA/LZH, ARJ | 7-Zip (an RPM's payload is unpacked until the files appear) | — |
 | Split archives (.001, .7z.001, .zip.001, .tar.001) | 7-Zip (combining .002, .003 … automatically) | — |
 | ALZ (ALZip) | Filee: store, deflate and ALZip's bzip2 variant | — |
 | EGG (ALZip) | Filee: store, deflate, bzip2, LZMA (decoded by 7-Zip); several blocks per file | — |
-| GMA (Garry's Mod addon) | Filee: versions 1–3, CRCs checked, an `addon.json` written beside the files | — |
+| GMA (Garry's Mod addon) | Filee: versions 1–3, CRCs checked, an `addon.json` written beside the files | Filee, as gmad does (see below) |
 | BSP (Source engine map), its packed files | Filee copies the pakfile lump (a ZIP) out, 7-Zip unpacks it | — |
 | VPK (Valve pak) | Filee: versions 1 and 2, `_dir.vpk` with its `_000.vpk` … parts, CRCs checked; a PS Vita `.vpk` (a ZIP) by 7-Zip | — |
 
@@ -1858,8 +1951,16 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   (names, sizes, CRC-32s) and the files one after another, ended by a CRC-32 of everything before it. Every name is
   checked before anything is written (an absolute name, a drive or a `..` stops the addon), the entries are capped at
   the archive limit and their sizes must fit inside the addon. Unpacking checks every file's CRC (0, as `gmad -nocrc`
-  writes it, is not checked) and writes an `addon.json` with the title, description, type and tags, as gmad reads it
-  to pack the folder again; the required-content list and the author are not kept (Garry's Mod uses neither).
+  writes it, is not checked) and writes an `addon.json` with the title, description, type and tags, so the folder packs
+  back into the same addon; the required-content list and the author are not kept (Garry's Mod uses neither). Packing
+  a folder, a ZIP of one or the files dropped onto "Compress into one archive" reads `addon.json` like gmad: `title`
+  (else the folder's name), `type` (else `servercontent`), `tags`, `description` and the `ignore` wildcards. Only
+  files on gmad's whitelist go in (`lua/*.lua`, `materials/*.vtf`, `models/*.mdl` …, the ones Garry's Mod mounts;
+  `addon.json`, `thumbs.db`, `desktop.ini`, `.git*` and `.DS_Store` never), so a `.psd` or a `readme.txt` beside them
+  is left out rather than failing the addon as gmad does without `-warninvalid`; a folder with none of them is
+  refused. Names are stored in lower case, sorted, with a CRC each. The type and tags are written as given (lower
+  case), not checked against the Workshop's lists. The "GMA" preset is in the palette after the game packs (schema
+  96), not on a donut.
 - **Valve paks** (`.vpk`, #1526, the Games field; `Archives/Vpk.cs`): the archives Source engine games keep their files
   in (`hl2_textures_dir.vpk`, the content Garry's Mod mounts). The directory file holds a tree of extensions, folders
   and names; each file's content is a few preload bytes stored in the tree plus its data, which follows the tree in the
@@ -1899,8 +2000,8 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   written); symbolic links are never unpacked and any link left afterwards is deleted; archives with more than
   1,000,000 entries or more data than the drive has free are refused (a listing without sizes still needs the 64 MB
   reserve); Filee's own readers also stop when data unpacks to more than the entry declares, and check CRCs.
-- **Single compressed streams** (GZ, BZ2, XZ, LZMA, Z, and the first stage of TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z) state
-  no size (bzip2) or one their author chose (gzip, modulo 4 GiB), so the listing can't be trusted: 7-Zip writes them
+- **Single compressed streams** (GZ, BZ2, XZ, LZMA, Z, ZST, and the first stage of TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z,
+  TAR.ZST) state no size (bzip2) or one their author chose (gzip, modulo 4 GiB), so the listing can't be trusted: 7-Zip writes them
   to its standard output (`x -so`) and Filee writes the file, stopping 7-Zip and deleting what was written once it
   passes the room on the drive less a tenth of the free space ("unpacks to more than …, but only … is free").
 - **Mark of the Web** (Windows): unpacked files get the archive's `Zone.Identifier` stream, so a ZIP a browser saved
@@ -1928,6 +2029,19 @@ LTRData DiscUtils writes ISO 9660 with Joliet (the default) or UDF 2.01 in-proce
 preset, or use `--iso-filesystem udf201` with `--to iso` in the CLI (`--iso-filesystem joliet` selects the default).
 No new donut slice is added. Existing presets retain Joliet without a schema migration. Images are data discs,
 not bootable clones. Archive reading still uses the existing extraction engine.
+
+The volume label defaults to the input folder name, or the archive name without its extension (including `.tar.gz`).
+A dotted folder name keeps its suffix. Names are fitted to the selected filesystem, with `FILEE` as the fallback
+when no usable label remains. Each input gets its own label, independently of the output filename.
+The ISO preset's **Volume label** field overrides this default; empty uses the input name. The CLI equivalent is
+`--iso-label "MY_DISC"`, which overrides the preset for that command without changing the saved preset.
+Custom labels are validated rather than silently changed. Joliet preserves case, spaces, punctuation and BMP Unicode
+within its 16-character limit, excluding control characters and `*`, `/`, `:`, `;`, `?` and backslashes. Its primary
+ISO 9660 descriptor has a separate uppercase ASCII-compatible label for older readers. UDF accepts up to
+30 Latin-1 characters, or 15 UTF-16 units when another character is present; a supplementary character takes two units.
+UDF labels cannot contain control characters, malformed Unicode or leading/trailing whitespace.
+For example: `filee convert "backup.tar.gz" --to iso --iso-filesystem udf201 --iso-label "My backup"`.
+The optional label is saved with presets and can be included in shared presets; older presets need no migration.
 
 UDF supports approximately 234 GiB per file and 8 TiB per partition. The library encodes filenames in OSTA compressed
 Unicode (up to 254 bytes before the file identifier prefix); names outside its supported range are refused before replacing the
@@ -2115,7 +2229,7 @@ target and PNG frames. FFmpeg has no FLIC encoder, so nothing writes them.
 A Video CD's `MPEGAV/AVSEQ01.DAT` (MPEG-1 in a RIFF/CDXA wrapper) counts as MPEG: `.dat` is an extension of that
 format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fails instead of making a file.
 
-- The download is the gyan.dev **9.0.2 "full_build-shared"** Windows build (GPL-3.0, run as a separate program).
+- The download is the gyan.dev **9.1 "full_build-shared"** Windows build (GPL-3.0, run as a separate program).
   It is smaller than the "essentials" build (100 vs 115 MB download, 272 vs 329 MB on disk, because ffmpeg.exe and
   ffprobe.exe share their libraries) and has a superset of its encoders. It links only Windows system DLLs; GPU
   and Vulkan libraries are loaded only if present. Being over 60 MB, it is offered but not ticked on first run.

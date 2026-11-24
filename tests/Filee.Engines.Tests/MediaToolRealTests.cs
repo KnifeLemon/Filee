@@ -164,6 +164,36 @@ public class MediaToolRealTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task Clips_with_newlines_in_paths_fall_back_to_encoding_without_splicing_directives()
+    {
+        Assert.SkipUnless(!OperatingSystem.IsWindows(), "POSIX filenames with line breaks are not valid on Windows.");
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        string[] h264 = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac"];
+        var first = await MakeClipAsync(folder, "a.mp4", 1, extra: h264);
+        var unselected = await MakeClipAsync(folder, "unselected.mp4", 3, extra: h264);
+        var injectedPath = Path.Combine(folder, "b\nfile ") + unselected + "\n#.mp4";
+        var injectedDir = Path.GetDirectoryName(injectedPath)!;
+        Directory.CreateDirectory(injectedDir);
+        var second = await MakeClipAsync(injectedDir, Path.GetFileName(injectedPath), 1, extra: h264);
+
+        var preset = BuiltIn("merge-videos");
+        var infoA = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, first, TestContext.Current.CancellationToken);
+        var infoB = await MediaInfo.ProbeAsync(Tools.Value.Ffprobe, second, TestContext.Current.CancellationToken);
+        Assert.True(MediaJoining.CanCopyVideos([infoA, infoB], preset.Media));
+        Assert.False(MediaJoining.CanUseConcatList([first, second]));
+
+        var output = await RunAsync([first, second], preset);
+
+        var probed = await ProbeAsync(output);
+        Assert.InRange(probed.Duration, 1.8, 2.3);
+        Assert.Equal(("h264", 320, 240), (probed.Video!.Codec, probed.Video.Width, probed.Video.Height));
+        Assert.Equal("aac", probed.Audio!.Codec);
+        // Encoded via EncodeVideos fallback, not stream-copied through a concat manifest.
+        Assert.NotEqual((await PacketHashesAsync(first)).Skip(1).Take(10), (await PacketHashesAsync(output)).Skip(1).Take(10));
+    }
+
+    [Fact]
     public async Task Clips_whose_sound_is_on_another_track_keep_every_parts_sound_when_merged()
     {
         SkipUnlessInstalled();

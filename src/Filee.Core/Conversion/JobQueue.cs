@@ -1047,7 +1047,10 @@ public sealed partial class JobQueue : IAsyncDisposable
                                 file.MissingFonts = file.MissingFonts.Concat(fonts)
                                     .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                                 Notify(job);
-                            }, file.SourcePath, Caption: step.Caption, Translate: step.Translate);
+                            }, file.SourcePath, Caption: step.Caption, Translate: step.Translate)
+                        {
+                            NextConverterId = isLast ? null : route.Steps[s + 1].Converter.Id,
+                        };
                         outputs.AddRange(await step.Converter.ConvertAsync(stepInfo, progress, ct));
                     }
                     finally

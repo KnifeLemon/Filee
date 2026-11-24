@@ -25,6 +25,9 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
         public int ResourceItems { get; init; } = 1_000_000;
         public int AppearanceLength { get; init; } = 4096;
         public int AppearanceBytes { get; init; } = 1024 * 1024;
+        public int AnnotationEntries { get; init; } = 1_000_000;
+        public int AnnotationCopyItems { get; init; } = 1_000_000;
+        public int AnnotationCopyBytes { get; init; } = 4 * 1024 * 1024;
         public Action? BeforeCarry { get; init; }
         public PdfMergePaperFitter.Limits? Paper { get; init; }
     }
@@ -35,6 +38,7 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
         public bool Opened { get; } = opened;
         public List<Outline> Children { get; } = [];
         public int VisibleChildren { get; set; }
+        public bool Dead { get; init; }
     }
 
     private readonly List<Outline> _outlines = [];
@@ -48,10 +52,13 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
     private int _stringBytes;
     private bool _needAppearances;
     private IReadOnlyDictionary<PdfObjectID, PdfMergePaperFitter.Transform>? _transforms;
+    private readonly Dictionary<PdfPage, List<(PdfDictionary Original, PdfDictionary Imported)>> _annotations = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<PdfDocument, Dictionary<PdfObjectID, List<(PdfDictionary Original, PdfDictionary Imported)>>> _sourceAnnotations = [];
+    private readonly HashSet<PdfDictionary> _rejectedLinks = new(ReferenceEqualityComparer.Instance);
 
     internal void Carry(PdfDocument source, IReadOnlyDictionary<PdfObjectID, PdfPage> pages, CancellationToken ct,
         string? sourceName = null, PdfPage? firstPage = null,
-        IReadOnlyDictionary<PdfObjectID, PdfMergePaperFitter.Transform>? transforms = null)
+        IReadOnlyDictionary<PdfObjectID, PdfMergePaperFitter.Transform>? transforms = null, bool partial = false)
     {
         _transforms = transforms;
         if (++_filePosition == 1)
@@ -78,11 +85,176 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
         var catalog = source.Internals.Catalog;
         var names = ReadDestinations(catalog, pages, ct);
         if (sourceName is null)
-            CarryOutlines(catalog, pages, names, _outlines, 1, 0, ct);
+            CarryOutlines(catalog, pages, names, _outlines, 1, 0, ct, partial);
         else if (parent is not null)
-            CarryOutlines(catalog, pages, names, parent.Children, 2, 1, ct);
-        CarryLinks(source, pages, names, ct);
-        CarryFields(catalog, ct);
+            CarryOutlines(catalog, pages, names, parent.Children, 2, 1, ct, partial);
+        CarryLinks(source, pages, names, ct, partial);
+        HashSet<PdfDictionary>? widgets = null;
+        if (partial)
+        {
+            widgets = new(ReferenceEqualityComparer.Instance);
+            foreach (var page in pages.Values)
+            {
+                ct.ThrowIfCancellationRequested();
+                foreach (var (_, annotation) in _annotations[page])
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (Name(annotation.Elements["/Subtype"]) == "/Widget")
+                        widgets.Add(annotation);
+                }
+            }
+        }
+        CarryFields(catalog, ct, widgets);
+    }
+
+    internal void Normalize(IReadOnlyList<(PdfDocument Source, PdfPage Original, PdfPage Imported)> occurrences, CancellationToken ct)
+    {
+        var arrays = new Dictionary<PdfArray, List<(PdfDictionary Original, PdfDictionary Imported)>>(ReferenceEqualityComparer.Instance);
+        var entries = 0;
+        var exhausted = false;
+        foreach (var (source, original, imported) in occurrences)
+        {
+            ct.ThrowIfCancellationRequested();
+            List<(PdfDictionary Original, PdfDictionary Imported)> pairs = [];
+            if (!exhausted && Array(original.Elements["/Annots"]) is { } annotations)
+            {
+                if (!arrays.TryGetValue(annotations, out pairs!))
+                {
+                    pairs = [];
+                    if (annotations.Elements.Count > limits.AnnotationEntries - entries)
+                        exhausted = true;
+                    else
+                    {
+                        entries += annotations.Elements.Count;
+                        var seen = new HashSet<PdfDictionary>(ReferenceEqualityComparer.Instance);
+                        var importedArray = Array(imported.Elements["/Annots"]);
+                        for (var i = 0; i < annotations.Elements.Count; i++)
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            if (Dictionary(annotations.Elements[i]) is not { } annotation || !seen.Add(annotation))
+                                continue;
+                            var mapped = Imported(annotation) as PdfDictionary;
+                            mapped ??= importedArray is not null && i < importedArray.Elements.Count
+                                ? Dictionary(importedArray.Elements[i]) : null;
+                            if (mapped is not null)
+                                pairs.Add((annotation, mapped));
+                        }
+                        arrays.Add(annotations, pairs);
+                    }
+                }
+                if (pairs.Count > limits.AnnotationEntries - entries)
+                    exhausted = true;
+                if (!exhausted)
+                    entries += pairs.Count;
+            }
+            if (exhausted)
+            {
+                imported.Elements.Remove("/Annots");
+                pairs = [];
+            }
+            else
+            {
+                var normalized = new PdfArray(output);
+                foreach (var (_, annotation) in pairs)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    normalized.Elements.Add(annotation.Reference is { } reference ? reference : annotation);
+                }
+                imported.Elements["/Annots"] = normalized;
+            }
+            _annotations.Add(imported, pairs);
+            if (!_sourceAnnotations.TryGetValue(source, out var pages))
+                _sourceAnnotations.Add(source, pages = []);
+            // Retain the first occurrence even when the budget removed all of its annotations.
+            pages.TryAdd(original.Reference!.ObjectID, pairs);
+        }
+    }
+
+    internal void Separate(PdfPages pages, CancellationToken ct)
+    {
+        var owners = new HashSet<PdfDictionary>(ReferenceEqualityComparer.Instance);
+        var sharedValues = new Dictionary<PdfDictionary, Dictionary<PdfItem, PdfItem>>(ReferenceEqualityComparer.Instance);
+        var items = 0;
+        var bytes = 0;
+        var exhausted = false;
+        foreach (var page in pages)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (Array(page.Elements["/Annots"]) is not { } annotations)
+                continue;
+            var separate = new PdfArray(output);
+            foreach (var item in annotations.Elements)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (Dictionary(item) is not { } annotation || _rejectedLinks.Contains(annotation))
+                    continue;
+                if (owners.Add(annotation))
+                {
+                    if (annotation.Elements.ContainsKey("/P"))
+                        annotation.Elements["/P"] = page.Reference;
+                    separate.Elements.Add(item);
+                    continue;
+                }
+                if (exhausted || Name(annotation.Elements["/Subtype"]) is "/Widget" or "/Popup")
+                    continue;
+                var count = annotation.Elements.ContainsKey("/P") ? 0 : 1;
+                var size = annotation.Elements.ContainsKey("/P") ? 0L : 2L;
+                foreach (var entry in annotation.Elements)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (entry.Key == "/Popup")
+                        continue;
+                    count++;
+                    size += entry.Key.Length;
+                    if (entry.Value is PdfName name)
+                        size += name.Value.Length;
+                    if (count > limits.AnnotationCopyItems - items || size > limits.AnnotationCopyBytes - bytes)
+                        break;
+                }
+                if (count > limits.AnnotationCopyItems - items || size > limits.AnnotationCopyBytes - bytes)
+                {
+                    exhausted = true;
+                    continue;
+                }
+                items += count;
+                bytes += (int)size;
+                // Promote direct payloads once, so a large string or graph is not written once per page.
+                if (!sharedValues.ContainsKey(annotation))
+                {
+                    var cache = new Dictionary<PdfItem, PdfItem>(ReferenceEqualityComparer.Instance);
+                    sharedValues.Add(annotation, cache);
+                    foreach (var key in annotation.Elements.Keys.ToArray())
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var value = annotation.Elements[key]!;
+                        if (value is PdfReference || value is not (PdfString or PdfArray or PdfDictionary))
+                            continue;
+                        if (!cache.TryGetValue(value, out var shared))
+                        {
+                            PdfObject obj = value is PdfString text
+                                ? new PdfStringObject(output, text.Value) { Encoding = text.Encoding }
+                                : (PdfObject)value;
+                            if (obj.Reference is null)
+                                output.Internals.AddObject(obj);
+                            shared = obj.Reference!;
+                            cache.Add(value, shared);
+                        }
+                        annotation.Elements[key] = shared;
+                    }
+                }
+                var copy = new PdfDictionary(output);
+                foreach (var entry in annotation.Elements)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (entry.Key != "/Popup")
+                        copy.Elements[entry.Key] = entry.Value;
+                }
+                copy.Elements["/P"] = page.Reference;
+                output.Internals.AddObject(copy);
+                separate.Elements.Add(copy.Reference!);
+            }
+            page.Elements["/Annots"] = separate;
+        }
     }
 
     private static string SourceTitle(string sourceName)
@@ -170,7 +342,9 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
     private readonly Dictionary<string, int> _destinationSuffixes = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Kind, string Name), int> _resourceSuffixes = new();
     private readonly Dictionary<PdfDictionary, PdfDictionary?> _actions = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<PdfDictionary> _links = new(ReferenceEqualityComparer.Instance);
+    // Null when none of the entries of the imported /AA is left.
+    private readonly Dictionary<PdfDictionary, PdfDictionary?> _additionalActions = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<PdfDictionary> _rewrittenAnnotations = new(ReferenceEqualityComparer.Instance);
 
     private int ByteCount(PdfString text)
     {
@@ -371,7 +545,8 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
     }
 
     private void CarryOutlines(PdfDictionary catalog, IReadOnlyDictionary<PdfObjectID, PdfPage> pages,
-        Dictionary<(bool Legacy, string Bytes), string> names, List<Outline> into, int depth, int count, CancellationToken ct)
+        Dictionary<(bool Legacy, string Bytes), string> names, List<Outline> into, int depth, int count, CancellationToken ct,
+        bool partial)
     {
         if (Dictionary(catalog.Elements["/Outlines"]) is not { } root)
             return;
@@ -410,7 +585,11 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
             }
             if (Value(entry.Source.Elements["/F"]) is PdfInteger style)
                 dictionary.Elements["/F"] = new PdfInteger(style.Value);
-            var outline = new Outline(dictionary, Value(entry.Source.Elements["/Count"]) is PdfInteger { Value: > 0 });
+            var outline = new Outline(dictionary, Value(entry.Source.Elements["/Count"]) is PdfInteger { Value: > 0 })
+            {
+                Dead = partial && destination is null && (entry.Source.Elements.ContainsKey("/Dest") ||
+                    Dictionary(entry.Source.Elements["/A"]) is { } target && Name(target.Elements["/S"]) == "/GoTo"),
+            };
             entry.Into.Add(outline);
             count++;
             if (Dictionary(entry.Source.Elements["/First"]) is { } child)
@@ -419,73 +598,147 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
     }
 
     private void CarryLinks(PdfDocument source, IReadOnlyDictionary<PdfObjectID, PdfPage> pages,
-        Dictionary<(bool Legacy, string Bytes), string> names, CancellationToken ct)
+        Dictionary<(bool Legacy, string Bytes), string> names, CancellationToken ct, bool partial)
     {
-        foreach (var page in source.Pages)
+        IEnumerable<(PdfDictionary Original, PdfDictionary Imported)> Pairs(PdfPage page)
         {
-            ct.ThrowIfCancellationRequested();
+            if (partial)
+            {
+                if (pages.ContainsKey(page.Reference!.ObjectID) &&
+                    _sourceAnnotations[source].TryGetValue(page.Reference.ObjectID, out var pairs))
+                    foreach (var pair in pairs)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        yield return pair;
+                    }
+                yield break;
+            }
             if (Array(page.Elements["/Annots"]) is not { } annotations ||
                 Array(pages[page.Reference!.ObjectID].Elements["/Annots"]) is not { } imported)
-                continue;
+                yield break;
             for (var i = 0; i < annotations.Elements.Count; i++)
             {
                 ct.ThrowIfCancellationRequested();
-                if (Dictionary(annotations.Elements[i]) is not { } annotation || Name(annotation.Elements["/Subtype"]) != "/Link")
+                if (Dictionary(annotations.Elements[i]) is not { } annotation)
                     continue;
                 var mapped = Imported(annotation) as PdfDictionary;
                 mapped ??= i < imported.Elements.Count ? Dictionary(imported.Elements[i]) : null;
-                // An /Annots array may list one annotation many times; rewriting it again would copy its action again.
-                if (mapped is null || !_links.Add(mapped))
+                if (mapped is not null)
+                    yield return (annotation, mapped);
+            }
+        }
+        foreach (var page in source.Pages)
+        {
+            ct.ThrowIfCancellationRequested();
+            foreach (var (annotation, mapped) in Pairs(page))
+            {
+                ct.ThrowIfCancellationRequested();
+                var subtype = Name(annotation.Elements["/Subtype"]);
+                var link = subtype == "/Link";
+                if (!link && subtype != "/Widget")
                     continue;
-                if (annotation.Elements.ContainsKey("/Dest"))
+                // An /Annots array may list one annotation many times; rewriting it again would copy its action again.
+                if (!_rewrittenAnnotations.Add(mapped))
+                    continue;
+                if (link && annotation.Elements.ContainsKey("/Dest"))
                 {
                     var destination = Destination(annotation.Elements["/Dest"], pages, names, true);
                     if (destination is not null)
                         mapped.Elements["/Dest"] = destination;
                     else
+                    {
                         mapped.Elements.Remove("/Dest");
+                        if (partial)
+                            _rejectedLinks.Add(mapped);
+                    }
                 }
                 if (Dictionary(annotation.Elements["/A"]) is { } action && Name(action.Elements["/S"]) == "/GoTo")
                 {
-                    // Links sharing one action get one rewritten action; copying it per link would write a large
-                    // direct /Next graph once per link.
-                    var shared = Dictionary(mapped.Elements["/A"]);
-                    if (shared is not null && _actions.TryGetValue(shared, out var done))
-                    {
-                        if (done is null)
-                            mapped.Elements.Remove("/A");
-                        else
-                            mapped.Elements["/A"] = done.Reference;
-                        continue;
-                    }
-                    var destination = Destination(action.Elements["/D"], pages, names, true);
-                    if (destination is null)
-                    {
-                        mapped.Elements.Remove("/A");
-                        if (shared is not null)
-                            _actions.Add(shared, null);
-                    }
+                    if (RewriteGoTo(action, Dictionary(mapped.Elements["/A"]), pages, names) is { } rewritten)
+                        mapped.Elements["/A"] = rewritten.Reference;
                     else
                     {
-                        // A fresh dictionary, as the imported action may be shared; its other entries such as
-                        // /Next are already output objects and stay.
-                        var copy = new PdfDictionary(output);
-                        if (shared is not null)
-                            foreach (var entry in shared.Elements)
-                                copy.Elements[entry.Key] = entry.Value;
-                        copy.Elements["/S"] = new PdfName("/GoTo");
-                        copy.Elements["/D"] = destination;
-                        output.Internals.AddObject(copy);
-                        mapped.Elements["/A"] = copy.Reference;
-                        if (shared is not null)
-                            _actions.Add(shared, copy);
+                        mapped.Elements.Remove("/A");
+                        // A button without its jump is still a field; a link without one is nothing.
+                        if (partial && link)
+                            _rejectedLinks.Add(mapped);
                     }
                 }
+                if (!link)
+                    RewriteAdditionalActions(annotation, mapped, pages, names, ct);
             }
         }
     }
 
-    private void CarryFields(PdfDictionary catalog, CancellationToken ct)
+    // The rewritten action, or null when its destination doesn't resolve. Annotations sharing one action share the
+    // result; copying it per annotation would write a large direct /Next graph once per annotation.
+    private PdfDictionary? RewriteGoTo(PdfDictionary action, PdfDictionary? imported,
+        IReadOnlyDictionary<PdfObjectID, PdfPage> pages, Dictionary<(bool Legacy, string Bytes), string> names)
+    {
+        if (imported is not null && _actions.TryGetValue(imported, out var done))
+            return done;
+        PdfDictionary? copy = null;
+        if (Destination(action.Elements["/D"], pages, names, true) is { } destination)
+        {
+            // A fresh dictionary, as the imported action may be shared; its other entries such as /Next are already
+            // output objects and stay.
+            copy = new PdfDictionary(output);
+            if (imported is not null)
+                foreach (var entry in imported.Elements)
+                    copy.Elements[entry.Key] = entry.Value;
+            copy.Elements["/S"] = new PdfName("/GoTo");
+            copy.Elements["/D"] = destination;
+            output.Internals.AddObject(copy);
+        }
+        if (imported is not null)
+            _actions.Add(imported, copy);
+        return copy;
+    }
+
+    // Writers also store a button's jump under /AA (LibreOffice in /D, dvipdfmx in /U). The imported dictionary may be
+    // shared with a parent field, whose own actions stay, so the rewritten entries go into a copy.
+    private void RewriteAdditionalActions(PdfDictionary annotation, PdfDictionary mapped,
+        IReadOnlyDictionary<PdfObjectID, PdfPage> pages, Dictionary<(bool Legacy, string Bytes), string> names,
+        CancellationToken ct)
+    {
+        if (Dictionary(annotation.Elements["/AA"]) is not { } source ||
+            Dictionary(mapped.Elements["/AA"]) is not { } imported)
+            return;
+        if (!_additionalActions.TryGetValue(imported, out var result))
+        {
+            result = imported;
+            PdfDictionary? copy = null;
+            foreach (var key in source.Elements.Keys.ToArray())
+            {
+                ct.ThrowIfCancellationRequested();
+                if (Dictionary(source.Elements[key]) is not { } action || Name(action.Elements["/S"]) != "/GoTo")
+                    continue;
+                if (copy is null)
+                {
+                    copy = new PdfDictionary(output);
+                    foreach (var entry in imported.Elements)
+                        copy.Elements[entry.Key] = entry.Value;
+                }
+                if (RewriteGoTo(action, Dictionary(imported.Elements[key]), pages, names) is { } rewritten)
+                    copy.Elements[key] = rewritten.Reference;
+                else
+                    copy.Elements.Remove(key);
+            }
+            if (copy is not null)
+            {
+                result = copy.Elements.Count > 0 ? copy : null;
+                if (result is not null)
+                    output.Internals.AddObject(result);
+            }
+            _additionalActions.Add(imported, result);
+        }
+        if (result is null)
+            mapped.Elements.Remove("/AA");
+        else if (!ReferenceEquals(result, imported))
+            mapped.Elements["/AA"] = result.Reference;
+    }
+
+    private void CarryFields(PdfDictionary catalog, CancellationToken ct, HashSet<PdfDictionary>? widgets)
     {
         if (Dictionary(catalog.Elements["/AcroForm"]) is not { } form)
             return;
@@ -548,6 +801,33 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
             }
             if (!valid || signature || Imported(root) is not PdfDictionary imported)
                 continue;
+            if (widgets is not null)
+            {
+                var kept = new HashSet<PdfDictionary>(ReferenceEqualityComparer.Instance);
+                for (var i = nodes.Count - 1; i >= 0; i--)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (Imported(nodes[i]) is not PdfDictionary mapped)
+                        continue;
+                    if (Array(mapped.Elements["/Kids"]) is { } kids)
+                    {
+                        var remaining = new PdfArray(output);
+                        foreach (var kid in kids.Elements)
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            if (Dictionary(kid) is { } child && kept.Contains(child))
+                                remaining.Elements.Add(kid);
+                        }
+                        mapped.Elements["/Kids"] = remaining;
+                        if (remaining.Elements.Count > 0)
+                            kept.Add(mapped);
+                    }
+                    else if (widgets.Contains(mapped))
+                        kept.Add(mapped);
+                }
+                if (!kept.Contains(imported))
+                    continue;
+            }
             foreach (var node in nodes)
                 if (Dictionary(node.Elements["/DR"]) is { } local)
                     foreach (var kind in ResourceKinds)
@@ -1098,6 +1378,29 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
 
     internal void Write(CancellationToken ct)
     {
+        var prune = new Stack<(List<Outline> Items, bool Finish)>();
+        prune.Push((_outlines, false));
+        while (prune.TryPop(out var branch))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (branch.Finish)
+            {
+                // A dead destination may still head a useful group; only empty dead branches disappear.
+                branch.Items.RemoveAll(outline =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    return outline.Dead && outline.Children.Count == 0;
+                });
+                continue;
+            }
+            prune.Push((branch.Items, true));
+            foreach (var outline in branch.Items)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (outline.Children.Count > 0)
+                    prune.Push((outline.Children, false));
+            }
+        }
         var catalog = output.Internals.Catalog;
         if (_destinations.Count > 0)
         {

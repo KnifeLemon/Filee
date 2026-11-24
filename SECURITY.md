@@ -42,6 +42,9 @@ Out of scope:
 
 - **Updates:** an installed copy downloads the new installer (Windows) or package (Linux) from GitHub Releases and
   checks its SHA-256 against the release's `SHA256SUMS` file before it runs it.
+  - When GitHub doesn't hand out a Windows file (a timeout, an error), Filee takes the same file from its own
+    download mirror, `https://dl.filee.sh/<version>/`, and checks it in exactly the same way. The mirror is only
+    another way to get the file: a file from it that isn't signed or doesn't match is refused like one from GitHub.
   - Official builds carry the public half of Filee's update key. The `SHA256SUMS` file must then have a valid
     signature made with that key next to it (`…-SHA256SUMS.txt.sig`, ECDSA P-256), and the version it lists must be
     newer than the installed one. Otherwise nothing is installed, on every platform. The private key never leaves

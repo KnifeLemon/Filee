@@ -855,6 +855,485 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
             Assert.Equal("changed", S(D(D(widget).Elements["/Parent"]).Elements["/V"]));
     }
 
+    private string SavePages(IReadOnlyList<PdfPageReference> pages, PdfMergeStructure.Limits? limits = null)
+    {
+        var path = Path.Combine(fx.NewFolder(), "saved.pdf");
+        PdfPageTools.Save(pages, path, TestContext.Current.CancellationToken, limits);
+        return path;
+    }
+
+    private static void AssertWidgetOwners(PdfDocument document)
+    {
+        var owners = new Dictionary<PdfDictionary, PdfPage>(ReferenceEqualityComparer.Instance);
+        foreach (var page in document.Pages)
+            if (V(page.Elements["/Annots"]) is PdfArray annotations)
+                foreach (var annotation in annotations.Elements.Select(D))
+                {
+                    Assert.True(owners.TryAdd(annotation, page), "an annotation belongs to exactly one page");
+                    if (annotation.Elements.ContainsKey("/P"))
+                        Assert.Same(page, D(annotation.Elements["/P"]));
+                }
+        if (V(document.Internals.Catalog.Elements["/AcroForm"]) is not PdfDictionary form)
+            return;
+        var stack = new Stack<PdfItem>(A(form.Elements["/Fields"]).Elements);
+        var seen = new HashSet<PdfDictionary>(ReferenceEqualityComparer.Instance);
+        while (stack.TryPop(out var item))
+        {
+            var field = D(item);
+            Assert.True(seen.Add(field));
+            if (field.Elements["/Subtype"] is { } subtype && S(subtype) == "/Widget")
+            {
+                Assert.True(owners.TryGetValue(field, out var page));
+                Assert.Same(page, D(field.Elements["/P"]));
+            }
+            if (V(field.Elements["/Kids"]) is PdfArray kids)
+                foreach (var kid in kids.Elements)
+                    stack.Push(kid);
+        }
+    }
+
+    private static void AssertSavedBookmarks(PdfDocument document, params int[] targets)
+    {
+        var items = OutlineItems(document);
+        Assert.Equal(new[] { "source-0", "child-0", "source-1", "child-1" }.Take(targets.Length * 2),
+            items.Select(item => S(item.Elements["/Title"])));
+        for (var i = 0; i < targets.Length; i++)
+        {
+            View(document, A(items[2 * i].Elements["/Dest"]), targets[i], "/XYZ", "10", "null", "1.5");
+            View(document, A(items[2 * i + 1].Elements["/Dest"]), targets[i], "/FitH", "123");
+            Assert.Same(items[2 * i], D(items[2 * i + 1].Elements["/Parent"]));
+        }
+    }
+
+    private static void AssertSavedLinks(PdfDocument document, int page, int first, int second)
+    {
+        var links = Links(document, page);
+        Assert.Equal(6, links.Count);
+        View(document, A(links[0].Elements["/Dest"]), second, "/XYZ", "10", "null", "1.5");
+        View(document, A(D(links[1].Elements["/A"]).Elements["/D"]), first, "/FitR", "1", "2", "30", "40");
+        View(document, Resolved(document, links[2].Elements["/Dest"]), second, "/FitH", "123");
+        View(document, Resolved(document, links[3].Elements["/Dest"]), first, "/FitR", "1", "2", "30", "40");
+        Assert.Equal("/URI", S(D(links[4].Elements["/A"]).Elements["/S"]));
+        Assert.Equal("https://example.org/", S(D(links[4].Elements["/A"]).Elements["/URI"]));
+        View(document, A(links[5].Elements["/Dest"]), first, "/Fit");
+    }
+
+    // T1
+    [Fact]
+    public void Save_interleaved_sources_keeps_structure_defaults_and_independent_fields()
+    {
+        var folder = fx.NewFolder();
+        var a = Make(folder, "a");
+        var b = Make(folder, "b", 1);
+        var path = SavePages([new(a, 0), new(b, 0), new(a, 1), new(b, 1)]);
+        using (var result = PdfReader.Open(path, PdfDocumentOpenMode.Import))
+        {
+            AssertSavedBookmarks(result, 2, 3);
+            AssertSavedLinks(result, 0, 0, 2);
+            AssertSavedLinks(result, 1, 1, 3);
+            var names = Destinations(result);
+            View(result, names["intro"], 2, "/FitH", "123");
+            View(result, names["intro-2"], 3, "/FitH", "123");
+            var fields = Fields(result);
+            Assert.Equal("first", S(fields["name"].Elements["/V"]));
+            Assert.Equal("second", S(fields["2.name"].Elements["/V"]));
+            for (var source = 0; source < 2; source++)
+            {
+                var widgets = A(fields[source == 0 ? "name" : "2.name"].Elements["/Kids"]);
+                Assert.Equal(2, widgets.Elements.Count);
+                for (var p = 0; p < 2; p++)
+                    Assert.Contains(A(result.Pages[source + 2 * p].Elements["/Annots"]).Elements,
+                        item => ReferenceEquals(V(item), V(widgets.Elements[p])));
+                Assert.Equal("/Tx", S(fields[source == 0 ? "name" : "2.name"].Elements["/FT"]));
+                Assert.Equal("/Btn", S(fields[$"unique-{source}"].Elements["/FT"]));
+            }
+            AssertDefaults(result);
+            AssertWidgetOwners(result);
+        }
+        ChangeIndependently(path);
+    }
+
+    // T2
+    [Fact]
+    public void Save_without_last_page_removes_dead_links_bookmarks_and_widgets()
+    {
+        var a = Make(fx.NewFolder(), "a");
+        using var result = PdfReader.Open(SavePages([new(a, 0)]), PdfDocumentOpenMode.Import);
+        Assert.Empty(OutlineItems(result));
+        var links = Links(result, 0);
+        Assert.Equal(4, links.Count);
+        View(result, A(D(links[0].Elements["/A"]).Elements["/D"]), 0, "/FitR", "1", "2", "30", "40");
+        View(result, Resolved(result, links[1].Elements["/Dest"]), 0, "/FitR", "1", "2", "30", "40");
+        Assert.Equal("/URI", S(D(links[2].Elements["/A"]).Elements["/S"]));
+        Assert.Equal("https://example.org/", S(D(links[2].Elements["/A"]).Elements["/URI"]));
+        Assert.False(links[2].Elements.ContainsKey("/Dest"));
+        View(result, A(links[3].Elements["/Dest"]), 0, "/Fit");
+        Assert.Equal(new[] { "old" }, Destinations(result).Keys);
+        var fields = Fields(result);
+        Assert.Equal(new[] { "name", "unique-0", "alternate-0" }, fields.Keys);
+        var widget = D(Assert.Single(A(fields["name"].Elements["/Kids"]).Elements));
+        Assert.Same(result.Pages[0], D(widget.Elements["/P"]));
+        var resources = D(D(result.Internals.Catalog.Elements["/AcroForm"]).Elements["/DR"]);
+        foreach (var name in new[] { "name", "unique-0", "alternate-0" })
+        {
+            var field = fields[name];
+            Assert.Equal(name == "unique-0" ? "/Btn" : "/Tx", S(Inherited(field, "/FT")));
+            var tokens = S(Inherited(field, "/DA")).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            var font = tokens[System.Array.IndexOf(tokens, "Tf") - 2].Replace("#31", "1", StringComparison.Ordinal);
+            Assert.NotNull(D(resources.Elements["/Font"]).Elements[font]);
+            if (name == "alternate-0")
+                continue;
+            foreach (var (operation, kind) in new[] { ("cs", "/ColorSpace"), ("CS", "/ColorSpace"),
+                ("scn", "/Pattern"), ("SCN", "/Pattern"), ("gs", "/ExtGState") })
+                Assert.NotNull(D(resources.Elements[kind]).Elements[tokens[System.Array.IndexOf(tokens, operation) - 1]]);
+        }
+        AssertWidgetOwners(result);
+    }
+
+    // T3
+    [Fact]
+    public void Save_without_first_page_keeps_the_remaining_widgets_in_mixed_order()
+    {
+        var folder = fx.NewFolder();
+        var a = Make(folder, "a");
+        var b = Make(folder, "b", 1);
+        using var result = PdfReader.Open(SavePages([new(a, 1), new(b, 1), new(b, 0)]), PdfDocumentOpenMode.Import);
+        AssertSavedBookmarks(result, 0, 1);
+        var fields = Fields(result);
+        Assert.DoesNotContain("unique-0", fields.Keys);
+        Assert.DoesNotContain("alternate-0", fields.Keys);
+        var widget = D(Assert.Single(A(fields["name"].Elements["/Kids"]).Elements));
+        Assert.Contains(A(result.Pages[0].Elements["/Annots"]).Elements, item => ReferenceEquals(V(item), widget));
+        Assert.Same(result.Pages[0], D(widget.Elements["/P"]));
+        AssertWidgetOwners(result);
+    }
+
+    // T4
+    [Fact]
+    public void Save_repeated_pages_use_the_first_occurrence_and_separate_annotations()
+    {
+        var a = Make(fx.NewFolder(), "a");
+        using var result = PdfReader.Open(SavePages([new(a, 0), new(a, 0, 90), new(a, 1)]), PdfDocumentOpenMode.Import);
+        Assert.NotSame(result.Pages[0], result.Pages[1]);
+        Assert.Equal(0, result.Pages[0].Rotate);
+        Assert.Equal(90, result.Pages[1].Rotate);
+        Assert.DoesNotContain(A(result.Pages[1].Elements["/Annots"]).Elements.Select(D),
+            annotation => S(annotation.Elements["/Subtype"]) == "/Widget");
+        AssertSavedLinks(result, 0, 0, 2);
+        AssertSavedLinks(result, 1, 0, 2);
+        var first = Links(result, 0);
+        var second = Links(result, 1);
+        for (var i = 0; i < first.Count; i++)
+            Assert.NotSame(first[i], second[i]);
+        AssertSavedBookmarks(result, 2);
+        View(result, Destinations(result)["old"], 0, "/FitR", "1", "2", "30", "40");
+        View(result, Destinations(result)["intro"], 2, "/FitH", "123");
+        var kids = A(Fields(result)["name"].Elements["/Kids"]);
+        Assert.Equal(new[] { result.Pages[0], result.Pages[2] }, kids.Elements.Select(kid => D(D(kid).Elements["/P"])));
+        AssertWidgetOwners(result);
+    }
+
+    // T5
+    [Fact]
+    public void Save_dead_bookmark_parent_keeps_its_live_child_as_a_group()
+    {
+        var source = Source(pdf =>
+        {
+            var parent = Bookmark(pdf, "parent", Dest(pdf, 0));
+            parent.Elements["/Count"] = new PdfInteger(1);
+            Children(parent, Bookmark(pdf, "child", Dest(pdf, 1)));
+            Children(OutlineRoot(pdf), parent);
+        });
+        using var result = PdfReader.Open(SavePages([new(source, 1)]), PdfDocumentOpenMode.Import);
+        var root = D(result.Internals.Catalog.Elements["/Outlines"]);
+        var parent = Assert.Single(Siblings(root));
+        Assert.Equal("parent", S(parent.Elements["/Title"]));
+        Assert.False(parent.Elements.ContainsKey("/Dest"));
+        var child = Assert.Single(Siblings(parent));
+        Assert.Equal("child", S(child.Elements["/Title"]));
+        View(result, A(child.Elements["/Dest"]), 0, "/Fit");
+        Assert.Equal(1, Assert.IsType<PdfInteger>(parent.Elements["/Count"]).Value);
+        Assert.Equal(2, Assert.IsType<PdfInteger>(root.Elements["/Count"]).Value);
+    }
+
+    // T6
+    [Fact]
+    public void Save_cyclic_outlines_and_malformed_fields_keep_healthy_neighbours()
+    {
+        var source = Source(pdf =>
+        {
+            var before = Bookmark(pdf, "before", Dest(pdf, 0));
+            var after = Bookmark(pdf, "after", Dest(pdf, 0));
+            Children(OutlineRoot(pdf), before, after);
+            after.Elements["/Next"] = before.Reference;
+            var form = Form(pdf);
+            Field(pdf, form, "before", "ok");
+            var broken = Field(pdf, form, "broken", "bad", multiple: true);
+            A(broken.Elements["/Kids"]).Elements.Add(broken.Reference!);
+            Field(pdf, form, "after", "ok");
+        });
+        using var result = PdfReader.Open(SavePages([new(source, 0)]), PdfDocumentOpenMode.Import);
+        Assert.Equal(new[] { "before", "after" }, OutlineItems(result).Select(item => S(item.Elements["/Title"])));
+        Assert.Equal(new[] { "before", "after" }, Fields(result).Keys);
+        foreach (var item in OutlineItems(result))
+            View(result, A(item.Elements["/Dest"]), 0, "/Fit");
+    }
+
+    // T7
+    [Fact]
+    public void Save_observes_cancellation_before_carrying_structure_without_writing_output()
+    {
+        var folder = fx.NewFolder();
+        var a = Make(folder, "a");
+        var b = Make(folder, "b", 1);
+        var path = Path.Combine(folder, "cancelled.pdf");
+        using var cts = new CancellationTokenSource();
+        Assert.Throws<OperationCanceledException>(() => PdfPageTools.Save([new(a, 0), new(b, 0)], path, cts.Token,
+            new() { BeforeCarry = cts.Cancel }));
+        Assert.False(File.Exists(path));
+    }
+
+    // T8
+    [Fact]
+    public void Save_annotations_shared_across_pages_have_one_widget_owner_and_distinct_links()
+    {
+        var source = Source(pdf =>
+        {
+            var field = Field(pdf, Form(pdf), "shared", "value");
+            var link = Link(pdf, 0, Dest(pdf, 1));
+            pdf.Pages[1].Elements["/Annots"] = Items(pdf, field.Reference!, link.Reference!, link.Reference!, link.Reference!);
+        });
+        using (var result = PdfReader.Open(SavePages([new(source, 0), new(source, 0), new(source, 1)]), PdfDocumentOpenMode.Import))
+        {
+            for (var p = 0; p < 3; p++)
+            {
+                var link = Assert.Single(Links(result, p));
+                View(result, A(link.Elements["/Dest"]), 2, "/Fit");
+                Assert.Equal(p == 0 ? 2 : 1, A(result.Pages[p].Elements["/Annots"]).Elements.Count);
+            }
+            Assert.Equal(3, Enumerable.Range(0, 3).Select(p => Links(result, p)[0]).Distinct().Count());
+            Assert.Same(result.Pages[0], D(Fields(result)["shared"].Elements["/P"]));
+            AssertWidgetOwners(result);
+        }
+        using var partial = PdfReader.Open(SavePages([new(source, 0)]), PdfDocumentOpenMode.Import);
+        Assert.Empty(Links(partial, 0));
+        AssertWidgetOwners(partial);
+    }
+
+    private string MeasureSave(string source, IReadOnlyList<PdfPageReference> pages, Func<string>? save = null)
+    {
+        var folder = fx.NewFolder();
+        var pagesOnly = GC.GetAllocatedBytesForCurrentThread();
+        using (var baseline = new PdfDocument())
+        {
+            using var opened = PdfReader.Open(source, PdfDocumentOpenMode.Import);
+            foreach (var key in new[] { "/Outlines", "/Names", "/Dests", "/AcroForm" })
+                opened.Internals.Catalog.Elements.Remove(key);
+            foreach (var page in opened.Pages)
+                page.Elements.Remove("/Annots");
+            foreach (var item in pages)
+                baseline.AddPage(opened.Pages[item.PageIndex]);
+            baseline.Save(Path.Combine(folder, "pages-only.pdf"));
+        }
+        pagesOnly = GC.GetAllocatedBytesForCurrentThread() - pagesOnly;
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        var timer = Stopwatch.StartNew();
+        var output = save is null ? SavePages(pages) : save();
+        timer.Stop();
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        TestContext.Current.TestOutputHelper?.WriteLine($"Save: {timer.Elapsed.TotalSeconds:F3} s, {allocated:N0} bytes, pages only {pagesOnly:N0} bytes");
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(60), timer.Elapsed.ToString());
+        Assert.True(allocated < 3 * pagesOnly + 64 * 1024 * 1024, $"{allocated} bytes, pages only {pagesOnly} bytes");
+        return output;
+    }
+
+    // T9
+    [Fact]
+    public void Save_repeated_annotation_references_are_normalized_before_copying_large_values()
+    {
+        var source = Source(pdf =>
+        {
+            var link = Link(pdf, 0, Dest(pdf, 0));
+            link.Elements["/Contents"] = new PdfString(new string('x', 512 * 1024));
+            var annotations = A(pdf.Pages[0].Elements["/Annots"]);
+            for (var i = 1; i < 5000; i++)
+                annotations.Elements.Add(link.Reference!);
+        });
+        var output = MeasureSave(source, [new(source, 0), new(source, 0)]);
+        using var result = PdfReader.Open(output, PdfDocumentOpenMode.Import);
+        Assert.Single(Links(result, 0));
+        Assert.Single(Links(result, 1));
+        Assert.NotSame(Links(result, 0)[0], Links(result, 1)[0]);
+        Assert.True(new FileInfo(output).Length < new FileInfo(source).Length + 1024 * 1024);
+    }
+
+    private string SharedAnnotationSource(bool sharedArray = false)
+    {
+        return Source(pdf =>
+        {
+            while (pdf.PageCount < 200)
+                pdf.AddPage();
+            var link = Link(pdf, 0, Dest(pdf, 0));
+            link.Elements["/Contents"] = new PdfString(new string('x', 1024 * 1024));
+            var annotations = A(pdf.Pages[0].Elements["/Annots"]);
+            if (sharedArray)
+            {
+                for (var i = 1; i < 5000; i++)
+                    annotations.Elements.Add(link.Reference!);
+                pdf.Internals.AddObject(annotations);
+            }
+            for (var p = 0; p < pdf.PageCount; p++)
+                pdf.Pages[p].Elements["/Annots"] = sharedArray ? annotations.Reference! : Items(pdf, link.Reference!);
+        });
+    }
+
+    // T10
+    [Fact]
+    public void Save_shared_annotations_promote_large_direct_values_once_across_distinct_pages()
+    {
+        var source = SharedAnnotationSource();
+        var pages = Enumerable.Range(0, 200).Reverse().Select(p => new PdfPageReference(source, p)).ToArray();
+        var output = MeasureSave(source, pages);
+        using var result = PdfReader.Open(output, PdfDocumentOpenMode.Import);
+        var links = Enumerable.Range(0, 200).Select(p => Assert.Single(Links(result, p))).ToArray();
+        Assert.Equal(200, links.Distinct().Count());
+        var contents = Assert.IsType<PdfReference>(links[0].Elements["/Contents"]);
+        Assert.All(links, link =>
+        {
+            Assert.Equal(contents.ObjectID, Assert.IsType<PdfReference>(link.Elements["/Contents"]).ObjectID);
+            View(result, A(link.Elements["/Dest"]), 199, "/Fit");
+        });
+        Assert.True(new FileInfo(output).Length < new FileInfo(source).Length + 1024 * 1024);
+    }
+
+    // T11
+    [Fact]
+    public void Save_annotation_copy_item_budget_keeps_the_owner_and_completed_copies()
+    {
+        var source = SharedAnnotationSource();
+        var pages = Enumerable.Range(0, 200).Reverse().Select(p => new PdfPageReference(source, p)).ToArray();
+        using var result = PdfReader.Open(SavePages(pages, new() { AnnotationCopyItems = 12 }), PdfDocumentOpenMode.Import);
+        for (var p = 0; p < 200; p++)
+        {
+            var links = Links(result, p);
+            if (p < 3)
+                View(result, A(Assert.Single(links).Elements["/Dest"]), 199, "/Fit");
+            else
+                Assert.Empty(links);
+        }
+        Assert.NotSame(Links(result, 0)[0], Links(result, 1)[0]);
+        Assert.NotSame(Links(result, 1)[0], Links(result, 2)[0]);
+    }
+
+    // T12
+    [Fact]
+    public void Save_shared_annotation_arrays_are_expanded_once_and_budgeted_in_output_order()
+    {
+        var source = SharedAnnotationSource(sharedArray: true);
+        var pages = Enumerable.Range(0, 200).Reverse().Select(p => new PdfPageReference(source, p)).ToArray();
+        var output = MeasureSave(source, pages);
+        using (var result = PdfReader.Open(output, PdfDocumentOpenMode.Import))
+            for (var p = 0; p < 200; p++)
+                Assert.Single(Links(result, p));
+        Assert.True(new FileInfo(output).Length < new FileInfo(source).Length + 1024 * 1024);
+        using var limited = PdfReader.Open(SavePages(pages, new() { AnnotationEntries = 5050 }), PdfDocumentOpenMode.Import);
+        for (var p = 0; p < 200; p++)
+            if (p < 50)
+                Assert.Single(Links(limited, p));
+            else
+                Assert.False(limited.Pages[p].Elements.ContainsKey("/Annots"));
+    }
+
+    // T13
+    [Fact]
+    public void Save_annotation_copy_byte_budget_counts_direct_names_per_copy()
+    {
+        var source = Source(pdf =>
+        {
+            while (pdf.PageCount < 22)
+                pdf.AddPage();
+            var link = Link(pdf, 0, Dest(pdf, 0));
+            link.Elements["/X"] = new PdfName("/" + new string('x', 65535));
+            for (var p = 1; p < 21; p++)
+                pdf.Pages[p].Elements["/Annots"] = Items(pdf, link.Reference!);
+        });
+        var pages = Enumerable.Range(0, 21).Select(p => new PdfPageReference(source, p)).ToArray();
+        using var result = PdfReader.Open(SavePages(pages,
+            new() { AnnotationCopyBytes = 5 * 65536 + 4096 }), PdfDocumentOpenMode.Import);
+        var kept = new List<PdfDictionary>();
+        for (var p = 0; p < 21; p++)
+            if (p < 6)
+            {
+                var link = Assert.Single(Links(result, p));
+                View(result, A(link.Elements["/Dest"]), 0, "/Fit");
+                Assert.Equal(65536, S(link.Elements["/X"]).Length);
+                kept.Add(link);
+            }
+            else
+                Assert.Empty(Links(result, p));
+        Assert.Equal(6, kept.Distinct().Count());
+    }
+
+    // T14
+    [Fact]
+    public void Save_annotation_entry_budget_prunes_fields_from_normalized_pages()
+    {
+        var source = Source(pdf =>
+        {
+            pdf.AddPage();
+            pdf.AddPage();
+            var form = Form(pdf);
+            var split = Field(pdf, form, "split", "value", multiple: true);
+            A(split.Elements["/Kids"]).Elements.Add(Widget(pdf, 2, split).Reference!);
+            var gone = Widget(pdf, 2);
+            gone.Elements["/T"] = new PdfString("gone");
+            gone.Elements["/FT"] = new PdfName("/Tx");
+            A(form.Elements["/Fields"]).Elements.Add(gone.Reference!);
+        });
+        using var result = PdfReader.Open(SavePages([new(source, 0), new(source, 1), new(source, 2)],
+            new() { AnnotationEntries = 4 }), PdfDocumentOpenMode.Import);
+        Assert.False(result.Pages[2].Elements.ContainsKey("/Annots"));
+        var fields = Fields(result);
+        Assert.Equal(new[] { "split" }, fields.Keys);
+        var kids = A(fields["split"].Elements["/Kids"]);
+        Assert.Equal(2, kids.Elements.Count);
+        Assert.Equal(new[] { result.Pages[0], result.Pages[1] }, kids.Elements.Select(kid => D(D(kid).Elements["/P"])));
+        AssertWidgetOwners(result);
+    }
+
+    // T15
+    [Fact]
+    public void Save_interleaved_sources_spend_annotation_entries_in_output_order()
+    {
+        var folder = fx.NewFolder();
+        var a = Make(folder, "a");
+        var b = Make(folder, "b", 1);
+        // a0 and b0 each contain six links and three widgets: expand 9 + emit 9 for each.
+        const int entries = 36;
+        using (var originalA = PdfReader.Open(a, PdfDocumentOpenMode.Import))
+        using (var originalB = PdfReader.Open(b, PdfDocumentOpenMode.Import))
+        {
+            Assert.Equal(9, A(originalA.Pages[0].Elements["/Annots"]).Elements.Count);
+            Assert.Equal(9, A(originalB.Pages[0].Elements["/Annots"]).Elements.Count);
+            Assert.Equal(entries, 2 * (A(originalA.Pages[0].Elements["/Annots"]).Elements.Count +
+                A(originalB.Pages[0].Elements["/Annots"]).Elements.Count));
+        }
+        using var result = PdfReader.Open(SavePages([new(a, 0), new(b, 0), new(a, 1), new(b, 1)],
+            new() { AnnotationEntries = entries }), PdfDocumentOpenMode.Import);
+        for (var p = 0; p < 4; p++)
+            if (p < 2)
+                Assert.Equal(9, A(result.Pages[p].Elements["/Annots"]).Elements.Count);
+            else
+                Assert.False(result.Pages[p].Elements.ContainsKey("/Annots"));
+        var fields = Fields(result);
+        foreach (var (name, page) in new[] { ("name", 0), ("2.name", 1) })
+        {
+            var widget = D(Assert.Single(A(fields[name].Elements["/Kids"]).Elements));
+            Assert.Same(result.Pages[page], D(widget.Elements["/P"]));
+        }
+        AssertWidgetOwners(result);
+    }
+
     [Fact]
     public void Merge_keeps_each_sources_bookmarks_pointing_at_its_pages()
     {
@@ -3257,6 +3736,400 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         MergeFiles([Make(folder, "a", 0, first), Make(folder, "b", 1, second)], output, TestContext.Current.CancellationToken);
         using var result = PdfReader.Open(output, PdfDocumentOpenMode.Import);
         Assert.Equal(expected, V(D(result.Internals.Catalog.Elements["/AcroForm"]).Elements["/NeedAppearances"]) is PdfBoolean { Value: true });
+    }
+
+    private static PdfDictionary Button(PdfDocument document, PdfDictionary form, string name, int page = 0)
+    {
+        var button = Widget(document, page);
+        button.Elements["/T"] = new PdfString(name);
+        button.Elements["/FT"] = new PdfName("/Btn");
+        button.Elements["/Ff"] = new PdfInteger(65536);
+        A(form.Elements["/Fields"]).Elements.Add(button.Reference!);
+        return button;
+    }
+
+    private static PdfDictionary GoTo(PdfDocument document, PdfItem destination, bool indirect = false)
+    {
+        var action = Action(document, "/GoTo", destination);
+        if (indirect)
+            document.Internals.AddObject(action);
+        return action;
+    }
+
+    private static PdfDictionary Script(PdfDocument document)
+    {
+        var action = new PdfDictionary(document);
+        action.Elements["/S"] = new PdfName("/JavaScript");
+        action.Elements["/JS"] = new PdfString("app.beep(0)");
+        return action;
+    }
+
+    private static void Put(PdfDictionary owner, string key, PdfDictionary value) =>
+        owner.Elements[key] = value.Reference is { } reference ? reference : value;
+
+    private static PdfDictionary Triggers(PdfDocument document, bool indirect, params (string Key, PdfDictionary Action)[] entries)
+    {
+        var triggers = new PdfDictionary(document);
+        if (indirect)
+            document.Internals.AddObject(triggers);
+        foreach (var (key, action) in entries)
+            Put(triggers, key, action);
+        return triggers;
+    }
+
+    private static PdfArray Target(PdfDocument document, PdfItem? action) => Resolved(document, D(action).Elements["/D"]);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_push_button_goes_to_the_page_of_its_own_source(bool indirect)
+    {
+        string Make(string name) => Source(pdf =>
+        {
+            var button = Button(pdf, Form(pdf), name);
+            Put(button, "/A", GoTo(pdf, Dest(pdf, 1), indirect));
+            Put(button, "/AA", Triggers(pdf, indirect,
+                ("/D", GoTo(pdf, Dest(pdf, 1, "/XYZ", new PdfInteger(10)), indirect)),
+                ("/U", GoTo(pdf, Dest(pdf, 0, "/FitH", new PdfInteger(5)), indirect))));
+            Link(pdf, 0, action: GoTo(pdf, Dest(pdf, 1, "/XYZ", new PdfInteger(10))));
+        });
+        var inputs = new[] { Make("first"), Make("second") };
+        var path = Path.Combine(fx.NewFolder(), "merged.pdf");
+        MergeFiles(inputs, path, TestContext.Current.CancellationToken);
+        using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        var fields = Fields(result);
+        foreach (var (name, offset) in new[] { ("first", 0), ("second", 2) })
+        {
+            var button = fields[name];
+            View(result, Target(result, button.Elements["/A"]), offset + 1, "/Fit");
+            var triggers = D(button.Elements["/AA"]);
+            View(result, Target(result, triggers.Elements["/D"]), offset + 1, "/XYZ", "10", "null", "null");
+            View(result, Target(result, triggers.Elements["/U"]), offset, "/FitH", "5");
+            View(result, Target(result, Links(result, offset)[0].Elements["/A"]), offset + 1, "/XYZ", "10", "null", "null");
+        }
+    }
+
+    [Fact]
+    public void A_push_button_follows_renamed_and_legacy_named_destinations()
+    {
+        string Make(string name, string legacyName, int target) => Source(pdf =>
+        {
+            NameTree(pdf).Elements["/Names"] = Items(pdf, new PdfString("name"), Dest(pdf, target));
+            var legacy = new PdfDictionary(pdf);
+            legacy.Elements[legacyName] = Dest(pdf, 1 - target);
+            pdf.Internals.Catalog.Elements["/Dests"] = legacy;
+            var button = Button(pdf, Form(pdf), name);
+            Put(button, "/A", GoTo(pdf, new PdfString("name")));
+            Put(button, "/AA", Triggers(pdf, false, ("/D", GoTo(pdf, new PdfName(legacyName)))));
+        });
+        var inputs = new[] { Make("first", "/legacy", 0), Make("second", "/other", 1) };
+        var path = Path.Combine(fx.NewFolder(), "merged.pdf");
+        MergeFiles(inputs, path, TestContext.Current.CancellationToken);
+        using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        var fields = Fields(result);
+        Assert.Equal("name", Key(D(fields["first"].Elements["/A"]).Elements["/D"]!));
+        Assert.Equal("name-2", Key(D(fields["second"].Elements["/A"]).Elements["/D"]!));
+        View(result, Target(result, fields["first"].Elements["/A"]), 0, "/Fit");
+        View(result, Target(result, fields["second"].Elements["/A"]), 3, "/Fit");
+        foreach (var (name, page) in new[] { ("first", 1), ("second", 2) })
+        {
+            var action = D(D(fields[name].Elements["/AA"]).Elements["/D"]);
+            Assert.IsNotType<PdfName>(V(action.Elements["/D"]));
+            View(result, Target(result, action), page, "/Fit");
+        }
+    }
+
+    [Fact]
+    public void A_push_button_keeps_its_field_and_other_actions_and_leaves_a_parent_sharing_them_alone()
+    {
+        var source = Source(pdf =>
+        {
+            var form = Form(pdf);
+            var parent = Object(pdf);
+            parent.Elements["/T"] = new PdfString("group");
+            parent.Elements["/FT"] = new PdfName("/Btn");
+            parent.Elements["/Ff"] = new PdfInteger(65536);
+            parent.Elements["/V"] = new PdfString("value");
+            var kid = Widget(pdf, 0, parent);
+            parent.Elements["/Kids"] = Items(pdf, kid.Reference!);
+            A(form.Elements["/Fields"]).Elements.Add(parent.Reference!);
+            var goTo = GoTo(pdf, Dest(pdf, 1));
+            var next = new PdfDictionary(pdf);
+            next.Elements["/S"] = new PdfName("/URI");
+            next.Elements["/URI"] = new PdfString("https://example.org/receipt");
+            goTo.Elements["/Next"] = next;
+            var shared = Triggers(pdf, true, ("/D", goTo), ("/E", Script(pdf)));
+            Put(parent, "/AA", shared);
+            Put(kid, "/AA", shared);
+        });
+        using var result = PdfReader.Open(MergeOne(source), PdfDocumentOpenMode.Import);
+        var parent = Fields(result)["group"];
+        Assert.Equal("value", S(parent.Elements["/V"]));
+        var kid = D(Assert.Single(A(parent.Elements["/Kids"]).Elements));
+        Assert.True(D(kid.Elements["/AP"]).Elements.ContainsKey("/N"));
+        var own = D(kid.Elements["/AA"]);
+        var inherited = D(parent.Elements["/AA"]);
+        Assert.NotSame(inherited, own);
+        View(result, Target(result, own.Elements["/D"]), 1, "/Fit");
+        Assert.Equal("https://example.org/receipt", S(D(D(own.Elements["/D"]).Elements["/Next"]).Elements["/URI"]));
+        Assert.Equal("/JavaScript", S(D(own.Elements["/E"]).Elements["/S"]));
+        Assert.NotSame(D(own.Elements["/D"]), D(inherited.Elements["/D"]));
+        Assert.Equal("/JavaScript", S(D(inherited.Elements["/E"]).Elements["/S"]));
+    }
+
+    [Fact]
+    public void Save_keeps_a_push_button_and_points_it_at_the_kept_target_or_drops_only_its_action()
+    {
+        var source = Source(pdf =>
+        {
+            var button = Button(pdf, Form(pdf), "go");
+            Put(button, "/A", GoTo(pdf, Dest(pdf, 1)));
+            Put(button, "/AA", Triggers(pdf, false, ("/D", GoTo(pdf, Dest(pdf, 1)))));
+            Link(pdf, 0, Dest(pdf, 1));
+        });
+        using (var moved = PdfReader.Open(SavePages([new(source, 1), new(source, 0), new(source, 1)]), PdfDocumentOpenMode.Import))
+        {
+            var button = Fields(moved)["go"];
+            Assert.Same(moved.Pages[1], D(button.Elements["/P"]));
+            View(moved, Target(moved, button.Elements["/A"]), 0, "/Fit");
+            View(moved, Target(moved, D(button.Elements["/AA"]).Elements["/D"]), 0, "/Fit");
+        }
+        using (var repeated = PdfReader.Open(SavePages([new(source, 0), new(source, 0), new(source, 1)]), PdfDocumentOpenMode.Import))
+        {
+            AssertWidgetOwners(repeated);
+            var button = Fields(repeated)["go"];
+            Assert.Same(repeated.Pages[0], D(button.Elements["/P"]));
+            Assert.DoesNotContain(A(repeated.Pages[1].Elements["/Annots"]).Elements, item => ReferenceEquals(D(item), button));
+            View(repeated, Target(repeated, button.Elements["/A"]), 2, "/Fit");
+        }
+        using var cut = PdfReader.Open(SavePages([new(source, 0)]), PdfDocumentOpenMode.Import);
+        var kept = Fields(cut)["go"];
+        Assert.False(kept.Elements.ContainsKey("/A"));
+        Assert.False(kept.Elements.ContainsKey("/AA"));
+        Assert.Same(kept, D(Assert.Single(A(cut.Pages[0].Elements["/Annots"]).Elements)));
+        Assert.Empty(Links(cut, 0));
+    }
+
+    [Fact]
+    public void Annotations_sharing_a_goto_action_share_its_rewritten_copy()
+    {
+        var source = Source(pdf =>
+        {
+            var form = Form(pdf);
+            var action = GoTo(pdf, Dest(pdf, 1), true);
+            Put(Button(pdf, form, "one"), "/A", action);
+            Put(Button(pdf, form, "two"), "/A", action);
+            Link(pdf, 0, action: action);
+        });
+        using var result = PdfReader.Open(MergeOne(source), PdfDocumentOpenMode.Import);
+        var fields = Fields(result);
+        var copy = D(fields["one"].Elements["/A"]);
+        View(result, Target(result, copy), 1, "/Fit");
+        Assert.Same(copy, D(fields["two"].Elements["/A"]));
+        Assert.Same(copy, D(Links(result, 0)[0].Elements["/A"]));
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public void An_unresolved_action_shared_by_a_link_and_a_button_is_dropped_in_either_order(bool linkFirst, bool save)
+    {
+        var source = Source(pdf =>
+        {
+            var form = Form(pdf);
+            var action = GoTo(pdf, new PdfName("/nowhere"), true);
+            if (linkFirst)
+                Link(pdf, 0, action: action);
+            Put(Button(pdf, form, "go"), "/A", action);
+            if (!linkFirst)
+                Link(pdf, 0, action: action);
+        });
+        using (var input = PdfReader.Open(source, PdfDocumentOpenMode.Import))
+        {
+            var annotations = A(input.Pages[0].Elements["/Annots"]);
+            Assert.Same(D(D(annotations.Elements[0]).Elements["/A"]), D(D(annotations.Elements[1]).Elements["/A"]));
+        }
+        using var result = PdfReader.Open(save ? SavePages([new(source, 0)]) : MergeOne(source), PdfDocumentOpenMode.Import);
+        Assert.False(Fields(result)["go"].Elements.ContainsKey("/A"));
+        var links = Links(result, 0);
+        if (save)
+            Assert.Empty(links);
+        else
+            Assert.False(Assert.Single(links).Elements.ContainsKey("/A"));
+    }
+
+    [Theory]
+    [InlineData("action-not-dictionary")]
+    [InlineData("triggers-not-dictionary")]
+    [InlineData("entry-not-dictionary")]
+    [InlineData("missing-entry-reference")]
+    [InlineData("missing-action-reference")]
+    [InlineData("no-kind")]
+    [InlineData("no-destination")]
+    [InlineData("broken-destination")]
+    [InlineData("next-cycle")]
+    [InlineData("listed-twice")]
+    public void A_broken_push_button_action_leaves_the_other_structure(string kind)
+    {
+        var source = Source(pdf =>
+        {
+            var form = Form(pdf);
+            Put(Button(pdf, form, "good"), "/A", GoTo(pdf, Dest(pdf, 1)));
+            Link(pdf, 0, Dest(pdf, 1));
+            var bad = Button(pdf, form, "bad");
+            switch (kind)
+            {
+                case "action-not-dictionary":
+                    bad.Elements["/A"] = new PdfInteger(1);
+                    break;
+                case "triggers-not-dictionary":
+                    bad.Elements["/AA"] = new PdfInteger(1);
+                    break;
+                case "entry-not-dictionary":
+                    var numbers = new PdfDictionary(pdf);
+                    numbers.Elements["/D"] = new PdfInteger(1);
+                    bad.Elements["/AA"] = numbers;
+                    break;
+                case "missing-entry-reference":
+                    var missing = Object(pdf);
+                    missing.Elements["/D"] = new PdfLiteral("777777 0 R");
+                    bad.Elements["/AA"] = missing.Reference;
+                    break;
+                case "missing-action-reference":
+                    bad.Elements["/A"] = new PdfLiteral("777777 0 R");
+                    break;
+                case "no-kind":
+                    var unnamed = new PdfDictionary(pdf);
+                    unnamed.Elements["/D"] = Dest(pdf, 1);
+                    bad.Elements["/A"] = unnamed;
+                    break;
+                case "no-destination":
+                    var empty = new PdfDictionary(pdf);
+                    empty.Elements["/S"] = new PdfName("/GoTo");
+                    bad.Elements["/AA"] = Triggers(pdf, false, ("/U", empty));
+                    break;
+                case "broken-destination":
+                    bad.Elements["/A"] = GoTo(pdf, Items(pdf, new PdfName("/Fit")));
+                    break;
+                case "next-cycle":
+                    var cycle = GoTo(pdf, Dest(pdf, 1), true);
+                    cycle.Elements["/Next"] = cycle.Reference;
+                    bad.Elements["/A"] = cycle.Reference;
+                    break;
+                case "listed-twice":
+                    bad.Elements["/A"] = GoTo(pdf, Dest(pdf, 1));
+                    A(pdf.Pages[0].Elements["/Annots"]).Elements.Add(bad.Reference!);
+                    break;
+            }
+        });
+        foreach (var (path, page, target) in new[] { (MergeOne(source), 0, 1), (SavePages([new(source, 1), new(source, 0)]), 1, 0) })
+        {
+            using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+            var fields = Fields(result);
+            View(result, Target(result, fields["good"].Elements["/A"]), target, "/Fit");
+            Assert.Contains("bad", fields.Keys);
+            View(result, Resolved(result, Assert.Single(Links(result, page)).Elements["/Dest"]), target, "/Fit");
+            if (kind is "next-cycle" or "listed-twice")
+                View(result, Target(result, fields["bad"].Elements["/A"]), target, "/Fit");
+            if (kind is "no-destination" or "broken-destination")
+                Assert.False(fields["bad"].Elements.ContainsKey(kind == "no-destination" ? "/AA" : "/A"));
+        }
+    }
+
+    [Fact]
+    public void Additional_actions_lose_only_their_unresolved_entries_and_go_when_none_is_left()
+    {
+        var source = Source(pdf =>
+        {
+            var form = Form(pdf);
+            Put(Button(pdf, form, "none"), "/AA", Triggers(pdf, true,
+                ("/D", GoTo(pdf, new PdfName("/nowhere"))), ("/U", GoTo(pdf, new PdfString("nowhere")))));
+            Put(Button(pdf, form, "some"), "/AA", Triggers(pdf, true,
+                ("/D", GoTo(pdf, new PdfName("/nowhere"))), ("/U", GoTo(pdf, Dest(pdf, 1))), ("/E", Script(pdf))));
+        });
+        using var result = PdfReader.Open(MergeOne(source), PdfDocumentOpenMode.Import);
+        var fields = Fields(result);
+        Assert.False(fields["none"].Elements.ContainsKey("/AA"));
+        var some = D(fields["some"].Elements["/AA"]);
+        Assert.False(some.Elements.ContainsKey("/D"));
+        View(result, Target(result, some.Elements["/U"]), 1, "/Fit");
+        Assert.Equal("/JavaScript", S(D(some.Elements["/E"]).Elements["/S"]));
+    }
+
+    [Fact]
+    public void Widgets_sharing_a_large_additional_actions_dictionary_rewrite_it_once()
+    {
+        const int Count = 10_000;
+        var source = Source(pdf =>
+        {
+            var triggers = Object(pdf);
+            for (var i = 0; i < Count; i++)
+                triggers.Elements[$"/K{i}"] = GoTo(pdf, Dest(pdf, 1));
+            var annotations = new PdfArray(pdf);
+            for (var i = 0; i < Count; i++)
+            {
+                var widget = Object(pdf);
+                widget.Elements["/Subtype"] = new PdfName("/Widget");
+                widget.Elements["/Rect"] = Items(pdf, new PdfInteger(0), new PdfInteger(0), new PdfInteger(1), new PdfInteger(1));
+                widget.Elements["/AA"] = triggers.Reference;
+                annotations.Elements.Add(widget.Reference!);
+            }
+            pdf.Pages[0].Elements["/Annots"] = annotations;
+        });
+        using (var input = PdfReader.Open(source, PdfDocumentOpenMode.Import))
+        {
+            var widgets = A(input.Pages[0].Elements["/Annots"]).Elements.Select(D).ToList();
+            var shared = D(widgets[0].Elements["/AA"]);
+            Assert.All(widgets, widget => Assert.Same(shared, D(widget.Elements["/AA"])));
+        }
+        var output = MeasureSave(source, [new(source, 0), new(source, 1)], () => MergeOne(source));
+        using var result = PdfReader.Open(output, PdfDocumentOpenMode.Import);
+        var merged = A(result.Pages[0].Elements["/Annots"]).Elements.Select(D).ToList();
+        Assert.Equal(Count, merged.Count);
+        var rewritten = D(merged[0].Elements["/AA"]);
+        Assert.All(merged, widget => Assert.Same(rewritten, D(widget.Elements["/AA"])));
+        Assert.Equal(Count, rewritten.Elements.Count);
+        View(result, Target(result, rewritten.Elements[$"/K{Count - 1}"]), 1, "/Fit");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Widget_actions_without_a_goto_are_not_copied(bool save)
+    {
+        var source = Source(pdf =>
+        {
+            var form = Form(pdf);
+            var shared = Triggers(pdf, true, ("/E", Script(pdf)));
+            var uri = Action(pdf, "/URI", new PdfString("https://example.org/"));
+            pdf.Internals.AddObject(uri);
+            var parent = Object(pdf);
+            parent.Elements["/T"] = new PdfString("group");
+            parent.Elements["/FT"] = new PdfName("/Btn");
+            parent.Elements["/Ff"] = new PdfInteger(65536);
+            var kid = Widget(pdf, 0, parent);
+            parent.Elements["/Kids"] = Items(pdf, kid.Reference!);
+            A(form.Elements["/Fields"]).Elements.Add(parent.Reference!);
+            Put(parent, "/AA", shared);
+            Put(kid, "/AA", shared);
+            Put(parent, "/A", uri);
+            Put(kid, "/A", uri);
+            Put(Button(pdf, form, "direct"), "/AA", Triggers(pdf, false, ("/X", Script(pdf))));
+        });
+        using var result = PdfReader.Open(save ? SavePages([new(source, 0)]) : MergeOne(source), PdfDocumentOpenMode.Import);
+        var fields = Fields(result);
+        // The parent is not rewritten, so a widget still sharing its objects proves the widget's were not copied.
+        var parentField = fields["group"];
+        var kidField = D(Assert.Single(A(parentField.Elements["/Kids"]).Elements));
+        var kept = D(kidField.Elements["/AA"]);
+        Assert.Same(D(parentField.Elements["/AA"]), kept);
+        Assert.Same(D(parentField.Elements["/A"]), D(kidField.Elements["/A"]));
+        Assert.Equal("/JavaScript", S(D(kept.Elements["/E"]).Elements["/S"]));
+        Assert.Equal("https://example.org/", S(D(kidField.Elements["/A"]).Elements["/URI"]));
+        Assert.IsNotType<PdfReference>(fields["direct"].Elements["/AA"]);
+        Assert.Equal("/JavaScript", S(D(D(fields["direct"].Elements["/AA"]).Elements["/X"]).Elements["/S"]));
     }
 
     [Fact]

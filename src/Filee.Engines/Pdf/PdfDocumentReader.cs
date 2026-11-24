@@ -314,7 +314,7 @@ internal sealed partial class PdfDocumentReader
             .ToList();
 
         // Text that needs shaping (Arabic, Indic, ...) is read in content-stream order (PdfDocumentReader.ComplexText).
-        var pageLetters = ContentLetters(page);
+        var pageLetters = Levelled(ContentLetters(page), new PdfPoint(page.Width / 2, page.Height / 2));
         var pageWords = HasComplexText(pageLetters)
             ? ComplexWords(pageLetters)
             : NearestNeighbourWordExtractor.Instance.GetWords(pageLetters.Where(l => l.Value.Length > 0).ToList())
@@ -378,6 +378,56 @@ internal sealed partial class PdfDocumentReader
 
     private static bool Inside(PdfRectangle box, PdfPoint point) =>
         point.X >= box.Left && point.X <= box.Right && point.Y >= box.Bottom && point.Y <= box.Top;
+
+    // ───────────────────────── OCR layer at an angle ─────────────────────────
+
+    /// <summary>
+    /// Invisible text turned by less than this many degrees is the OCR layer of a page scanned or photographed at an
+    /// angle; turned further, it runs sideways (a page on its side), which is not read as lines.
+    /// </summary>
+    private const double MaxOcrSkew = 45;
+
+    /// <summary>
+    /// The letters with the invisible ones that are turned by a small angle turned back about <paramref name="center"/>,
+    /// so they lie level. Tesseract writes each line of a skewed scan along its slanted baseline (a turned text matrix,
+    /// #1538): read as they lie, its words are not horizontal and were all left out ("The PDF contains no text"), and
+    /// even if they were taken, a line falling by a few degrees drifts by more than its height from one end to the
+    /// other and would break into a line per word. Visible text keeps its place, so born-digital pages read as before.
+    /// </summary>
+    private static List<Letter> Levelled(List<Letter> letters, PdfPoint center)
+    {
+        List<Letter>? result = null;
+        for (var i = 0; i < letters.Count; i++)
+        {
+            var letter = letters[i];
+            var angle = letter.RenderingMode == TextRenderingMode.Neither && letter.TextOrientation == TextOrientation.Other
+                ? letter.BoundingBox.Rotation
+                : 0;
+            if (angle == 0 || Math.Abs(angle) >= MaxOcrSkew)
+            {
+                result?.Add(letter);
+                continue;
+            }
+            result ??= letters.Take(i).ToList();
+            result.Add(Turned(letter, -angle, center));
+        }
+        return result ?? letters;
+    }
+
+    /// <summary><paramref name="letter"/> turned by <paramref name="degrees"/> (counter-clockwise) about <paramref name="center"/>.</summary>
+    private static Letter Turned(Letter letter, double degrees, PdfPoint center)
+    {
+        var cos = Math.Cos(degrees * Math.PI / 180);
+        var sin = Math.Sin(degrees * Math.PI / 180);
+        PdfPoint Turn(PdfPoint p) => new(center.X + (p.X - center.X) * cos - (p.Y - center.Y) * sin,
+            center.Y + (p.X - center.X) * sin + (p.Y - center.Y) * cos);
+
+        var box = letter.BoundingBox;
+        PdfPoint[] corners = [Turn(box.BottomLeft), Turn(box.BottomRight), Turn(box.TopLeft), Turn(box.TopRight)];
+        var level = new PdfRectangle(corners.Min(c => c.X), corners.Min(c => c.Y), corners.Max(c => c.X), corners.Max(c => c.Y));
+        return new Letter(letter.Value, level, level, Turn(letter.StartBaseLine), Turn(letter.EndBaseLine), letter.Width, letter.FontSize,
+            letter.FontDetails, letter.RenderingMode, letter.StrokeColor, letter.FillColor, letter.PointSize, letter.TextSequence);
+    }
 
     // ───────────────────────── Text formatting ─────────────────────────
 

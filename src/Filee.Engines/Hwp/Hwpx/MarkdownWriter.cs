@@ -218,7 +218,7 @@ internal sealed class MarkdownWriter
         return lead + core + trail;
     }
 
-    private static string Escape(string text)
+    internal static string Escape(string text)
     {
         var sb = new StringBuilder(text.Length);
         foreach (var ch in text)
@@ -231,7 +231,7 @@ internal sealed class MarkdownWriter
     }
 
     /// <summary>Text that would read as a heading, list item or quote at the start of a line is escaped.</summary>
-    private static string EscapeLineStart(string text)
+    internal static string EscapeLineStart(string text)
     {
         var trimmed = text.TrimStart();
         if (trimmed.StartsWith('#') || trimmed.StartsWith("- ", StringComparison.Ordinal) || trimmed.StartsWith("+ ", StringComparison.Ordinal))

@@ -286,11 +286,11 @@
           <StackPanel x:Name="ProfileOrderButtons" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="2" Margin="0,-4,0,0">
             <Button x:Name="MoveProfileUp" Classes="icon" Command="{Binding MoveProfileUpCommand}"
                     ToolTip.Tip="{DynamicResource toolbar.profile_up}" AutomationProperties.Name="{DynamicResource toolbar.profile_up}">
-              <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
+              <PathIcon Width="16" Height="16" Data="{StaticResource Icon.ChevronUp}" />
             </Button>
             <Button x:Name="MoveProfileDown" Classes="icon" Command="{Binding MoveProfileDownCommand}"
                     ToolTip.Tip="{DynamicResource toolbar.profile_down}" AutomationProperties.Name="{DynamicResource toolbar.profile_down}">
-              <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
+              <PathIcon Width="16" Height="16" Data="{StaticResource Icon.ChevronDown}" />
             </Button>
           </StackPanel>
           <Button HorizontalAlignment="Stretch" Command="{Binding AddProfileCommand}"

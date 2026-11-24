@@ -42,9 +42,19 @@ public sealed class FolderIsoConverter : IConverter
             var output = step.Output.Allocate("iso");
             if (output is null) return [];
             output = Path.GetFullPath(output);
-            var builder = new CDBuilder { UseJoliet = true, VolumeIdentifier = "FILEE" };
+            var filesystem = step.Preset.Archive.IsoFileSystem;
+            var label = step.Preset.Archive.IsoVolumeLabel;
+            if (IsoVolumeLabels.ErrorKey(label, filesystem) is { } error)
+                throw new ConversionRefusedException(error);
+            if (string.IsNullOrEmpty(label))
+            {
+                var source = step.OriginalSourcePath ?? step.InputPath;
+                var name = Directory.Exists(source) ? new DirectoryInfo(Path.TrimEndingDirectorySeparator(source)).Name : FormatRegistry.NameWithoutExtension(source);
+                label = IsoVolumeLabels.FromName(name, filesystem);
+            }
+            var builder = new CDBuilder { UseJoliet = true, VolumeIdentifier = filesystem == IsoFileSystem.Joliet ? IsoVolumeLabels.PrimaryLabel(label) : "" };
             var udf = step.Preset.Archive.IsoFileSystem == IsoFileSystem.Udf201
-                ? new UdfBuilder { VolumeIdentifier = "FILEE" } : null;
+                ? new UdfBuilder { VolumeIdentifier = label } : null;
             if (!Enum.IsDefined(step.Preset.Archive.IsoFileSystem))
                 throw new ArgumentException("Unknown ISO filesystem.");
             var sources = new List<(string Path, long Length, DateTime Modified)>();
@@ -119,6 +129,13 @@ public sealed class FolderIsoConverter : IConverter
                     }
                     if (copied != image.Length)
                         throw new ConversionRefusedException("error.iso_changed");
+                    if (udf is null)
+                    {
+                        // DiscUtils 1.0.90 pads this UTF-16 field with ASCII bytes (U+2020). This data-only builder
+                        // puts the Joliet descriptor at sector 17; write its 16-character label with Unicode spaces.
+                        destination.Position = 17 * 2048 + 40;
+                        destination.Write(Encoding.BigEndianUnicode.GetBytes(label.PadRight(16)));
+                    }
                 }
                 ct.ThrowIfCancellationRequested();
                 foreach (var source in sources)
@@ -135,7 +152,6 @@ public sealed class FolderIsoConverter : IConverter
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }, ct);
-
     /// <summary>Checks one component against UdfBuilder 1.0.90's path and compressed-Unicode identifier rules.</summary>
     internal static void ValidateUdfName(string component, string relativePath)
     {

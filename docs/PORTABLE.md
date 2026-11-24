@@ -11,7 +11,10 @@ Conversion work folders, temporary files and engine caches keep their existing b
 A proxy set in Settings → General → Network is kept in `data/settings.json` as well, so the copy downloads engines
 and updates through it on any computer without touching that computer's proxy settings.
 An explicit `FILEE_DATA_DIR` still takes precedence.
-Installer packages keep using the normal user profile.
+Installer packages keep using the normal user profile. A distribution package made from the Linux archive must
+leave out `filee.portable` and any `data` folder (`installer/linux/INSTALL.txt` says so for packagers), or every user
+of it gets portable mode in a folder they can't write to. When the data folder can't be written, Filee shows the
+error in the UI language's fonts and writes it to stderr too, with the cause, since the log would be in that folder.
 Update a marked copy by replacing its application files while keeping `filee.portable` and `data`.
 
 ### Bringing existing data along
@@ -36,7 +39,7 @@ import, so declining import does not hide obsolete integration. Declining cleanu
 A failed cleanup can be retried in the dialog. Closing the dialog also remembers a declined cleanup.
 `--uninstall-cleanup` removes only this copy's entries, regardless of the remembered choice.
 
-On Linux, cleanup checks autostart, Thunar actions and shortcuts, and the Thunar, Nautilus, Nemo and KDE file-manager
+On Linux, cleanup checks autostart, Thunar actions and shortcuts, and the Thunar, Nautilus, Nemo, KDE and Flea file-manager
 entries. On macOS, it checks the LaunchAgent and legacy Automator Quick Action. The shared Finder service preference
 is left alone because it does not identify a specific executable. Cleanup recognizes the command formats Filee
 generated; malformed or unrecognized entries and linked files are preserved. Removing a macOS LaunchAgent prevents

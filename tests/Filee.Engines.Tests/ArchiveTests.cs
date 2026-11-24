@@ -50,6 +50,7 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("txz")]
     [InlineData("tar7z")]
     [InlineData("tz")]
+    [InlineData("tzst")]
     [InlineData("iso")]
     [InlineData("dmg")]
     [InlineData("cab")]
@@ -80,6 +81,7 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Single(planner.Plan("gz", "xz")!.Steps);
         Assert.Single(planner.Plan("lzma", "bz2")!.Steps);
         Assert.Single(planner.Plan("lz", "gz")!.Steps);
+        Assert.Single(planner.Plan("zst", "xz")!.Steps);
         Assert.Null(planner.Plan("zip", "gz"));  // several files do not fit into one .gz
         Assert.Null(planner.Plan("zip", "rar")); // RAR cannot be written
         Assert.Null(planner.Plan("lzo", "zip")); // no LZO reader
@@ -673,6 +675,50 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(Snapshot(tree), Snapshot(unpacked));
         var zip = (await ConvertOkAsync(tarLz, new Preset { TargetFormat = "zip" })).Outputs.Single();
         Assert.EndsWith("backup.zip", zip);
+    }
+
+    [Theory]
+    [InlineData("backup.tar.zst")]
+    [InlineData("backup.tzst")]
+    public async Task Zstandard_tar_unpacks_into_its_files_and_converts_to_zip(string name)
+    {
+        SkipWithout7Zip();
+        var dir = fx.NewFolder();
+        var tree = MakeTree(dir, "tree");
+        using var tar = new MemoryStream();
+        await TarFile.CreateFromDirectoryAsync(tree, tar, includeBaseDirectory: false, Ct);
+        var tzst = Path.Combine(dir, name);
+        await File.WriteAllBytesAsync(tzst, Zstd(tar.ToArray()), Ct);
+        Assert.Equal("tzst", FormatRegistry.Detect(tzst)?.Id);
+
+        // Both stages at once (#1646): the files themselves come out, not a backup.tar to unpack again.
+        var unpacked = (await ConvertOkAsync(tzst, Extract)).Outputs.Single();
+        Assert.Equal(Snapshot(tree), Snapshot(unpacked));
+
+        var zip = (await ConvertOkAsync(tzst, new Preset { TargetFormat = "zip" })).Outputs.Single();
+        Assert.EndsWith("backup.zip", zip);
+        var check = Path.Combine(dir, "check");
+        ZipFile.ExtractToDirectory(zip, check);
+        Assert.Equal(Snapshot(tree), Snapshot(check));
+    }
+
+    [Fact]
+    public async Task A_single_zstandard_file_unpacks_to_the_file_and_converts_to_gzip()
+    {
+        SkipWithout7Zip();
+        var dir = fx.NewFolder();
+        var data = Words(300_000);
+        var zst = Path.Combine(dir, "server.log.zst");
+        await File.WriteAllBytesAsync(zst, Zstd(data), Ct);
+
+        var folder = (await ConvertOkAsync(zst, Extract)).Outputs.Single();
+        Assert.Equal(data, await File.ReadAllBytesAsync(Path.Combine(folder, "server.log"), Ct));
+
+        var gz = (await ConvertOkAsync(zst, new Preset { TargetFormat = "gz" })).Outputs.Single();
+        await using var gzip = new GZipStream(File.OpenRead(gz), CompressionMode.Decompress);
+        using var back = new MemoryStream();
+        await gzip.CopyToAsync(back, Ct);
+        Assert.Equal(data, back.ToArray());
     }
 
     [Fact]

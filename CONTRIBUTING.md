@@ -60,7 +60,7 @@ local package without it needs the glibc of the machine that built it. Check a p
 
 - **Linux:** drag gestures require X11 by default. Install the Avalonia desktop dependencies (fontconfig, FreeType, X11,
   Xrandr, Xi, Xtst, Xt, XkbCommon, ICE and SM) and CJK fonts for document comparisons. File actions are installed for
-  Thunar, Nautilus, Nemo and Dolphin. The first enabled keyboard shortcut uses Thunar's native custom action;
+  Thunar, Nautilus, Nemo, Dolphin and Flea (in Flea, unhide "Run script" in its menu settings to show the action). The first enabled keyboard shortcut uses Thunar's native custom action;
   close Thunar before changing or pausing that shortcut and reopen it afterwards. Global selected-file queries
   and hold gestures are not supported. Wayland can use file actions, the drop zone, watch folders and CLI.
   On KDE Plasma 6 and Hyprland, the drag gesture can also run there, experimentally with `FILEE_WAYLAND_GESTURES=1`. It needs
@@ -148,7 +148,8 @@ ARM64 sums file for theirs, and fail to update; the script refuses to publish a 
 every `SHA256SUMS` file of the release (Windows, Linux and macOS) with Filee's update key and uploads the `.sig` files
 next to them (`build/sign-checksums.ps1`; it asks for the key's passphrase once). It also copies the Windows files to
 the download mirror `https://dl.filee.sh/X.Y.Z/` (Cloudflare R2; needs `npx wrangler login` once), which the
-Microsoft Store listing points at because GitHub's download links redirect. Look over the draft and publish it (or pass
+Microsoft Store listing points at because GitHub's download links redirect, and which the in-app updater falls back to
+when GitHub doesn't hand out a file (#1593): keep the file names as they are on the release. Look over the draft and publish it (or pass
 `-Publish`). `build/sign-windows.ps1` signs any folder or file on its own.
 
 The update key is made once with `pwsh build/new-update-key.ps1 -PrivateKeyPath <file outside the repository>`. Its

@@ -689,6 +689,33 @@ public partial class UserDataStoreTests
     }
 
     [Fact]
+    public void One_history_entry_can_be_removed_and_the_rest_are_saved()
+    {
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+
+        var a = new Filee.Core.History.HistoryEntry { JobId = "a" };
+        var b = new Filee.Core.History.HistoryEntry { JobId = "b" };
+        var c = new Filee.Core.History.HistoryEntry { JobId = "c" };
+        store.AddHistory(a);
+        store.AddHistory(b);
+        store.AddHistory(c); // newest first: c, b, a
+        Assert.Equal(["c", "b", "a"], store.History.Select(e => e.JobId));
+
+        // Removing the middle one leaves the others, and is written to disk.
+        Assert.True(store.RemoveHistory(b));
+        Assert.Equal(["c", "a"], store.History.Select(e => e.JobId));
+        var reloaded = new UserDataStore(dir.Path);
+        reloaded.Load();
+        Assert.Equal(["c", "a"], reloaded.History.Select(e => e.JobId));
+
+        // Removing one that is no longer there changes nothing and says so.
+        Assert.False(store.RemoveHistory(b));
+        Assert.Equal(2, store.History.Count);
+    }
+
+    [Fact]
     public void History_keeps_the_newest_entries_up_to_the_limit()
     {
         using var dir = new TempDir();
@@ -1060,7 +1087,7 @@ public partial class UserDataStoreTests
         Assert.Equal(ids.IndexOf("models") + 1, ids.IndexOf("geo")); // and, from schema 25, the geospatial donut
         Assert.Equal(ids.IndexOf("mixed") - 1, ids.IndexOf("geo"));
         var models = profiles.Single(p => p.Id == "models");
-        Assert.Equal(["glb", "gltf", "stl", "obj", "3mf", "ply", "fbx"], models.Extensions);
+        Assert.Equal(["glb", "gltf", "stl", "obj", "3mf", "ply", "fbx", "mdl", "smd"], models.Extensions);
         Assert.Equal(BuiltInData.ModelProfile().PresetIds, models.PresetIds);
         Assert.False(SettingsMigrations.ApplyToLibrary(14, presets, profiles)); // once only
     }
@@ -1074,7 +1101,7 @@ public partial class UserDataStoreTests
 
         Assert.True(SettingsMigrations.ApplyToLibrary(14, presets, profiles));
 
-        Assert.Equal(["glb", "gltf", "obj", "ply", "fbx"], profiles.Single(p => p.Id == "models").Extensions);
+        Assert.Equal(["glb", "gltf", "obj", "ply", "fbx", "mdl", "smd"], profiles.Single(p => p.Id == "models").Extensions);
     }
 
     [Fact]
@@ -1088,7 +1115,7 @@ public partial class UserDataStoreTests
 
         Assert.True(SettingsMigrations.ApplyToLibrary(21, presets, profiles));
 
-        Assert.Equal(["glb", "gltf", "stl", "obj", "3mf", "fbx"], models.Extensions);
+        Assert.Equal(["glb", "gltf", "stl", "obj", "3mf", "mdl", "smd", "fbx"], models.Extensions);
         Assert.False(SettingsMigrations.ApplyToLibrary(21, presets, profiles)); // once only
 
         // A donut of the user that already opens FBX files keeps them.

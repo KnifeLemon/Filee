@@ -166,11 +166,11 @@ public static class FormatRegistry
         new("sda", "SDA", FormatCategory.Presentation, ["sda", "sdd"], Writable: false),
 
         // Plain text / markup
-        // Text logs, source code (Arduino and Processing sketches too), database schemas (DBML), proxy scripts, style sheets and settings files are read as plain
-        // text, never executed, compiled or translated (issues #273, #284, #254, #388, #368, #607, #536, #630, #661, #660,
-        // #864, #828, #980, #997, #854, #1176).
+        // Text logs (CrossOver's .cxlog too), source code (Arduino and Processing sketches too), database schemas (DBML), proxy
+        // scripts, style sheets and settings files are read as plain text, never executed, compiled or translated (issues
+        // #273, #284, #254, #388, #368, #607, #536, #630, #661, #660, #864, #828, #980, #997, #854, #1176, #1383).
         new("txt", "TXT", FormatCategory.Text,
-            ["txt", "log", "py", "pac", "bat", "cmd", "command", "lua", "css", "ps1", "sql", "ahk", "ini", "rsc",
+            ["txt", "log", "cxlog", "py", "pac", "bat", "cmd", "command", "lua", "css", "ps1", "sql", "ahk", "ini", "rsc",
              "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql", "dbml", "java", "ino", "pde"]),
         new("md", "Markdown", FormatCategory.Text, ["md", "markdown"]),
         new("html", "HTML", FormatCategory.Text, ["html", "htm", "xhtml"]),
@@ -331,12 +331,15 @@ public static class FormatRegistry
         new("tar7z", "TAR.7Z", FormatCategory.Archive, ["tar.7z"], Writable: false),
         new("tlz", "TAR.LZ", FormatCategory.Archive, ["tar.lz", "tlz"], Writable: false),
         new("tz", "TAR.Z", FormatCategory.Archive, ["tar.z", "tz"], Writable: false),
+        // Zstandard (#1646): Arch Linux packages, release tarballs, backups. Read by the bundled 7-Zip.
+        new("tzst", "TAR.ZST", FormatCategory.Archive, ["tar.zst", "tzst"], Writable: false),
         new("gz", "GZ", FormatCategory.Archive, ["gz"]),
         new("bz2", "BZ2", FormatCategory.Archive, ["bz2", "bz"]),
         new("xz", "XZ", FormatCategory.Archive, ["xz"]),
         new("lz", "LZ", FormatCategory.Archive, ["lz"], Writable: false),
         new("lzma", "LZMA", FormatCategory.Archive, ["lzma"], Writable: false),
         new("z", "Z", FormatCategory.Archive, ["z"], Writable: false),
+        new("zst", "ZST", FormatCategory.Archive, ["zst"], Writable: false),
         new("jar", "JAR", FormatCategory.Archive, ["jar"], Writable: false),
         // Adobe extension packages for After Effects, Premiere Pro, Photoshop … (#1382): signed ZIPs. Never a target,
         // since installing one needs the signature its developer makes with Adobe's ZXPSignCmd.
@@ -357,9 +360,9 @@ public static class FormatRegistry
         new("mcworld", "Minecraft world", FormatCategory.Archive, ["mcworld"]),
         new("mctemplate", "Minecraft world template", FormatCategory.Archive, ["mctemplate"]),
         new("mrpack", "Modrinth modpack", FormatCategory.Archive, ["mrpack"]),
-        // Garry's Mod addons (Steam Workshop), unpacked by Filee with an addon.json for their title, description, type
-        // and tags.
-        new("gma", "Garry's Mod addon (GMA)", FormatCategory.Archive, ["gma"], Writable: false),
+        // Garry's Mod addons (Steam Workshop), read and written by Filee as gmad does: addon.json gives the title, type,
+        // tags and ignores, and only the files Garry's Mod loads go in.
+        new("gma", "Garry's Mod addon (GMA)", FormatCategory.Archive, ["gma"]),
         // Valve paks (Source engine games' files, "pak01_dir.vpk" with its "pak01_000.vpk" … parts), read by Filee; a PS
         // Vita package under the same extension is a ZIP and goes to 7-Zip.
         new("vpk", "Valve pak (VPK)", FormatCategory.Archive, ["vpk"], Writable: false),
@@ -419,6 +422,11 @@ public static class FormatRegistry
         new("3mf", "3MF", FormatCategory.Model3D, ["3mf"]),
         new("ply", "PLY", FormatCategory.Model3D, ["ply"]),
         new("fbx", "FBX", FormatCategory.Model3D, ["fbx"], Writable: false),
+        // Source engine models (Garry's Mod and other Source games), read with the .vvd and .vtx beside them and their
+        // textures from the "materials" folder above them.
+        new("mdl", "Source model (MDL)", FormatCategory.Model3D, ["mdl"], Writable: false),
+        // Studiomdl data, the text the Source engine's model compiler reads (from an MDL with its bones and weights).
+        new("smd", "Studiomdl data (SMD)", FormatCategory.Model3D, ["smd"]),
 
         // Geospatial vector data (CSV with coordinates is a Data format and reaches these through the geo engine)
         new("geojson", "GeoJSON", FormatCategory.Geo, ["geojson"]),

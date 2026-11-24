@@ -57,10 +57,10 @@
         <Button Margin="0,0,6,6" Click="OnReplace" IsEnabled="{Binding HasSelection}"
                 Content="{DynamicResource pdf_editor.replace}" />
         <Button Margin="0,0,6,6" Command="{Binding MoveUpCommand}" ToolTip.Tip="{DynamicResource group.move_up}" AutomationProperties.Name="{DynamicResource group.move_up}">
-          <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
+          <PathIcon Width="16" Height="16" Data="{StaticResource Icon.ChevronUp}" />
         </Button>
         <Button Margin="0,0,6,6" Command="{Binding MoveDownCommand}" ToolTip.Tip="{DynamicResource group.move_down}" AutomationProperties.Name="{DynamicResource group.move_down}">
-          <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
+          <PathIcon Width="16" Height="16" Data="{StaticResource Icon.ChevronDown}" />
         </Button>
         <Button Margin="0,0,6,6" Command="{Binding RotateLeftCommand}" Content="{DynamicResource preset.rotate_left.short}" />
         <Button Margin="0,0,6,6" Command="{Binding RotateRightCommand}" Content="{DynamicResource preset.rotate_right.short}" />

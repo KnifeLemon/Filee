@@ -463,7 +463,8 @@ hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
 - Anything else is one filter graph (`MediaEncoding.ClipGraphOf`): the video is read once, `split`/`trim` per piece,
   `setpts` and chained `atempo` for speed, `volume`, `color`/`anullsrc` for gaps, `concat`, the music as a second
   input (`atrim`, `volume`, `afade`, `adelay`, `amix`), then `fade`/`afade`. It is encoded with the preset's quality,
-  size and codec.
+  size and codec. Music with *Loop music* on (`ClipMusic.Loop`, #1432) is read with `-stream_loop -1` from the file's
+  start instead of `-ss`, its first pass cut with `atrim=start=`, and plays until the clip ends.
 - Pictures, clips, the preview and Live Photos start at the frame shown at the time chosen (#1205):
   `Engines/Media/KeyFrames` reads the packets before the time with ffprobe, without decoding, for the key frame to read
   from, since FFmpeg's own `-ss` lands between key frames in MPEG-TS and MPEG-PS and skips the leading pictures of an
@@ -473,6 +474,13 @@ hidden and Save starts the M4R conversion of that part (`AskedRingtone.Apply`).
   between parts. A copy's `-ss` is checked where FFmpeg's own copy lands, since each demuxer seeks its own way (an MP4
   by decode time, a WMV by a key frame a second), and its end is put where no frame shown before its last is missing.
   The file header of `KeyFrames.cs` lists the FFmpeg behaviours, and the versions, that this allows for.
+- Mark this frame (F, under the picture, #1205) writes the frame in the large picture as a full-size PNG
+  (`MediaEncoding.StillAt`, found as the picture is, with HDR tone-mapped where FFmpeg has zscale) into a work folder
+  of its own (`App/Services/MarkedFrames`) and opens it in Annotate (`WindowService.AnnotateFrame`), or adds it there
+  as the next picture. Annotate saves it where it saves "next to the source", with the video's folder as the source's,
+  and never replaces or trashes the frame; the frame goes once its marked copy is saved, cancelled or skipped, when
+  Annotate closes with it unsaved, and when Filee quits. Annotate sits above the clip window, which stays on top, while
+  frames from it wait. The time beside Play is the time of the frame in the picture.
 
 ## Crop video
 
@@ -818,6 +826,13 @@ have no semibold) instead of the app's embedded Noto fonts.
 - **Command line**: Inno Setup's switches (`SetupOptions`, documented at the top of the file), because Filee 1.x
   updates itself with `/SILENT /NORESTART` and winget passes `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. Exit codes as
   Inno Setup's: 0 done, 1 could not start, 2 cancelled before installing (also a declined UAC prompt), 4 failed.
+- **In-app updates** (`UpdateService`): an installed copy downloads `Filee-<v>-SHA256SUMS.txt`, its `.sig` and
+  `Filee-<v>-win[-arm64]-Setup.exe` from the GitHub release, checks the signature with the update key, the Setup's
+  SHA-256 and its Authenticode publisher, and runs it with `/SILENT /NORESTART`. A file GitHub doesn't hand out (an
+  HTTP error, a timeout, a cut connection) is taken from the download mirror, `https://dl.filee.sh/<v>/<file name>`
+  (`UpdateService.MirrorRoot`, filled by `build/sign-release.ps1`); after one GitHub failure, the update's other files
+  try the mirror first. The checks don't depend on the source. A file that arrived and was refused is not fetched
+  again from the other source. Linux and macOS files aren't on the mirror.
 - **Testing**: `Filee.Setup.Tests` runs installs, updates (also over a simulated 1.x installation) and uninstalls
   against `MemoryRegistry`, a fake `ISetupSystem` and scratch folders, and renders every page. `/SANDBOX=<folder>`
   runs the real Setup with a registry file and all folders inside `<folder>`; `build-installer.ps1 -CheckOnly` (CI)

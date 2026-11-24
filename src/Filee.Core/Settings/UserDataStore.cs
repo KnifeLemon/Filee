@@ -189,6 +189,23 @@ public sealed class UserDataStore
         HistoryChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// Drops one finished conversion from the history (the card's X in Recent conversions). The files it made stay where
+    /// they are: this only forgets the entry, unlike <see cref="ClearHistory"/> which forgets all of them.
+    /// </summary>
+    /// <returns>Whether the entry was in the history and has been removed.</returns>
+    public bool RemoveHistory(HistoryEntry entry)
+    {
+        bool removed;
+        lock (_saveLock)
+            removed = History.Remove(entry);
+        if (!removed)
+            return false;
+        Write(HistoryPath, History, FileeJsonContext.Default.ListHistoryEntry);
+        HistoryChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
     /// <summary>Replaces presets and profiles with factory defaults.</summary>
     public void ResetLibrary()
     {
@@ -1183,6 +1200,27 @@ internal static class SettingsMigrations
         //      them) learn the archives donut; custom claims stay put.
         if (from < 96)
             changed |= LearnExtensions(profiles, out _, ["gma", "vpk", "bsp"]);
+        // v97: "GMA" (packing a folder into a Garry's Mod addon) joins the game packs in the palette, not a donut; the
+        //      game packs the user removed stay removed.
+        if (from < 97)
+            changed |= AddGma(presets);
+        // v98: "VTF" (any picture to a Valve texture) joins the palette after HEIC, not a donut.
+        if (from < 98 && presets.All(p => p.Id != BuiltInData.VtfId))
+            changed |= AddLikeNewLibrary(presets, BuiltInData.VtfId);
+        // v99: CrossOver logs (.cxlog, #1383) learn the text donut; custom claims stay put.
+        if (from < 99)
+            changed |= LearnExtensions(profiles, out _, ["cxlog"]);
+        // v100: Source engine models (.mdl) and studiomdl data (.smd) learn the 3D models donut and "SMD" joins the 3D
+        //       models in the palette after glTF; custom claims stay put.
+        if (from < 100)
+        {
+            changed |= AddSourcePresets(presets);
+            changed |= LearnExtensions(profiles, out _, ["mdl", "smd"]);
+        }
+        // v101: "QC + SMD" (decompiling a Source engine model into its QC and SMDs) joins the palette after "SMD", not a
+        //       donut.
+        if (from < 101 && presets.All(p => p.Id != BuiltInData.DecompileModelId))
+            changed |= AddLikeNewLibrary(presets, BuiltInData.DecompileModelId);
         return changed;
     }
 
@@ -1235,6 +1273,37 @@ internal static class SettingsMigrations
                 continue;
             }
             presets.Insert(at++, preset);
+            changed = true;
+        }
+        return changed;
+    }
+
+    /// <summary>
+    /// "GMA" after the last game pack of the library (else after "TAR", else at the end); the game packs the user removed
+    /// stay removed.
+    /// </summary>
+    private static bool AddGma(List<Preset> presets)
+    {
+        if (presets.Any(p => p.Id == "to-gma"))
+            return false;
+        var packs = BuiltInData.GamePackPresets().Select(p => p.Id).ToHashSet();
+        var at = presets.FindLastIndex(p => packs.Contains(p.Id));
+        if (at < 0)
+            at = presets.FindIndex(p => p.Id == "to-tar");
+        presets.Insert(at < 0 ? presets.Count : at + 1, BuiltInData.GamePackPresets().Single(p => p.Id == "to-gma"));
+        return true;
+    }
+
+    /// <summary>"SMD" after the last 3D model preset of the library (glTF), or at the end.</summary>
+    private static bool AddSourcePresets(List<Preset> presets)
+    {
+        var changed = false;
+        // Only "SMD": "QC + SMD" came a step later.
+        foreach (var preset in BuiltInData.SourceModelPresets().Where(p => p.Id == "to-smd" && presets.All(existing => existing.Id != p.Id)))
+        {
+            var models = BuiltInData.ModelPresets().Select(p => p.Id).ToHashSet();
+            var last = presets.FindLastIndex(p => models.Contains(p.Id));
+            presets.Insert(last < 0 ? presets.Count : last + 1, preset);
             changed = true;
         }
         return changed;

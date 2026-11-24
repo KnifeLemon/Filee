@@ -73,6 +73,11 @@ public partial class AnnotateWindow : Window
             if (DataContext is not AnnotateViewModel vm)
                 return;
             vm.CloseRequested += Close;
+            Closing += (_, e) =>
+            {
+                if (!e.Cancel)
+                    vm.BeginClosing();
+            };
             Closed += (_, _) => vm.Dispose();
         };
     }

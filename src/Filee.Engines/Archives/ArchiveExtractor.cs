@@ -21,7 +21,7 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     /// <summary>Formats read by 7-Zip.</summary>
     public static readonly IReadOnlyList<string> SevenZipFormats =
     [
-        "zip", "jar", "zxp", "nupkg", "apks", "aab", "msix", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "gz", "bz2", "xz", "lzma", "z",
+        "zip", "jar", "zxp", "nupkg", "apks", "aab", "msix", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "tzst", "gz", "bz2", "xz", "lzma", "z", "zst",
         "cab", "cpio", "deb", "rpm", "dmg", "iso", "img", "lha", "arj", "split",
         "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack",
     ];
@@ -33,13 +33,13 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip, Func<string, long>? s
     public static IEnumerable<string> ReadableFormats => SevenZipFormats.Concat(BuiltInFormats);
 
     /// <summary>A TAR inside a compressed stream (or a 7z): unpacking the outer layer yields one .tar file.</summary>
-    private static readonly HashSet<string> TarWrapped = ["tgz", "tbz2", "txz", "tar7z", "tz", "tlz"];
+    private static readonly HashSet<string> TarWrapped = ["tgz", "tbz2", "txz", "tar7z", "tz", "tlz", "tzst"];
 
     /// <summary>
     /// One compressed stream, no names or sizes to check beforehand (bzip2 states no size, gzip one modulo 4 GiB that
     /// its author chose).
     /// </summary>
-    private static readonly HashSet<string> SingleStream = ["gz", "bz2", "xz", "lzma", "z", "zst", "tgz", "tbz2", "txz", "tz"];
+    private static readonly HashSet<string> SingleStream = ["gz", "bz2", "xz", "lzma", "z", "zst", "tgz", "tbz2", "txz", "tz", "tzst"];
 
     /// <summary>Formats an RPM payload comes in (7-Zip shows it as one compressed CPIO file).</summary>
     private static readonly HashSet<string> RpmPayload = ["cpio", "gz", "bz2", "xz", "lzma", "z", "zst"];

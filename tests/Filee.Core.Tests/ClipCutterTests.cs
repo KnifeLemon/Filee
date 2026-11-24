@@ -343,6 +343,35 @@ public class ClipCutterTests
     }
 
     [Fact]
+    public void Music_that_loops_plays_until_the_clip_ends_and_keeps_its_place_in_the_song()
+    {
+        // #1432: a 20 s song from 4 s into a 30 s clip plays for the 26 s left, not 20.
+        var music = new ClipMusic { Path = "song.mp3", Offset = 4, Length = 20, Loop = true };
+        Assert.Equal(26, music.PlayLength(30));
+        Assert.Equal(20, LoopOff(music).PlayLength(30));
+        // A song whose length isn't known can't repeat: it plays once, as without the switch.
+        Assert.False(new ClipMusic { Path = "song.mp3", Loop = true }.Repeats);
+
+        // Played from 31 s into the clip, the song is 27 s in: 7 s into its second pass.
+        var edit = ClipEdit.Of(new ClipRange(0, 40));
+        edit.Music = music;
+        var later = edit.From(31);
+        Assert.Equal((0.0, 7.0), (later.Music!.Offset, later.Music.From));
+        Assert.Equal(9, later.Music.PlayLength(9));
+
+        var cutter = Cutter();
+        cutter.SetMusic(new ClipMusic { Path = "song.mp3", Length = 10 });
+        cutter.SetMusicLoop(true);
+        Assert.True(cutter.Music!.Loop);
+        Assert.True(cutter.ToEdit().Music!.Loop);
+        cutter.SetMusicLoop(true); // no change, no undo step
+        Assert.True(cutter.Undo());
+        Assert.False(cutter.Music!.Loop);
+        Assert.True(cutter.Redo());
+        Assert.True(cutter.Music!.Loop);
+    }
+
+    [Fact]
     public void Several_changes_in_a_batch_are_one_undo_step()
     {
         var cutter = Cutter();
@@ -455,5 +484,12 @@ public class ClipCutterTests
         var copy = conversion.Clone();
         copy.Media.Clip!.Parts[0].Start = 0;
         Assert.Equal(10, conversion.Media.Clip!.Parts[0].Start);
+    }
+
+    private static ClipMusic LoopOff(ClipMusic music)
+    {
+        var copy = music.Clone();
+        copy.Loop = false;
+        return copy;
     }
 }
