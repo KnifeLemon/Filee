@@ -51,9 +51,6 @@ public sealed partial class WhisperConverter : IConverter
 
     public EngineStatus GetStatus()
     {
-        if (!OperatingSystem.IsWindows())
-            return EngineStatus.Unavailable("engine.reason.unsupported_platform");
-
         var (cli, model) = LocateTools();
         if (cli is null || model is null)
             return EngineStatus.Unavailable("engine.reason.not_installed");

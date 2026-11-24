@@ -64,7 +64,9 @@ public static class EngineDownloads
         .. (OperatingSystem.IsWindows() ? [new EnginePackage("weasyprint", ["weasyprint"], 65_000_000, ["weasyprint"])] : Array.Empty<EnginePackage>()),
         new("tesseract", ["tesseract"], 168_000_000, ["tesseract"]),
         new("upscayl-bin", OperatingSystem.IsWindows() && architecture != Architecture.Arm64 ? ["upscayl-bin", "vcruntime", "vcomp14"] : OperatingSystem.IsWindows() ? [] : ["upscayl-bin"], 8_600_000, ["upscaler"]),
-        .. (OperatingSystem.IsWindows() ? [new EnginePackage("whisper", ["whisper", "whisper-model"], 156_880_105, ["whisper"])] : Array.Empty<EnginePackage>()),
+        // Linux and macOS have no download yet (#1629), like Tesseract there: a whisper-cli on PATH or a folder picked
+        // with "Use my copy…" (whisper-cli and a ggml-*.bin model) is used.
+        new("whisper", ["whisper", "whisper-model"], 156_880_105, ["whisper"]),
         // The Metadata tool reads with it and its conversions write with it (Filee.Engines.Metadata).
         new("exiftool", ["exiftool"], 30_000_000, ["exiftool"]),
     ];
