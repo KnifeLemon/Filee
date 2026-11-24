@@ -279,6 +279,8 @@
   "engine.cad.description": "Rysunki AutoCAD: DWG ↔ DXF, oba także do PDF, SVG i PNG.",
   "engine.gcode.name": "G-code (built-in)",
   "engine.gcode.description": "Ścieżki drukarek 3D i maszyn CNC (G-code) do PDF, SVG i obrazów albo podgląd zapisany przez slicer.",
+  "engine.slides-md.name": "Slajdy do Markdown (built-in)",
+  "engine.slides-md.description": "Slajdy PowerPoint (PPTX, PPTM, POTX, POTM, PPSX) jako Markdown, jedna sekcja na slajd: tytuły, listy, tabele, obrazy i notatki prelegenta, gotowe dla reveal.js.",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "Modele 3D: GLB, glTF, STL, OBJ, 3MF i PLY między sobą, FBX do każdego z nich oraz podgląd PNG.",
   "engine.image3d.name": "Obrazy na płaskorzeźbę 3D (wbudowany)",
