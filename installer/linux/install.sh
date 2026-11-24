@@ -356,7 +356,8 @@ desktop.write_text(
     'Comment=Convert files with Filee\n'
     f'Exec={quoted_exec(str(app / "Filee"))} --convert %F\n'
     f'Icon={desktop_value(app / "filee.png")}\n'
-    'Terminal=false\nCategories=Utility;\nX-Filee-Managed=true\n', encoding='utf-8')
+    # StartupWMClass matches Avalonia's X11 WM_CLASS (the entry assembly name), so the taskbar shows this icon.
+    'Terminal=false\nCategories=Utility;\nStartupWMClass=Filee\nX-Filee-Managed=true\n', encoding='utf-8')
 PY
 
 if command -v update-desktop-database >/dev/null 2>&1; then

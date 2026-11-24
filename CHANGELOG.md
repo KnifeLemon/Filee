@@ -36,6 +36,8 @@ ko: 바로 가기를 변환하면 결과가 대상 파일 옆이 아니라 바�
 en: A shortcut's results are saved next to the shortcut, not next to the file it points to
 ko: PowerPoint를 Markdown으로 바꾸면 슬라이드마다 한 구역이 되고 제목, 목록, 표, 그림, 발표자 노트가 남아요 (reveal.js)
 en: PowerPoint to Markdown keeps the slides, titles, lists, tables, pictures and speaker notes, ready for reveal.js
+ko: PNG를 ICO로 바꿀 때 256 크기를 PNG로 저장해서 아이콘 파일이 훨씬 작아져요
+en: Icons (ICO) are much smaller: the 256 px size is stored as PNG
 ko: 데이터 트랙 하나짜리 BIN/CUE 디스크 이미지를 ISO로 변환하고 압축을 풀 수 있어요
 en: Single-track BIN/CUE disc images convert to ISO (and extract or repack from there)
 ko: SRTM 고도 타일(.hgt)을 GeoTIFF나 흑백 이미지로 변환할 수 있어요
@@ -87,6 +89,11 @@ en: SRTM elevation tiles (.hgt) convert to signed 16-bit GeoTIFF and grayscale i
   their levels, links, bold and italic, tables, the pictures next to the file and the speaker notes after `Note:`,
   which is what [reveal.js](https://revealjs.com/markdown/) reads. Before, the text of all slides ran together with
   titles as plain paragraphs. Charts, SmartArt and equations aren't converted.
+
+- **Icons (ICO) are much smaller** (#1783). Filee stored every size of an `.ico` as an uncompressed bitmap, so a 10 KB
+  PNG became a 362 KB icon. The 256 px size is now stored as PNG, as Windows does it since Vista; the smaller sizes
+  stay bitmaps, which every program that reads icons opens. The same icon is now about a third of that size, most of
+  it the 128 px size. Cursors (CUR) are written as before.
 
 - **BIN/CUE disc images to ISO** (#1680). Drop a `.cue` sheet with its `.bin` beside it to copy a single data track
   (`MODE1/2048`, `MODE1/2352`, `MODE2/2352` or `MODE2/2336`) straight into an ISO 9660 image without re-mastering, or
