@@ -59,10 +59,4 @@ public partial class AboutPage : UserControl
         if (TopLevel.GetTopLevel(this) is { } top)
             await top.Launcher.LaunchUriAsync(new Uri(Services.UpdateService.FeatureRequestUrl));
     }
-
-    private async void OnIssue(object? sender, RoutedEventArgs e)
-    {
-        if (TopLevel.GetTopLevel(this) is { } top)
-            await top.Launcher.LaunchUriAsync(new Uri(Services.UpdateService.NewIssueUrl));
-    }
 }

@@ -32,6 +32,8 @@
       <Setter Property="Padding" Value="10,8" />
       <Setter Property="Margin" Value="3" />
       <Setter Property="MinWidth" Value="176" />
+      <!-- Long translations of a hint end in "…" instead of widening the tiles and squeezing the text beside them. -->
+      <Setter Property="MaxWidth" Value="220" />
       <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
       <Setter Property="BorderThickness" Value="1" />
