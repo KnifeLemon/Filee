@@ -932,6 +932,160 @@ public class JobQueueTests
         }
     }
 
+    private static readonly Preset MergePdfPreset = new()
+    {
+        TargetFormat = "pdf",
+        Pdf = { MergeIntoSingle = true },
+        Output = { FileNamePattern = "{name}_merged" }
+    };
+
+    private static readonly Preset MultiPageTiffPreset = new() { TargetFormat = "tiff", Image = { MultiPageTiff = true } };
+
+    [Fact]
+    public async Task Cancelling_during_a_pdf_merge_cancels_the_job_and_leaves_no_output()
+    {
+        using var dir = new TempDir();
+        var image = dir.File("photo.jpg");
+        var pdf = dir.File("report.pdf");
+        ConversionJob? running = null;
+        var merger = new FailingMerger(() => new OperationCanceledException(), () => running!.Cancel());
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("writer", new ConversionEdge("jpg", "pdf"))]), merger);
+
+        running = new ConversionJob([image, pdf], MergePdfPreset, "Test");
+        await queue.RunAsync(running);
+
+        Assert.Equal(JobState.Cancelled, running.State);
+        Assert.All(running.Files, f => Assert.Equal(FileState.Cancelled, f.State));
+        Assert.Empty(running.Outputs);
+        Assert.False(File.Exists(Path.Combine(dir.Path, "photo_merged.pdf")));
+    }
+
+    [Fact]
+    public async Task A_pdf_merge_that_throws_fails_every_merged_file_with_the_message_and_leaves_no_output()
+    {
+        using var dir = new TempDir();
+        var image = dir.File("photo.jpg");
+        var pdf = dir.File("report.pdf");
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("writer", new ConversionEdge("jpg", "pdf"))]),
+            new FailingMerger(() => new IOException("disk full")));
+
+        var job = await Run(queue, [image, pdf], MergePdfPreset);
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Empty(job.Outputs);
+        Assert.All(job.Files, f =>
+        {
+            Assert.Equal(FileState.Failed, f.State);
+            Assert.Equal("error.conversion_failed", f.ErrorKey);
+            Assert.Equal("disk full", f.ErrorDetail);
+        });
+        Assert.False(File.Exists(Path.Combine(dir.Path, "photo_merged.pdf")));
+        Assert.Equal("x", File.ReadAllText(image));
+        Assert.Equal("x", File.ReadAllText(pdf));
+    }
+
+    [Fact]
+    public async Task A_timeout_inside_the_pdf_merger_is_an_error_not_a_cancel()
+    {
+        using var dir = new TempDir();
+        var image = dir.File("photo.jpg");
+        var pdf = dir.File("report.pdf");
+        // The merger gives up on its own (not the job's cancel): the files are told as failed, not shown as cancelled.
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("writer", new ConversionEdge("jpg", "pdf"))]),
+            new FailingMerger(() => new OperationCanceledException("merger timed out")));
+
+        var job = await Run(queue, [image, pdf], MergePdfPreset);
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Empty(job.Outputs);
+        Assert.All(job.Files, f =>
+        {
+            Assert.Equal(FileState.Failed, f.State);
+            Assert.Equal("error.conversion_failed", f.ErrorKey);
+        });
+        Assert.False(File.Exists(Path.Combine(dir.Path, "photo_merged.pdf")));
+    }
+
+    [Fact]
+    public async Task Cancelling_during_a_multi_page_tiff_merge_cancels_the_job_and_leaves_no_output()
+    {
+        using var dir = new TempDir();
+        var a = dir.File("a.jpg");
+        var b = dir.File("b.jpg");
+        ConversionJob? running = null;
+        var merger = new FailingMerger(() => new OperationCanceledException(), () => running!.Cancel());
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("magick", new ConversionEdge("jpg", "tiff"))]), tiffMerger: merger);
+
+        running = new ConversionJob([a, b], MultiPageTiffPreset, "Test");
+        await queue.RunAsync(running);
+
+        Assert.Equal(JobState.Cancelled, running.State);
+        Assert.All(running.Files, f => Assert.Equal(FileState.Cancelled, f.State));
+        Assert.Empty(running.Outputs);
+        Assert.False(File.Exists(Path.Combine(dir.Path, "a.tiff")));
+    }
+
+    [Fact]
+    public async Task A_multi_page_tiff_merge_that_throws_fails_every_file_with_the_message_and_leaves_no_output()
+    {
+        using var dir = new TempDir();
+        var a = dir.File("a.jpg");
+        var b = dir.File("b.jpg");
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("magick", new ConversionEdge("jpg", "tiff"))]),
+            tiffMerger: new FailingMerger(() => new IOException("disk full")));
+
+        var job = await Run(queue, [a, b], MultiPageTiffPreset);
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Empty(job.Outputs);
+        Assert.All(job.Files, f =>
+        {
+            Assert.Equal(FileState.Failed, f.State);
+            Assert.Equal("error.conversion_failed", f.ErrorKey);
+            Assert.Equal("disk full", f.ErrorDetail);
+        });
+        Assert.False(File.Exists(Path.Combine(dir.Path, "a.tiff")));
+    }
+
+    [Fact]
+    public async Task A_refused_multi_page_tiff_merge_fails_every_file_with_its_reason_and_leaves_no_output()
+    {
+        using var dir = new TempDir();
+        var a = dir.File("a.jpg");
+        var b = dir.File("b.jpg");
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("magick", new ConversionEdge("jpg", "tiff"))]),
+            tiffMerger: new FailingMerger(() => new ConversionRefusedException("error.size_limit", "page 2")));
+
+        var job = await Run(queue, [a, b], MultiPageTiffPreset);
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Empty(job.Outputs);
+        Assert.All(job.Files, f =>
+        {
+            Assert.Equal(FileState.Failed, f.State);
+            Assert.Equal("error.size_limit", f.ErrorKey);
+            Assert.Equal("page 2", f.ErrorDetail);
+        });
+        Assert.False(File.Exists(Path.Combine(dir.Path, "a.tiff")));
+    }
+
+    /// <summary>Writes half an output, runs <paramref name="before"/> (a cancel, say), then throws what <paramref name="failure"/> makes.</summary>
+    private sealed class FailingMerger(Func<Exception> failure, Action? before = null) : IPdfMerger, ITiffMerger
+    {
+        public Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, PdfMergePaper? paper,
+            CancellationToken cancellationToken) => Fail(outputPath);
+
+        public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, ImageOptions options, CancellationToken cancellationToken) =>
+            Fail(outputPath);
+
+        private Task Fail(string outputPath)
+        {
+            File.WriteAllText(outputPath, "half");
+            before?.Invoke();
+            throw failure();
+        }
+    }
+
     private sealed class MergePaperPipeline(string? failingStage) : IConverter, IPdfMerger, IPdfFinisher, IPdfArchiver
     {
         private readonly FakeConverter _writer = new("pipeline", new ConversionEdge("jpg", "pdf"));

@@ -361,10 +361,23 @@ public sealed partial class JobQueue : IAsyncDisposable
                 FailFile(job, f, ex.ErrorKey, ex.Detail);
             return;
         }
-        catch
+        catch (OperationCanceledException) when (job.CancellationToken.IsCancellationRequested)
         {
+            // Only a real cancel counts: a timeout inside the merger is also an OperationCanceledException and is an error below.
             allocator.Discard();
-            throw;
+            foreach (var f in job.Files.Where(f => !Stopped(f)))
+                f.State = FileState.Cancelled;
+            Notify(job);
+            return;
+        }
+        catch (Exception ex)
+        {
+            // Disk full, a locked output, a PDF the merger can't read: told on the merged files instead of failing the job silently.
+            allocator.Discard();
+            _log.LogWarning(ex, "Merging {Count} file(s) into {Output} failed", inputs.Count, output);
+            foreach (var f in job.Files.Where(f => !Stopped(f)))
+                FailFile(job, f, "error.conversion_failed", ex.Message);
+            return;
         }
         first.Outputs.Add(output);
         foreach (var f in job.Files.Where(f => f.State != FileState.Failed))
@@ -413,10 +426,29 @@ public sealed partial class JobQueue : IAsyncDisposable
         {
             await _tiffMerger!.MergeAsync(inputs, output, job.Preset.Image, job.CancellationToken);
         }
-        catch
+        catch (OperationCanceledException) when (job.CancellationToken.IsCancellationRequested)
         {
             allocator.Discard();
-            throw;
+            foreach (var f in job.Files.Where(f => !Stopped(f)))
+                f.State = FileState.Cancelled;
+            Notify(job);
+            return;
+        }
+        catch (ConversionRefusedException ex)
+        {
+            allocator.Discard();
+            _log.LogInformation("Merging {Count} file(s) into {Output} was refused: {Reason}", inputs.Count, output, ex.Message);
+            foreach (var f in job.Files.Where(f => !Stopped(f)))
+                FailFile(job, f, ex.ErrorKey, ex.Detail);
+            return;
+        }
+        catch (Exception ex)
+        {
+            allocator.Discard();
+            _log.LogWarning(ex, "Merging {Count} page(s) into {Output} failed", inputs.Count, output);
+            foreach (var f in job.Files.Where(f => !Stopped(f)))
+                FailFile(job, f, "error.conversion_failed", ex.Message);
+            return;
         }
         // Not checked against the maximum (as before), but a picture under the minimum gets its notice (#662).
         if (SizeLimit.IsUnderMinimum(job.Preset, [output]))
