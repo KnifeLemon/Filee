@@ -8,6 +8,22 @@
     <Setter Property="FlowDirection" Value="LeftToRight" />
   </Style>
 
+  <!-- The small progress rings on the Theme page, in the donut's colours. -->
+  <Style Selector="c|ProgressRingPreview">
+    <Setter Property="PlateBrush" Value="{DynamicResource SurfaceBrush}" />
+    <Setter Property="PlateBorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+    <Setter Property="AccentBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="SecondaryForeground" Value="{DynamicResource TextSecondaryBrush}" />
+  </Style>
+
+  <!-- Every ScrollViewer eases a mouse-wheel notch instead of jumping (SmoothScroll.cs). It stands aside when "Reduce
+       animations" is on, and for anything but whole wheel notches on every system: touchpads and smooth wheels send
+       small steps (and their inertia), which already scroll smoothly. -->
+  <Style Selector="ScrollViewer">
+    <Setter Property="c:SmoothScroll.IsEnabled" Value="True" />
+  </Style>
+
   <!-- ───────── Donut control colours ───────── -->
   <Style Selector="c|DonutMenu">
     <Setter Property="SliceBrush" Value="{DynamicResource SurfaceBrush}" />
