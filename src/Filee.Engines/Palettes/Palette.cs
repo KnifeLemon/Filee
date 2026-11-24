@@ -48,7 +48,7 @@ internal sealed record Palette(IReadOnlyList<PaletteColor> Colors, string? Name 
         if (bytes.Length >= 12 && bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) && bytes.AsSpan(8, 4).SequenceEqual("PAL "u8))
             return ReadRiff(bytes);
         // A JASC file saved by a text editor may start with a UTF-8 byte order mark.
-        if (bytes.AsSpan().StartsWith("JASC-PAL"u8) || bytes.AsSpan().StartsWith("﻿JASC-PAL"u8))
+        if (bytes.AsSpan().StartsWith("JASC-PAL"u8) || bytes.AsSpan().StartsWith("\uFEFFJASC-PAL"u8))
             return ReadJasc(bytes);
         if (bytes.Length == 768)
             return ReadRaw(bytes);
@@ -183,7 +183,7 @@ internal sealed record Palette(IReadOnlyList<PaletteColor> Colors, string? Name 
     }
 
     private static List<string> Lines(byte[] bytes) =>
-        [.. Encoding.UTF8.GetString(bytes).TrimStart('﻿').Split('\n').Select(line => line.TrimEnd('\r').Trim())];
+        [.. Encoding.UTF8.GetString(bytes).TrimStart('\uFEFF').Split('\n').Select(line => line.TrimEnd('\r').Trim())];
 
     // ───────── Writing ─────────
 
