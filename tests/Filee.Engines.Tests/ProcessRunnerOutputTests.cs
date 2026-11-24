@@ -21,15 +21,17 @@ public sealed class ProcessRunnerOutputTests : IDisposable
     public async Task A_program_over_its_memory_limit_doesnt_get_to_finish()
     {
         // 1.5 GB, a little at a time, as a program that fills its memory does. On Windows it can't allocate the rest,
-        // elsewhere it is killed: either way it never gets to the end.
+        // elsewhere it is killed: either way it never gets to the end. Elsewhere its memory is only looked at now and
+        // then, later still on a busy runner, so it takes its time and holds what it has before the end: all at once it
+        // could get to the end between two looks.
         var (program, arguments) = OperatingSystem.IsWindows()
             ? ("powershell.exe", new[]
             {
                 "-NoProfile", "-Command",
                 "$ErrorActionPreference = 'Stop'; [Console]::Out.WriteLine('started'); $held = @(); 1..150 | ForEach-Object { $block = [byte[]]::new(10MB); [Array]::Clear($block, 0, $block.Length); $held += ,$block }; 'reached the end'",
             })
-            : ("/usr/bin/env", ["perl", "-e", "$| = 1; print qq(started\\n); my @held; push @held, 'a' x 10_000_000 for 1..150; print 'reached the end'; sleep 30"]);
-        var timeout = TimeSpan.FromMinutes(1);
+            : ("/usr/bin/env", ["perl", "-e", "$| = 1; print qq(started\\n); my @held; for (1..150) { push @held, 'a' x 10_000_000; select(undef, undef, undef, 0.02) } sleep 10; print 'reached the end'; sleep 30"]);
+        var timeout = TimeSpan.FromMinutes(3);
         var printed = new StringWriter();
         var clock = Stopwatch.StartNew();
         var started = TimeSpan.Zero;
@@ -46,9 +48,10 @@ public sealed class ProcessRunnerOutputTests : IDisposable
         Assert.StartsWith("started", printed.ToString());
         Assert.DoesNotContain("reached the end", printed.ToString());
         // Timed from its first line, not from the start: PowerShell alone can take half a minute to start on a slow
-        // runner (win-arm64). Stopped for memory, it ends in seconds; a program left to the timeout would throw.
+        // runner (win-arm64). Stopped for memory, it ends in seconds, but a busy runner has taken 20 s for PowerShell to
+        // give up at the limit: a minute leaves room for that, well short of the timeout, which would throw.
         var ran = clock.Elapsed - started;
-        Assert.True(ran < timeout / 4, $"ran {ran} after it started");
+        Assert.True(ran < timeout / 3, $"ran {ran} after it started");
         Assert.True(result.StoppedForMemory); // so a cut output isn't taken for a file it couldn't read
     }
 

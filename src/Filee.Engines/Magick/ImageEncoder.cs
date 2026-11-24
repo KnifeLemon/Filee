@@ -682,6 +682,9 @@ internal static class ImageEncoder
         if (options.Resize != ResizeMode.None && side < 256)
             sizes = [(int)side, .. sizes.Where(s => s < side)];
         image.Settings.SetDefine(MagickFormat.Icon, "auto-resize", string.Join(',', sizes));
+        // ImageMagick stores only sizes over 256 px as PNG, so the 256 px size was a bitmap of up to 264 KB (#1783). Windows has
+        // stored that size as PNG since Vista; the smaller ones stay bitmaps, which every icon reader opens.
+        image.Settings.SetDefine(MagickFormat.Icon, "png-compression-size", "256");
     }
 
     private static MagickColor ParseColor(string hex)

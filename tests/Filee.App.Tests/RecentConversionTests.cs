@@ -333,6 +333,45 @@ public class RecentConversionTests
         }
     }
 
+    [AvaloniaFact]
+    public void A_card_can_be_removed_from_the_history_leaving_its_files()
+    {
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<ILocalizer>();
+        var store = AppHost.Get<UserDataStore>();
+        var folder = Directory.CreateTempSubdirectory("filee-remove-").FullName;
+        store.ClearHistory();
+        try
+        {
+            var keep = Path.Combine(folder, "keep.png");
+            var gone = Path.Combine(folder, "gone.png");
+            File.WriteAllBytes(keep, [1]);
+            File.WriteAllBytes(gone, [2]);
+            store.AddHistory(Entry([keep], "PNG", [Path.Combine(folder, "keep.heic")]));
+            store.AddHistory(Entry([gone], "PNG", [Path.Combine(folder, "gone.heic")]));
+            Assert.Equal(2, store.History.Count);
+            var goneEntry = store.History[0]; // the newest, listed first
+
+            // The card's X forgets that entry only, and the file it made stays where it is.
+            var item = new HistoryItemViewModel(goneEntry, loc, new OpeningPlatform(false), store: store);
+            item.RemoveFromHistoryCommand.Execute(null);
+            Assert.DoesNotContain(goneEntry, store.History);
+            Assert.Single(store.History);
+            Assert.True(File.Exists(gone));
+
+            // It is saved: the next application loads it without that entry.
+            var reloaded = new UserDataStore(store.Directory);
+            reloaded.Load();
+            Assert.Single(reloaded.History);
+            Assert.DoesNotContain(goneEntry, reloaded.History);
+        }
+        finally
+        {
+            store.ClearHistory();
+            Directory.Delete(folder, true);
+        }
+    }
+
     private static HistoryOutput Stamp(string path)
     {
         var info = new FileInfo(path);

@@ -305,6 +305,42 @@ public class MediaJoiningTests
     }
 
     [Fact]
+    public void Concat_lists_preserve_spaces_quotes_and_unicode()
+    {
+        string[] paths = ["clip 1.mp4", "it's a clip.mp4", "vidéo_日本語.mp4", "my 'clip' 日本語.mp4"];
+        Assert.True(MediaJoining.CanUseConcatList(paths));
+        var list = MediaJoining.ConcatList(paths);
+        var lines = list.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(paths.Length, lines.Length);
+        Assert.All(lines, line =>
+        {
+            Assert.StartsWith("file '", line);
+            Assert.EndsWith("'", line);
+        });
+    }
+
+    [Fact]
+    public void Can_use_concat_list_accepts_safe_urls()
+    {
+        string[] paths = ["clip.mp4", "subfile,,start,0,end,10::/tmp/a.mp4", "concat:/tmp/a.mp4|/tmp/b.mp4"];
+        Assert.True(MediaJoining.CanUseConcatList(paths));
+    }
+
+    [Theory]
+    [InlineData("clip.mp4\nfile '/tmp/other.mp4'")]
+    [InlineData("clip.mp4\rfile '/tmp/other.mp4'")]
+    [InlineData("clip.mp4\r\nfile '/tmp/other.mp4'")]
+    [InlineData("clip\0.mp4")]
+    [InlineData("it's.mp4'\nfile '/tmp/other.mp4")]
+    [InlineData("subfile,,start,0,end,10::/tmp/a.mp4\nfile '/tmp/other.mp4'")]
+    [InlineData("concat:/tmp/a.mp4|/tmp/b.mp4\rfile '/tmp/other.mp4'")]
+    public void Concat_lists_reject_line_breaks_and_null_characters(string unsafePath)
+    {
+        Assert.False(MediaJoining.CanUseConcatList([unsafePath]));
+        Assert.Throws<ArgumentException>(() => MediaJoining.ConcatList([unsafePath]));
+    }
+
+    [Fact]
     public void Extract_audio_copies_aac_into_m4a_and_encodes_what_it_cannot_copy()
     {
         var copy = new MediaOptions { CopyAudioWhenPossible = true };

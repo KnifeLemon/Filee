@@ -107,6 +107,8 @@ public sealed partial class DonutMenu : Control
         AvaloniaProperty.Register<DonutMenu, LabelShow>(nameof(DefaultShow), LabelShow.Auto);
     public static readonly StyledProperty<bool> ShowCaptionsProperty =
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(ShowCaptions), true);
+    public static readonly StyledProperty<bool> TickProgressProperty =
+        AvaloniaProperty.Register<DonutMenu, bool>(nameof(TickProgress));
     public static readonly StyledProperty<double> GroupRingSizeProperty =
         AvaloniaProperty.Register<DonutMenu, double>(nameof(GroupRingSize), 1);
     public static readonly StyledProperty<double> GroupRingSpreadProperty =
@@ -182,7 +184,7 @@ public sealed partial class DonutMenu : Control
             IsEditModeProperty, SliceBrushProperty, SliceBorderBrushProperty, CenterBrushProperty, AccentBrushProperty,
             OnAccentBrushProperty, ForegroundProperty, SecondaryForegroundProperty, SuccessBrushProperty, CornerRadiusProperty,
             CenterHintProperty, CenterHintWheelProperty, ShowCaptionsProperty, LabelScaleProperty, DefaultShowProperty,
-            GroupRingSizeProperty, GroupRingSpreadProperty);
+            GroupRingSizeProperty, GroupRingSpreadProperty, TickProgressProperty);
         ItemsProperty.Changed.AddClassHandler<DonutMenu>((d, _) => d.OnItemsChanged());
         HeldGroupIdProperty.Changed.AddClassHandler<DonutMenu>((d, _) => d.OnHeldGroupChanged());
     }
@@ -228,6 +230,12 @@ public sealed partial class DonutMenu : Control
     /// its name with another on the face: nothing else would tell them apart.
     /// </summary>
     public bool ShowCaptions { get => GetValue(ShowCaptionsProperty); set => SetValue(ShowCaptionsProperty, value); }
+
+    /// <summary>
+    /// The progress ring is drawn as a dial of ticks instead of an arc (Settings → Theme → Progress ring). Only the
+    /// drawing changes: the percentage, the ✓ / ! badge, the cancel button and the timing are the same.
+    /// </summary>
+    public bool TickProgress { get => GetValue(TickProgressProperty); set => SetValue(TickProgressProperty, value); }
 
     /// <summary>
     /// How large the slices' names and icons are (the donut's Label scale, 0.8 to 1.6); they also follow the donut's
@@ -1672,7 +1680,7 @@ public sealed partial class DonutMenu : Control
         return _textLayouts[key] = MakeText(text, typeface, size, brush, maxWidth, maxLines);
     }
 
-    private static FormattedText MakeText(string text, Typeface typeface, double size, IBrush? brush, double maxWidth, int maxLines = 1) =>
+    internal static FormattedText MakeText(string text, Typeface typeface, double size, IBrush? brush, double maxWidth, int maxLines = 1) =>
         new(text, CultureInfo.CurrentUICulture, TextDirection, typeface, size, brush)
         {
             MaxTextWidth = Math.Max(1, maxWidth),
@@ -1684,7 +1692,7 @@ public sealed partial class DonutMenu : Control
     private static FlowDirection TextDirection => CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft
         ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
 
-    private static IBrush? WithOpacity(IBrush? brush, double opacity) => brush switch
+    internal static IBrush? WithOpacity(IBrush? brush, double opacity) => brush switch
     {
         ISolidColorBrush solid => new SolidColorBrush(solid.Color, solid.Opacity * opacity),
         _ => brush,
