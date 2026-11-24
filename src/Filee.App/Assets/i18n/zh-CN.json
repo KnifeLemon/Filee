@@ -66,6 +66,7 @@
   "home.open_file": "打开文件",
   "home.open_with": "打开方式",
   "home.clear_history": "清除",
+  "home.remove_from_history": "从历史记录中移除",
   "home.files": "{0} 个文件",
   "home.failed_files": "{0} 个失败",
   "home.undo": "撤销",

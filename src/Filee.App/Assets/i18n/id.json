@@ -63,6 +63,7 @@
   "home.open_file": "Buka file",
   "home.open_with": "Buka dengan",
   "home.clear_history": "Bersihkan",
+  "home.remove_from_history": "Hapus dari riwayat",
   "home.files": "{0} file",
   "home.failed_files": "{0} gagal",
   "home.undo": "Urungkan",

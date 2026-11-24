@@ -689,6 +689,33 @@ public partial class UserDataStoreTests
     }
 
     [Fact]
+    public void One_history_entry_can_be_removed_and_the_rest_are_saved()
+    {
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+
+        var a = new Filee.Core.History.HistoryEntry { JobId = "a" };
+        var b = new Filee.Core.History.HistoryEntry { JobId = "b" };
+        var c = new Filee.Core.History.HistoryEntry { JobId = "c" };
+        store.AddHistory(a);
+        store.AddHistory(b);
+        store.AddHistory(c); // newest first: c, b, a
+        Assert.Equal(["c", "b", "a"], store.History.Select(e => e.JobId));
+
+        // Removing the middle one leaves the others, and is written to disk.
+        Assert.True(store.RemoveHistory(b));
+        Assert.Equal(["c", "a"], store.History.Select(e => e.JobId));
+        var reloaded = new UserDataStore(dir.Path);
+        reloaded.Load();
+        Assert.Equal(["c", "a"], reloaded.History.Select(e => e.JobId));
+
+        // Removing one that is no longer there changes nothing and says so.
+        Assert.False(store.RemoveHistory(b));
+        Assert.Equal(2, store.History.Count);
+    }
+
+    [Fact]
     public void History_keeps_the_newest_entries_up_to_the_limit()
     {
         using var dir = new TempDir();

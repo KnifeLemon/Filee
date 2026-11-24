@@ -66,6 +66,7 @@
   "home.open_file": "Открыть файл",
   "home.open_with": "Открыть с помощью",
   "home.clear_history": "Очистить",
+  "home.remove_from_history": "Удалить из истории",
   "home.files": "Файлов: {0}",
   "home.failed_files": "Ошибок: {0}",
   "home.undo": "Отменить",

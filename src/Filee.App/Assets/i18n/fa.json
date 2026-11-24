@@ -77,6 +77,7 @@
   "home.open_file": "باز کردن فایل",
   "home.open_with": "باز کردن با",
   "home.clear_history": "پاک کردن",
+  "home.remove_from_history": "حذف از تاریخچه",
   "home.files": "{0} فایل",
   "home.failed_files": "{0} ناموفق",
   "home.undo": "واگرد",

@@ -62,6 +62,7 @@
 "home.open_file": "Apri file",
 "home.open_with": "Apri con",
 "home.clear_history": "Cancella",
+"home.remove_from_history": "Rimuovi dalla cronologia",
 "home.files": "{0} file",
 "home.failed_files": "{0} non riusciti",
 "home.undo": "Annulla",
