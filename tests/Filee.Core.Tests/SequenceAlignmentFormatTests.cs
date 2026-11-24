@@ -2,6 +2,7 @@
 // Specialist grade and Science & medical field membership.
 
 using Filee.Core.Formats;
+using Filee.Core.Presets;
 
 namespace Filee.Core.Tests;
 
@@ -39,5 +40,18 @@ public class SequenceAlignmentFormatTests
         Assert.True(format.Writable);
         Assert.Equal(FormatGrade.Specialist, FormatFields.GradeOf(format));
         Assert.Equal(["science"], FormatFields.Of(format).Select(f => f.Id));
+    }
+
+    [Fact]
+    public void Each_alignment_format_has_a_built_in_preset_in_the_palette_after_the_data_presets()
+    {
+        var ids = BuiltInData.CreatePresets().Select(p => p.Id).ToList();
+        var presets = BuiltInData.CreatePresets();
+
+        Assert.Equal(["to-fasta", "to-phy", "to-nex"], ids.Skip(ids.IndexOf("to-ics") + 1).Take(3));
+        Assert.Equal("fasta", presets.Single(p => p.Id == "to-fasta").TargetFormat);
+        Assert.Equal("phy", presets.Single(p => p.Id == "to-phy").TargetFormat);
+        Assert.Equal("nex", presets.Single(p => p.Id == "to-nex").TargetFormat);
+        Assert.Equal(["FASTA", "PHYLIP", "NEXUS"], BuiltInData.SequenceAlignmentPresets().Select(p => p.Name));
     }
 }

@@ -97,7 +97,8 @@ en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
   (`.fasta`, `.fa`, `.fas`, `.fna`, `.faa`) and PHYLIP (`.phy`, `.phylip`) convert between each other in the built-in
   data engine, supporting sequential and interleaved layouts, nested NEXUS comments, quoted taxon names and `MATCHCHAR`.
   Unaligned FASTA files with unequal sequence lengths are refused when targeting PHYLIP or NEXUS. The formats belong to
-  the Science & medical field (off by default in Settings → Fields).
+  the Science & medical field (off by default in Settings → Fields). The **FASTA**, **PHYLIP** and **NEXUS** presets in
+  the palette make each one.
 
 ## 2.5.0
 

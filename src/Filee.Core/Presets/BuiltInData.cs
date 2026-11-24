@@ -170,6 +170,7 @@ public static class BuiltInData
         .. SpreadsheetPresets(),
         .. CatalogPresets(),
         .. DataPresets(),
+        .. SequenceAlignmentPresets(),
         .. CodecAndSubtitlePresets(),
         .. ModelPresets(),
         .. SourceModelPresets(),
@@ -769,6 +770,17 @@ public static class BuiltInData
         new() { Id = "to-eml", Name = "EML", TargetFormat = "eml" },
         new() { Id = "to-vcf", Name = "vCard", TargetFormat = "vcf" },
         new() { Id = "to-ics", Name = "iCalendar", TargetFormat = "ics" },
+    ];
+
+    /// <summary>
+    /// Sequence alignment targets (#1798): in the palette only, after the data presets, in the Science & medical field
+    /// (off in a new install). No donut slice converts from an alignment, so these are the way from one to another.
+    /// </summary>
+    public static List<Preset> SequenceAlignmentPresets() =>
+    [
+        new() { Id = "to-fasta", Name = "FASTA", TargetFormat = "fasta" },
+        new() { Id = "to-phy", Name = "PHYLIP", TargetFormat = "phy" },
+        new() { Id = "to-nex", Name = "NEXUS", TargetFormat = "nex" },
     ];
 
     /// <summary>
