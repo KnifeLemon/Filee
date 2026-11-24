@@ -63,6 +63,7 @@
   "home.open_file": "ファイルを開く",
   "home.open_with": "プログラムから開く",
   "home.clear_history": "消去",
+  "home.remove_from_history": "履歴から削除",
   "home.files": "{0}個のファイル",
   "home.failed_files": "{0}件失敗",
   "home.undo": "元に戻す",

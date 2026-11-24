@@ -62,6 +62,7 @@
   "home.open_file": "Файл нээх",
   "home.open_with": "Програмаар нээх",
   "home.clear_history": "Цэвэрлэх",
+  "home.remove_from_history": "Түүхээс устгах",
   "home.files": "{0} файл",
   "home.failed_files": "{0} амжилтгүй",
   "home.undo": "Буцаах",

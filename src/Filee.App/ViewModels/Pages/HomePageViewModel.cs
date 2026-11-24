@@ -178,6 +178,13 @@ public sealed partial class HistoryItemViewModel : ObservableObject
         CanUndo = UndoLeft();
     }
 
+    /// <summary>
+    /// The card's X: drops this conversion from the history. Its results and sources stay where they are; only the entry
+    /// is forgotten (Clear drops them all). The list is rebuilt from the store's change notification.
+    /// </summary>
+    [RelayCommand]
+    private void RemoveFromHistory() => _store?.RemoveHistory(_entry);
+
     [RelayCommand]
     private void OpenFolder()
     {

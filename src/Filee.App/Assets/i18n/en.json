@@ -66,6 +66,7 @@
   "home.open_file": "Open file",
   "home.open_with": "Open with",
   "home.clear_history": "Clear",
+  "home.remove_from_history": "Remove from history",
   "home.files": "{0} files",
   "home.failed_files": "{0} failed",
   "home.undo": "Undo",

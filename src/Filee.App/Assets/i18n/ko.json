@@ -66,6 +66,7 @@
   "home.open_file": "파일 열기",
   "home.open_with": "연결 프로그램",
   "home.clear_history": "지우기",
+  "home.remove_from_history": "기록에서 제거",
   "home.files": "파일 {0}개",
   "home.failed_files": "{0}개 실패",
   "home.undo": "되돌리기",

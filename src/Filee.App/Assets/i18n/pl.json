@@ -66,6 +66,7 @@
   "home.open_file": "Otwórz plik",
   "home.open_with": "Otwórz za pomocą",
   "home.clear_history": "Wyczyść",
+  "home.remove_from_history": "Usuń z historii",
   "home.files": "Pliki: {0}",
   "home.failed_files": "Błędy: {0}",
   "home.undo": "Cofnij",

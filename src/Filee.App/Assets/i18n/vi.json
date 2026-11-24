@@ -66,6 +66,7 @@
   "home.open_file": "Mở tệp",
   "home.open_with": "Mở bằng",
   "home.clear_history": "Xóa",
+  "home.remove_from_history": "Xóa khỏi lịch sử",
   "home.files": "{0} tệp",
   "home.failed_files": "{0} lỗi",
   "home.undo": "Hoàn tác",

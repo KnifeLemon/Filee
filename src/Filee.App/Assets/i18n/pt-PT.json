@@ -66,6 +66,7 @@
   "home.open_file": "Abrir ficheiro",
   "home.open_with": "Abrir com",
   "home.clear_history": "Limpar",
+  "home.remove_from_history": "Remover do histórico",
   "home.files": "{0} ficheiros",
   "home.failed_files": "Falhas: {0}",
   "home.undo": "Anular",

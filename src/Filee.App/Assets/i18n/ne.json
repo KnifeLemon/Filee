@@ -63,6 +63,7 @@
   "home.open_file": "फाइल खोल्नुहोस्",
   "home.open_with": "यसमार्फत खोल्नुहोस्",
   "home.clear_history": "खाली गर्नुहोस्",
+  "home.remove_from_history": "इतिहासबाट हटाउनुहोस्",
   "home.files": "{0} फाइलहरू",
   "home.failed_files": "{0} असफल",
   "home.undo": "पूर्ववत गर्नुहोस्",

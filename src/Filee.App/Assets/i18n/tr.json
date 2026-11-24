@@ -63,6 +63,7 @@
   "home.open_file": "Dosyayı aç",
   "home.open_with": "Birlikte aç",
   "home.clear_history": "Temizle",
+  "home.remove_from_history": "Geçmişten kaldır",
   "home.files": "{0} dosya",
   "home.failed_files": "{0} başarısız",
   "home.undo": "Geri al",
