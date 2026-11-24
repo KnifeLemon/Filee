@@ -12,6 +12,7 @@
 using Avalonia;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using Filee.App.Services;
 
 namespace Filee.App.Controls;
@@ -33,6 +34,13 @@ public sealed partial class DonutMenu
     public const double RingRadius = 36;
 
     private const double RingStroke = 6;
+
+    // Tick dial (TickProgress): 60 ticks inside the plate, every fifth one longer, like the marks of a watch.
+    private const int TickCount = 60;
+    private const double TickOuter = RingRadius + 5;       // 41, 3 px inside the plate's edge
+    private const double TickInner = TickOuter - 4.2;
+    private const double TickInnerLong = TickOuter - 6.4;
+    private const double TickStroke = 1.7;
     private const double CollapseSeconds = 0.28;
     private const double CollapseStagger = 0.02;
     private const double MinRingSeconds = 0.6;
@@ -323,7 +331,6 @@ public sealed partial class DonutMenu
         var plateRadius = RingRadius + RingStroke + 2;
         DrawPlateShadow(context, center, plateRadius);
         context.DrawEllipse(CenterBrush, BorderPen(), center, plateRadius, plateRadius);
-        context.DrawEllipse(null, new Pen(WithOpacity(SecondaryForeground, 0.22), RingStroke), center, RingRadius, RingRadius);
 
         var arcBrush = _outcome switch
         {
@@ -332,7 +339,16 @@ public sealed partial class DonutMenu
             _ => AccentBrush,
         };
         var sweep = _outcome == DonutProgressOutcome.Failed ? Math.Max(_shownProgress, 0.02) : _shownProgress;
-        DrawArc(context, center, RingRadius, sweep, new Pen(arcBrush, RingStroke, lineCap: PenLineCap.Round));
+        if (TickProgress)
+        {
+            DrawTickDial(context, center, arcBrush, WithOpacity(SecondaryForeground, 0.22), Foreground,
+                LitTicks(sweep, _outcome == DonutProgressOutcome.Failed));
+        }
+        else
+        {
+            context.DrawEllipse(null, new Pen(WithOpacity(SecondaryForeground, 0.22), RingStroke), center, RingRadius, RingRadius);
+            DrawArc(context, center, RingRadius, sweep, new Pen(arcBrush, RingStroke, lineCap: PenLineCap.Round));
+        }
 
         var badge = _outcome is null ? 0 : Math.Max(0, _badge.Value);
         if (badge < 0.98)
@@ -349,6 +365,40 @@ public sealed partial class DonutMenu
 
         if (_ringHover && _outcome is null && _handOffClock < 0)
             DrawCancelButton(context, CancelButtonCenter(center));
+    }
+
+    /// <summary>How many of the <see cref="TickCount"/> ticks are lit at <paramref name="fraction"/> (0..1) of the way.</summary>
+    internal static int LitTicks(double fraction, bool atLeastOne = false)
+    {
+        var lit = (int)Math.Round(Math.Clamp(fraction, 0, 1) * TickCount);
+        return atLeastOne ? Math.Max(lit, 1) : lit;
+    }
+
+    /// <summary>
+    /// The tick dial: <paramref name="lit"/> ticks clockwise from 12 o'clock in <paramref name="litBrush"/>, the rest
+    /// in <paramref name="faintBrush"/>. The tick at the front is tinted towards <paramref name="textBrush"/>, so it reads in light and dark mode alike.
+    /// </summary>
+    internal static void DrawTickDial(DrawingContext context, Point center, IBrush? litBrush, IBrush? faintBrush, IBrush? textBrush, int lit)
+    {
+        var faint = new Pen(faintBrush, TickStroke, lineCap: PenLineCap.Round);
+        var on = new Pen(litBrush, TickStroke, lineCap: PenLineCap.Round);
+        var front = new Pen(Mix(litBrush, textBrush, 0.55), TickStroke, lineCap: PenLineCap.Round);
+        for (var i = 0; i < TickCount; i++)
+        {
+            var angle = 2 * Math.PI * i / TickCount;
+            var inner = i % 5 == 0 ? TickInnerLong : TickInner;
+            var pen = i >= lit ? faint : i == lit - 1 && lit < TickCount ? front : on;
+            context.DrawLine(pen, DonutGeometry.PointAt(center, inner, angle), DonutGeometry.PointAt(center, TickOuter, angle));
+        }
+    }
+
+    /// <summary><paramref name="from"/> moved <paramref name="t"/> of the way towards <paramref name="to"/> (plain colours only).</summary>
+    private static IBrush? Mix(IBrush? from, IBrush? to, double t)
+    {
+        if (from is not ISolidColorBrush a || to is not ISolidColorBrush b)
+            return from;
+        byte Channel(byte x, byte y) => (byte)Math.Round(x + (y - x) * t);
+        return new ImmutableSolidColorBrush(Color.FromRgb(Channel(a.Color.R, b.Color.R), Channel(a.Color.G, b.Color.G), Channel(a.Color.B, b.Color.B)));
     }
 
     /// <summary>✓ (success) or ! (failure) popping in the centre of the ring.</summary>
@@ -386,7 +436,7 @@ public sealed partial class DonutMenu
             context.DrawGeometry(CenterBrush, null, CloseIcon);
     }
 
-    private static void DrawPlateShadow(DrawingContext context, Point center, double radius)
+    internal static void DrawPlateShadow(DrawingContext context, Point center, double radius)
     {
         var outer = radius + 10;
         var brush = new RadialGradientBrush
@@ -403,7 +453,7 @@ public sealed partial class DonutMenu
     }
 
     /// <summary>Clockwise arc from 12 o'clock covering <paramref name="fraction"/> of the circle.</summary>
-    private static void DrawArc(DrawingContext context, Point center, double radius, double fraction, Pen pen)
+    internal static void DrawArc(DrawingContext context, Point center, double radius, double fraction, Pen pen)
     {
         if (fraction <= 0.001)
             return;

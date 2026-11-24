@@ -190,8 +190,49 @@ internal sealed class PptxBuilder
         "<a:fmtScheme name=\"Office\"><a:fillStyleLst/><a:lnStyleLst/><a:effectStyleLst/><a:bgFillStyleLst/></a:fmtScheme></a:themeElements>";
 
     private readonly List<string> _slides = [];
+    private readonly List<string?> _notes = [];
     private readonly List<byte[]> _images = [];
+    private readonly List<string> _links = [];
     private int _nextId = 10;
+
+    /// <summary>Adds a web address; every slide can link a run to it by the returned relationship id.</summary>
+    public string Link(string url)
+    {
+        _links.Add(url);
+        return $"rIdLink{_links.Count}";
+    }
+
+    /// <summary>A text run, optionally bold, italic or linked (relationship id from <see cref="Link"/>).</summary>
+    public static string Run(string text, bool bold = false, bool italic = false, string? link = null) =>
+        $"<a:r><a:rPr lang=\"en-US\"{(bold ? " b=\"1\"" : "")}{(italic ? " i=\"1\"" : "")}>" +
+        (link is null ? "" : $"<a:hlinkClick r:id=\"{link}\"/>") + $"</a:rPr><a:t>{OpcWriter.Escape(text)}</a:t></a:r>";
+
+    /// <summary>A text box (not a placeholder) holding the given a:p elements.</summary>
+    public string TextBox(string paragraphs) =>
+        $"<p:sp><p:nvSpPr><p:cNvPr id=\"{_nextId++}\" name=\"TextBox\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>" +
+        $"<p:spPr>{Xfrm(838200, 1825625, 10515600, 1000000)}</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>{paragraphs}</p:txBody></p:sp>";
+
+    /// <summary>The content placeholder holding the given a:p elements.</summary>
+    public string RawBody(string paragraphs) =>
+        $"<p:sp><p:nvSpPr><p:cNvPr id=\"{_nextId++}\" name=\"Content\"/><p:cNvSpPr/><p:nvPr><p:ph idx=\"1\"/></p:nvPr></p:nvSpPr><p:spPr/>" +
+        $"<p:txBody><a:bodyPr/><a:lstStyle/>{paragraphs}</p:txBody></p:sp>";
+
+    /// <summary>The title placeholder of a title slide.</summary>
+    public string CenterTitle(string text) =>
+        $"<p:sp><p:nvSpPr><p:cNvPr id=\"{_nextId++}\" name=\"Title\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"ctrTitle\"/></p:nvPr></p:nvSpPr><p:spPr/>" +
+        $"<p:txBody><a:bodyPr/><a:lstStyle/>{Paragraph(text)}</p:txBody></p:sp>";
+
+    /// <summary>A placeholder shape with the given type (e.g. "ftr", "dt", "sldNum").</summary>
+    public string Placeholder(string type, string text) =>
+        $"<p:sp><p:nvSpPr><p:cNvPr id=\"{_nextId++}\" name=\"{OpcWriter.Escape(type)}\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"{OpcWriter.Escape(type)}\"/></p:nvPr></p:nvSpPr><p:spPr/>" +
+        $"<p:txBody><a:bodyPr/><a:lstStyle/>{Paragraph(text)}</p:txBody></p:sp>";
+
+    /// <summary>Speaker notes for the slide added last, one paragraph per line.</summary>
+    public PptxBuilder Notes(params string[] lines)
+    {
+        _notes[^1] = string.Concat(lines.Select(line => Paragraph(line)));
+        return this;
+    }
 
     /// <summary>Adds a PNG; every slide can refer to it by the returned relationship id.</summary>
     public string Image(byte[] png)
@@ -210,6 +251,7 @@ internal sealed class PptxBuilder
             ? $"<p:bg><p:bgPr><a:blipFill dpi=\"0\" rotWithShape=\"1\"><a:blip r:embed=\"{backgroundImage}\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill><a:effectLst/></p:bgPr></p:bg>"
             : background is null ? "" : $"<p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"{background.TrimStart('#')}\"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>";
         _slides.Add($"<p:sld {Namespaces}><p:cSld>{bg}<p:spTree>{TreeStart}{shapes}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>");
+        _notes.Add(null);
         return this;
     }
 
@@ -246,6 +288,20 @@ internal sealed class PptxBuilder
             string.Concat(row.Select(cell => $"<a:tc><a:txBody><a:bodyPr/><a:lstStyle/>{Paragraph(cell)}</a:txBody><a:tcPr/></a:tc>")) + "</a:tr>")) +
         "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>";
 
+    /// <summary>A table whose cells are pre-built <c>a:tc</c> elements (from <see cref="TableCell"/>).</summary>
+    public string RawTable(long x, long y, long columnWidth, long rowHeight, params string[][] rows) =>
+        $"<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"{_nextId++}\" name=\"Table\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>" +
+        $"<p:xfrm><a:off x=\"{x}\" y=\"{y}\"/><a:ext cx=\"{columnWidth * rows[0].Length}\" cy=\"{rowHeight * rows.Length}\"/></p:xfrm>" +
+        "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\"><a:tbl>" +
+        "<a:tblPr firstRow=\"1\" bandRow=\"1\"><a:tableStyleId>{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}</a:tableStyleId></a:tblPr>" +
+        $"<a:tblGrid>{string.Concat(rows[0].Select(_ => $"<a:gridCol w=\"{columnWidth}\"/>"))}</a:tblGrid>" +
+        string.Concat(rows.Select(row => $"<a:tr h=\"{rowHeight}\">{string.Concat(row)}</a:tr>")) +
+        "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>";
+
+    /// <summary>A table cell element with optional attributes such as <c>gridSpan="2"</c> or <c>hMerge="1"</c>.</summary>
+    public static string TableCell(string text, string attributes = "") =>
+        $"<a:tc{(attributes.Length > 0 ? " " + attributes : "")}><a:txBody><a:bodyPr/><a:lstStyle/>{(text.Length > 0 ? Paragraph(text) : "<a:p/>")}</a:txBody><a:tcPr/></a:tc>";
+
     /// <summary>A group whose child coordinates are scaled by <paramref name="scale"/> into the slide.</summary>
     public string Group(long x, long y, long cx, long cy, double scale, string children) =>
         $"<p:grpSp><p:nvGrpSpPr><p:cNvPr id=\"{_nextId++}\" name=\"Group\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>" +
@@ -278,13 +334,27 @@ internal sealed class PptxBuilder
             ["ppt/slideLayouts/_rels/slideLayout1.xml.rels"] = OpcWriter.Relationships([("rId1", "slideMaster", "../slideMasters/slideMaster1.xml")]),
             ["ppt/theme/theme1.xml"] = $"<a:theme {Namespaces} name=\"Office\">{Theme}</a:theme>",
         };
+        var external = string.Concat(_links.Select((url, i) =>
+            $"<Relationship Id=\"rIdLink{i + 1}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\"{OpcWriter.Escape(url)}\" TargetMode=\"External\"/>"));
         for (var i = 0; i < _slides.Count; i++)
         {
             parts[$"ppt/slides/slide{i + 1}.xml"] = _slides[i];
-            parts[$"ppt/slides/_rels/slide{i + 1}.xml.rels"] = OpcWriter.Relationships(slideRels);
+            var rels = _notes[i] is null ? slideRels : [.. slideRels, ("rIdNotes", "notesSlide", $"../notesSlides/notesSlide{i + 1}.xml")];
+            parts[$"ppt/slides/_rels/slide{i + 1}.xml.rels"] = OpcWriter.Relationships(rels).Replace("</Relationships>", external + "</Relationships>", StringComparison.Ordinal);
+            if (_notes[i] is { } notes)
+            {
+                parts[$"ppt/notesSlides/notesSlide{i + 1}.xml"] =
+                    $"<p:notes {Namespaces}><p:cSld><p:spTree>{TreeStart}" +
+                    "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Slide Image\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"sldImg\"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp>" +
+                    "<p:sp><p:nvSpPr><p:cNvPr id=\"3\" name=\"Notes\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"body\" idx=\"1\"/></p:nvPr></p:nvSpPr><p:spPr/>" +
+                    $"<p:txBody><a:bodyPr/><a:lstStyle/>{notes}</p:txBody></p:sp></p:spTree></p:cSld></p:notes>";
+                parts[$"ppt/notesSlides/_rels/notesSlide{i + 1}.xml.rels"] =
+                    OpcWriter.Relationships([("rId1", "slide", $"../slides/slide{i + 1}.xml")]);
+            }
         }
         parts["[Content_Types].xml"] = OpcWriter.ContentTypes(
             _slides.Select((_, i) => ($"ppt/slides/slide{i + 1}.xml", "presentationml.slide"))
+                .Concat(_notes.Select((n, i) => (n, i)).Where(x => x.n is not null).Select(x => ($"ppt/notesSlides/notesSlide{x.i + 1}.xml", "presentationml.notesSlide")))
                 .Append(("ppt/presentation.xml", "presentationml.presentation.main"))
                 .Append(("ppt/slideMasters/slideMaster1.xml", "presentationml.slideMaster"))
                 .Append(("ppt/slideLayouts/slideLayout1.xml", "presentationml.slideLayout"))
