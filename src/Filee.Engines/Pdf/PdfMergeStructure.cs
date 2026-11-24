@@ -342,7 +342,9 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
     private readonly Dictionary<string, int> _destinationSuffixes = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Kind, string Name), int> _resourceSuffixes = new();
     private readonly Dictionary<PdfDictionary, PdfDictionary?> _actions = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<PdfDictionary> _links = new(ReferenceEqualityComparer.Instance);
+    // Null when none of the entries of the imported /AA is left.
+    private readonly Dictionary<PdfDictionary, PdfDictionary?> _additionalActions = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<PdfDictionary> _rewrittenAnnotations = new(ReferenceEqualityComparer.Instance);
 
     private int ByteCount(PdfString text)
     {
@@ -631,12 +633,14 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
             foreach (var (annotation, mapped) in Pairs(page))
             {
                 ct.ThrowIfCancellationRequested();
-                if (Name(annotation.Elements["/Subtype"]) != "/Link")
+                var subtype = Name(annotation.Elements["/Subtype"]);
+                var link = subtype == "/Link";
+                if (!link && subtype != "/Widget")
                     continue;
                 // An /Annots array may list one annotation many times; rewriting it again would copy its action again.
-                if (!_links.Add(mapped))
+                if (!_rewrittenAnnotations.Add(mapped))
                     continue;
-                if (annotation.Elements.ContainsKey("/Dest"))
+                if (link && annotation.Elements.ContainsKey("/Dest"))
                 {
                     var destination = Destination(annotation.Elements["/Dest"], pages, names, true);
                     if (destination is not null)
@@ -650,48 +654,88 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
                 }
                 if (Dictionary(annotation.Elements["/A"]) is { } action && Name(action.Elements["/S"]) == "/GoTo")
                 {
-                    // Links sharing one action get one rewritten action; copying it per link would write a large
-                    // direct /Next graph once per link.
-                    var shared = Dictionary(mapped.Elements["/A"]);
-                    if (shared is not null && _actions.TryGetValue(shared, out var done))
-                    {
-                        if (done is null)
-                        {
-                            mapped.Elements.Remove("/A");
-                            if (partial)
-                                _rejectedLinks.Add(mapped);
-                        }
-                        else
-                            mapped.Elements["/A"] = done.Reference;
-                        continue;
-                    }
-                    var destination = Destination(action.Elements["/D"], pages, names, true);
-                    if (destination is null)
-                    {
-                        mapped.Elements.Remove("/A");
-                        if (partial)
-                            _rejectedLinks.Add(mapped);
-                        if (shared is not null)
-                            _actions.Add(shared, null);
-                    }
+                    if (RewriteGoTo(action, Dictionary(mapped.Elements["/A"]), pages, names) is { } rewritten)
+                        mapped.Elements["/A"] = rewritten.Reference;
                     else
                     {
-                        // A fresh dictionary, as the imported action may be shared; its other entries such as
-                        // /Next are already output objects and stay.
-                        var copy = new PdfDictionary(output);
-                        if (shared is not null)
-                            foreach (var entry in shared.Elements)
-                                copy.Elements[entry.Key] = entry.Value;
-                        copy.Elements["/S"] = new PdfName("/GoTo");
-                        copy.Elements["/D"] = destination;
-                        output.Internals.AddObject(copy);
-                        mapped.Elements["/A"] = copy.Reference;
-                        if (shared is not null)
-                            _actions.Add(shared, copy);
+                        mapped.Elements.Remove("/A");
+                        // A button without its jump is still a field; a link without one is nothing.
+                        if (partial && link)
+                            _rejectedLinks.Add(mapped);
                     }
                 }
+                if (!link)
+                    RewriteAdditionalActions(annotation, mapped, pages, names, ct);
             }
         }
+    }
+
+    // The rewritten action, or null when its destination doesn't resolve. Annotations sharing one action share the
+    // result; copying it per annotation would write a large direct /Next graph once per annotation.
+    private PdfDictionary? RewriteGoTo(PdfDictionary action, PdfDictionary? imported,
+        IReadOnlyDictionary<PdfObjectID, PdfPage> pages, Dictionary<(bool Legacy, string Bytes), string> names)
+    {
+        if (imported is not null && _actions.TryGetValue(imported, out var done))
+            return done;
+        PdfDictionary? copy = null;
+        if (Destination(action.Elements["/D"], pages, names, true) is { } destination)
+        {
+            // A fresh dictionary, as the imported action may be shared; its other entries such as /Next are already
+            // output objects and stay.
+            copy = new PdfDictionary(output);
+            if (imported is not null)
+                foreach (var entry in imported.Elements)
+                    copy.Elements[entry.Key] = entry.Value;
+            copy.Elements["/S"] = new PdfName("/GoTo");
+            copy.Elements["/D"] = destination;
+            output.Internals.AddObject(copy);
+        }
+        if (imported is not null)
+            _actions.Add(imported, copy);
+        return copy;
+    }
+
+    // Writers also store a button's jump under /AA (LibreOffice in /D, dvipdfmx in /U). The imported dictionary may be
+    // shared with a parent field, whose own actions stay, so the rewritten entries go into a copy.
+    private void RewriteAdditionalActions(PdfDictionary annotation, PdfDictionary mapped,
+        IReadOnlyDictionary<PdfObjectID, PdfPage> pages, Dictionary<(bool Legacy, string Bytes), string> names,
+        CancellationToken ct)
+    {
+        if (Dictionary(annotation.Elements["/AA"]) is not { } source ||
+            Dictionary(mapped.Elements["/AA"]) is not { } imported)
+            return;
+        if (!_additionalActions.TryGetValue(imported, out var result))
+        {
+            result = imported;
+            PdfDictionary? copy = null;
+            foreach (var key in source.Elements.Keys.ToArray())
+            {
+                ct.ThrowIfCancellationRequested();
+                if (Dictionary(source.Elements[key]) is not { } action || Name(action.Elements["/S"]) != "/GoTo")
+                    continue;
+                if (copy is null)
+                {
+                    copy = new PdfDictionary(output);
+                    foreach (var entry in imported.Elements)
+                        copy.Elements[entry.Key] = entry.Value;
+                }
+                if (RewriteGoTo(action, Dictionary(imported.Elements[key]), pages, names) is { } rewritten)
+                    copy.Elements[key] = rewritten.Reference;
+                else
+                    copy.Elements.Remove(key);
+            }
+            if (copy is not null)
+            {
+                result = copy.Elements.Count > 0 ? copy : null;
+                if (result is not null)
+                    output.Internals.AddObject(result);
+            }
+            _additionalActions.Add(imported, result);
+        }
+        if (result is null)
+            mapped.Elements.Remove("/AA");
+        else if (!ReferenceEquals(result, imported))
+            mapped.Elements["/AA"] = result.Reference;
     }
 
     private void CarryFields(PdfDictionary catalog, CancellationToken ct, HashSet<PdfDictionary>? widgets)

@@ -161,31 +161,38 @@
             <Border Classes="card history-card" Padding="14,10">
               <StackPanel Spacing="8">
                 <DockPanel>
-                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                              IsVisible="{Binding HasOutputs}">
-                    <Button Command="{Binding OpenFileCommand}" IsVisible="{Binding CanOpen}" Padding="10,5">
-                      <StackPanel Orientation="Horizontal" Spacing="6">
-                        <PathIcon Width="13" Height="13" Data="{StaticResource Icon.File}" />
-                        <TextBlock Text="{DynamicResource home.open_file}" />
-                      </StackPanel>
-                    </Button>
-                    <!-- Only where the system has an "Open with" dialog (Windows). -->
-                    <Button Command="{Binding OpenWithCommand}" IsVisible="{Binding CanOpenWith}" Padding="8,5"
-                            ToolTip.Tip="{DynamicResource home.open_with}" AutomationProperties.Name="{DynamicResource home.open_with}">
-                      <PathIcon Width="13" Height="13" Data="{StaticResource Icon.OpenWith}" />
-                    </Button>
-                    <Button Command="{Binding OpenFolderCommand}" Padding="10,5">
-                      <StackPanel Orientation="Horizontal" Spacing="6">
-                        <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Folder}" />
-                        <TextBlock Text="{DynamicResource home.open_folder}" />
-                      </StackPanel>
-                    </Button>
-                    <!-- Only while every result is as the job left it: they go to the Recycle Bin / Trash. -->
-                    <Button Command="{Binding UndoCommand}" IsVisible="{Binding CanUndo}" Padding="10,5" ToolTip.Tip="{DynamicResource home.undo_hint}">
-                      <StackPanel Orientation="Horizontal" Spacing="6">
-                        <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Undo}" />
-                        <TextBlock Text="{DynamicResource home.undo}" />
-                      </StackPanel>
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasOutputs}">
+                      <Button Command="{Binding OpenFileCommand}" IsVisible="{Binding CanOpen}" Padding="10,5">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <PathIcon Width="13" Height="13" Data="{StaticResource Icon.File}" />
+                          <TextBlock Text="{DynamicResource home.open_file}" />
+                        </StackPanel>
+                      </Button>
+                      <!-- Only where the system has an "Open with" dialog (Windows). -->
+                      <Button Command="{Binding OpenWithCommand}" IsVisible="{Binding CanOpenWith}" Padding="8,5"
+                              ToolTip.Tip="{DynamicResource home.open_with}" AutomationProperties.Name="{DynamicResource home.open_with}">
+                        <PathIcon Width="13" Height="13" Data="{StaticResource Icon.OpenWith}" />
+                      </Button>
+                      <Button Command="{Binding OpenFolderCommand}" Padding="10,5">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Folder}" />
+                          <TextBlock Text="{DynamicResource home.open_folder}" />
+                        </StackPanel>
+                      </Button>
+                      <!-- Only while every result is as the job left it: they go to the Recycle Bin / Trash. -->
+                      <Button Command="{Binding UndoCommand}" IsVisible="{Binding CanUndo}" Padding="10,5" ToolTip.Tip="{DynamicResource home.undo_hint}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Undo}" />
+                          <TextBlock Text="{DynamicResource home.undo}" />
+                        </StackPanel>
+                      </Button>
+                    </StackPanel>
+                    <!-- The card's X: forgets this conversion, leaving its files where they are. -->
+                    <Button Classes="ghost danger" Padding="8,5" Command="{Binding RemoveFromHistoryCommand}"
+                            ToolTip.Tip="{DynamicResource home.remove_from_history}"
+                            AutomationProperties.Name="{DynamicResource home.remove_from_history}">
+                      <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Close}" />
                     </Button>
                   </StackPanel>
                   <!-- The result: its picture, else its format; the corner says whether the job went well. -->

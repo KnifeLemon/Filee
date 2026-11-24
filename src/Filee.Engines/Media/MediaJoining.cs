@@ -79,10 +79,36 @@ internal static class MediaJoining
             && a.Codec == sound.Codec && a.SampleRate == sound.SampleRate && a.Channels == sound.Channels && a.Ordinal == sound.Ordinal);
     }
 
-    /// <summary>The list of the concat demuxer: one <c>file '…'</c> line per clip, quotes escaped.</summary>
-    public static string ConcatList(IEnumerable<string> paths) =>
-        string.Concat(paths.Select(path => "file '"
-            + (MediaInput.IsUrl(path) ? path : Path.GetFullPath(path)).Replace("'", @"'\''", StringComparison.Ordinal) + "'\n"));
+    private static readonly char[] ForbiddenConcatCharacters = ['\n', '\r', '\0'];
+
+    /// <summary>True when every path can be written as a single line of an FFmpeg concat manifest.</summary>
+    public static bool CanUseConcatList(IEnumerable<string> paths) =>
+        paths.All(IsSafeConcatPath);
+
+    private static bool IsSafeConcatPath(string path)
+    {
+        if (path.IndexOfAny(ForbiddenConcatCharacters) >= 0)
+            return false;
+        var resolved = MediaInput.IsUrl(path) ? path : Path.GetFullPath(path);
+        return resolved.IndexOfAny(ForbiddenConcatCharacters) < 0;
+    }
+
+    /// <summary>The list of the concat demuxer: one <c>file '...'</c> line per clip, quotes escaped.</summary>
+    /// <exception cref="ArgumentException">A path contains a line break or null character.</exception>
+    public static string ConcatList(IEnumerable<string> paths)
+    {
+        var lines = new List<string>();
+        foreach (var path in paths)
+        {
+            if (path.IndexOfAny(ForbiddenConcatCharacters) >= 0)
+                throw new ArgumentException("Concat manifest paths cannot contain line breaks or null characters.", nameof(paths));
+            var resolved = MediaInput.IsUrl(path) ? path : Path.GetFullPath(path);
+            if (resolved.IndexOfAny(ForbiddenConcatCharacters) >= 0)
+                throw new ArgumentException("Concat manifest paths cannot contain line breaks or null characters.", nameof(paths));
+            lines.Add("file '" + resolved.Replace("'", @"'\''", StringComparison.Ordinal) + "'\n");
+        }
+        return string.Concat(lines);
+    }
 
     /// <summary>
     /// Clips that share codecs and size, copied one after the other into one MP4 (<see cref="CanCopyVideos"/>). With
