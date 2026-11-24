@@ -30,6 +30,9 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     /// <summary>The output format under the slices' names (Settings → Donut toolbar → Edit Donut Size).</summary>
     [ObservableProperty] private bool _showCaptions = true;
 
+    /// <summary>The progress ring is a dial of ticks (Settings → Theme → Progress ring).</summary>
+    [ObservableProperty] private bool _tickProgress;
+
     /// <summary>How large a group's ring is (Edit Donut Size → Group ring size).</summary>
     [ObservableProperty] private double _groupRingSize = 1;
 
@@ -555,6 +558,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         HoleRatio = store.Settings.Donut.HoleRatio;
         SliceOpacity = Math.Clamp(store.Settings.Donut.Opacity, DonutSettings.MinOpacity, 1);
         ShowCaptions = store.Settings.Donut.ShowCaptions;
+        TickProgress = store.Settings.Theme.ProgressRing == ProgressRingStyle.Ticks;
         GroupRingSize = DonutSettings.ClampGroupRingSize(store.Settings.Donut.GroupRingSize);
         GroupRingSpread = DonutSettings.ClampGroupRingSpread(store.Settings.Donut.GroupRingSpread);
         FlipKey = store.Settings.Donut.EffectiveFlipKey(store.Settings.Triggers);
