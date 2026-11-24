@@ -10,13 +10,37 @@ internal static class PortableUpdateHelper
 {
     internal static Func<ProcessStartInfo, Process?> StartProcess { get; set; } = psi => Process.Start(psi);
 
-    public static int Run(UpdateSwapOptions options, Func<ProcessStartInfo, bool>? processStarter = null)
+    public static int Run(
+        UpdateSwapOptions options,
+        Func<ProcessStartInfo, bool>? processStarter = null,
+        string? processPath = null)
     {
         var targetPid = options.TargetPid;
         var targetDir = options.TargetDir;
         var stagingDir = options.StagingDir;
         var logFile = options.LogFile;
         var markerFile = options.MarkerFile;
+
+        if (!Directory.Exists(targetDir) || !Directory.Exists(stagingDir))
+        {
+            AppendLog(logFile, "Update aborted: target or staging directory does not exist");
+            return 1;
+        }
+
+        var effectiveProcessPath = processPath ?? Environment.ProcessPath;
+        if (!IsPathInsideDirectory(effectiveProcessPath, stagingDir))
+        {
+            AppendLog(logFile, $"Update aborted: helper must run from staging directory '{stagingDir}'");
+            return 1;
+        }
+
+        var targetExe = Path.Combine(targetDir, "Filee.exe");
+        var portableMarker = Path.Combine(targetDir, "filee.portable");
+        if (!File.Exists(targetExe) || !File.Exists(portableMarker))
+        {
+            AppendLog(logFile, $"Update aborted: target directory '{targetDir}' is missing Filee.exe or filee.portable");
+            return 1;
+        }
 
         // 1. Wait for Filee (targetPid) to exit within 60 seconds
         var sw = Stopwatch.StartNew();
@@ -32,7 +56,10 @@ internal static class PortableUpdateHelper
         }
 
         var backupDir = Path.Combine(targetDir, $".backup-{targetPid}");
-        var targetExe = Path.Combine(targetDir, "Filee.exe");
+        var movedFiles = new List<(string OriginalPath, string BackupPath)>();
+        var movedDirs = new List<(string OriginalPath, string BackupPath)>();
+        var copiedFiles = new List<string>();
+        var copiedDirs = new List<string>();
 
         try
         {
@@ -46,7 +73,9 @@ internal static class PortableUpdateHelper
             var dirInfo = new DirectoryInfo(targetDir);
             foreach (var file in dirInfo.EnumerateFiles())
             {
-                File.Move(file.FullName, Path.Combine(backupDir, file.Name), overwrite: true);
+                var backupPath = Path.Combine(backupDir, file.Name);
+                File.Move(file.FullName, backupPath, overwrite: true);
+                movedFiles.Add((file.FullName, backupPath));
             }
             foreach (var subDir in dirInfo.EnumerateDirectories())
             {
@@ -56,23 +85,15 @@ internal static class PortableUpdateHelper
                 {
                     continue;
                 }
-                Directory.Move(subDir.FullName, Path.Combine(backupDir, subDir.Name));
+                var backupPath = Path.Combine(backupDir, subDir.Name);
+                Directory.Move(subDir.FullName, backupPath);
+                movedDirs.Add((subDir.FullName, backupPath));
             }
 
             // 3. Copy new files from stagingDir to targetDir
-            CopyDirectory(stagingDir, targetDir);
+            CopyDirectory(stagingDir, targetDir, copiedFiles, copiedDirs);
 
-            // 4. Update succeeded! Clean up backupDir
-            try
-            {
-                Directory.Delete(backupDir, recursive: true);
-            }
-            catch (Exception ex)
-            {
-                AppendLog(logFile, $"Warning: could not delete backup directory: {ex.Message}");
-            }
-
-            // Restart updated Filee
+            // 4. Restart updated Filee; keep backupDir until the new version starts and cleans it up.
             var launchPsi = new ProcessStartInfo(targetExe)
             {
                 UseShellExecute = true,
@@ -92,36 +113,43 @@ internal static class PortableUpdateHelper
         {
             AppendLog(logFile, $"Update failed: {ex.Message}");
 
-            // Rollback: delete partial staging copies and restore from backupDir
+            // Rollback: remove only files/folders we copied in, then restore only what we moved to backupDir
             try
             {
-                var dirInfo = new DirectoryInfo(targetDir);
-                foreach (var file in dirInfo.EnumerateFiles())
+                foreach (var copiedFile in copiedFiles)
                 {
-                    try { file.Delete(); } catch { }
-                }
-                foreach (var subDir in dirInfo.EnumerateDirectories())
-                {
-                    if (subDir.Name.Equals("data", StringComparison.OrdinalIgnoreCase)
-                        || subDir.Name.Equals(Path.GetFileName(backupDir), StringComparison.OrdinalIgnoreCase)
-                        || subDir.Name.StartsWith(".update-", StringComparison.OrdinalIgnoreCase))
+                    try
                     {
-                        continue;
+                        if (File.Exists(copiedFile))
+                            File.Delete(copiedFile);
                     }
-                    try { subDir.Delete(recursive: true); } catch { }
+                    catch { }
+                }
+
+                for (var i = copiedDirs.Count - 1; i >= 0; i--)
+                {
+                    try
+                    {
+                        if (Directory.Exists(copiedDirs[i]))
+                            Directory.Delete(copiedDirs[i], recursive: false);
+                    }
+                    catch { }
+                }
+
+                foreach (var (originalPath, backupPath) in movedFiles)
+                {
+                    if (File.Exists(backupPath))
+                        File.Move(backupPath, originalPath, overwrite: true);
+                }
+
+                foreach (var (originalPath, backupPath) in movedDirs)
+                {
+                    if (Directory.Exists(backupPath))
+                        Directory.Move(backupPath, originalPath);
                 }
 
                 if (Directory.Exists(backupDir))
                 {
-                    var backupInfo = new DirectoryInfo(backupDir);
-                    foreach (var file in backupInfo.EnumerateFiles())
-                    {
-                        File.Move(file.FullName, Path.Combine(targetDir, file.Name), overwrite: true);
-                    }
-                    foreach (var subDir in backupInfo.EnumerateDirectories())
-                    {
-                        Directory.Move(subDir.FullName, Path.Combine(targetDir, subDir.Name));
-                    }
                     try { Directory.Delete(backupDir, recursive: true); } catch { }
                 }
 
@@ -155,20 +183,46 @@ internal static class PortableUpdateHelper
         }
     }
 
-    internal static void CopyDirectory(string sourceDir, string targetDir)
+    internal static void CopyDirectory(
+        string sourceDir,
+        string targetDir,
+        ICollection<string>? copiedFiles = null,
+        ICollection<string>? copiedDirs = null)
     {
-        Directory.CreateDirectory(targetDir);
+        if (!Directory.Exists(targetDir))
+        {
+            Directory.CreateDirectory(targetDir);
+            copiedDirs?.Add(targetDir);
+        }
+
         var sourceInfo = new DirectoryInfo(sourceDir);
 
         foreach (var file in sourceInfo.EnumerateFiles())
         {
-            file.CopyTo(Path.Combine(targetDir, file.Name), overwrite: true);
+            var destFile = Path.Combine(targetDir, file.Name);
+            copiedFiles?.Add(destFile);
+            file.CopyTo(destFile, overwrite: true);
         }
 
         foreach (var subDir in sourceInfo.EnumerateDirectories())
         {
-            CopyDirectory(subDir.FullName, Path.Combine(targetDir, subDir.Name));
+            CopyDirectory(subDir.FullName, Path.Combine(targetDir, subDir.Name), copiedFiles, copiedDirs);
         }
+    }
+
+    private static bool IsPathInsideDirectory(string? filePath, string directoryPath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+            return false;
+
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        var fullDir = Path.GetFullPath(directoryPath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        var fullFile = Path.GetFullPath(filePath);
+        return fullFile.StartsWith(fullDir, comparison);
     }
 
     private static void AppendLog(string logFile, string message)

@@ -52,6 +52,7 @@ en: Icons (ICO) are much smaller: the 256 px size is stored as PNG
   its files (no `.tar` left to open again), and it converts to ZIP, 7Z, TAR and the other archive formats like a
   `.tar.xz`. A single `.zst` unpacks to the file inside, or becomes a `.gz`, `.bz2` or `.xz`. Filee reads Zstandard
   but doesn't write it. The formats are in the Developer field, which is on by default.
+
 - **Updating from Settings → About works when GitHub's downloads don't answer** (#1593). The in-app update on Windows
   gave up when GitHub's download link didn't answer within 20 seconds, which some networks hit every time. Filee now
   takes the same file from its own download server (`dl.filee.sh`) instead, and the rest of that update goes there

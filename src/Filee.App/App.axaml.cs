@@ -215,9 +215,11 @@ public partial class App : Application
         _ = Task.Run(() => Filee.Core.Web.WebDrop.DeleteStale(Filee.Core.Web.WebDrop.DefaultWorkRoot, TimeSpan.FromDays(1)));
         // Likewise the work folders of conversions that never got to clean up after themselves.
         _ = Task.Run(() => JobQueue.DeleteStaleWorkFolders(JobQueue.DefaultWorkRoot, TimeSpan.FromDays(1)));
-        // Leftover update workspaces from cancelled or failed in-app updates (Linux only).
+        // Leftover update workspaces from cancelled or failed in-app updates (Linux) or portable updates (Windows).
         if (OperatingSystem.IsLinux())
             _ = Task.Run(() => UpdateService.DeleteStaleWorkspaces());
+        else if (OperatingSystem.IsWindows())
+            _ = Task.Run(() => UpdateService.CleanupPortableUpdateArtifacts(log: log));
         // Once LibreOffice is installed: prepare its profiles while the user isn't converting yet.
         AppHost.Get<EngineDownloadService>().WarmUpInBackground(TimeSpan.FromSeconds(10));
 

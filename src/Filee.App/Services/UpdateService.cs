@@ -1564,6 +1564,93 @@ public sealed partial class UpdateService : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Checks whether <paramref name="name"/> matches <c>.backup-&lt;pid&gt;</c> and extracts the positive PID.
+    /// </summary>
+    internal static bool TryParseBackupDirectoryName(string name, out int pid)
+    {
+        pid = 0;
+        const string prefix = ".backup-";
+        if (!name.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+
+        var pidPart = name[prefix.Length..];
+        if (pidPart.Length == 0 || !pidPart.All(char.IsAsciiDigit) || !int.TryParse(pidPart, out var parsedPid) || parsedPid <= 0)
+            return false;
+
+        pid = parsedPid;
+        return true;
+    }
+
+    /// <summary>
+    /// Removes leftover portable update backups (<c>.backup-&lt;pid&gt;</c> in the install folder) and
+    /// staged workspaces (<c>.update-&lt;pid&gt;-&lt;token&gt;</c> in <c>%TEMP%</c>) once the new version starts.
+    /// Active PIDs, symlinks, and foreign directories are never touched.
+    /// </summary>
+    public static void CleanupPortableUpdateArtifacts(string? installDir = null, string? workspaceRoot = null, ILogger? log = null)
+    {
+        if (installDir is null && workspaceRoot is null && !OperatingSystem.IsWindows())
+            return;
+
+        var targetInstallDir = installDir ?? AppContext.BaseDirectory;
+        var targetWorkspaceRoot = workspaceRoot ?? Path.GetTempPath();
+
+        DeleteOwnedDirectories(
+            targetInstallDir,
+            ".backup-*",
+            name => TryParseBackupDirectoryName(name, out var pid) ? pid : 0,
+            "portable update backup",
+            log);
+
+        DeleteOwnedDirectories(
+            targetWorkspaceRoot,
+            ".update-*",
+            name => TryParseWorkspaceName(name, out var pid) ? pid : 0,
+            "portable update workspace",
+            log);
+    }
+
+    private static void DeleteOwnedDirectories(
+        string root,
+        string searchPattern,
+        Func<string, int> parsePid,
+        string label,
+        ILogger? log)
+    {
+        try
+        {
+            var dirInfo = new DirectoryInfo(root);
+            if (!dirInfo.Exists || dirInfo.LinkTarget is not null || dirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                return;
+
+            foreach (var folder in dirInfo.EnumerateDirectories(searchPattern))
+            {
+                if (folder.LinkTarget is not null || folder.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                    continue;
+
+                var pid = parsePid(folder.Name);
+                if (pid <= 0 || IsProcessAlive(pid))
+                    continue;
+
+                // The update helper may still be finishing its exit right as the new Filee process starts.
+                for (var attempt = 0; attempt < 5; attempt++)
+                {
+                    DeleteSecureWorkspace(folder.FullName);
+                    if (!Directory.Exists(folder.FullName))
+                    {
+                        log?.LogInformation("Deleted {Label} {Path}", label, folder.FullName);
+                        break;
+                    }
+                    Thread.Sleep(200);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log?.LogWarning(ex, "Failed to enumerate {Label} directories in {Root}", label, root);
+        }
+    }
+
     /// <summary>Locates the installation directory on Linux.</summary>
     internal static string GetLinuxInstallDirectory()
     {
