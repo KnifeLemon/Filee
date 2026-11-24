@@ -38,6 +38,8 @@ ko: PowerPoint를 Markdown으로 바꾸면 슬라이드마다 한 구역이 되�
 en: PowerPoint to Markdown keeps the slides, titles, lists, tables, pictures and speaker notes, ready for reveal.js
 ko: PNG를 ICO로 바꿀 때 256 크기를 PNG로 저장해서 아이콘 파일이 훨씬 작아져요
 en: Icons (ICO) are much smaller: the 256 px size is stored as PNG
+ko: Excel의 시스템 긴 날짜·시간 형식과 중국어·일본어·한국어 기본 날짜 형식이 PDF 등에서 Excel처럼 나와요
+en: Excel cells in the system long date or time, or in a Chinese, Japanese or Korean built-in date format, show as in Excel
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -90,6 +92,15 @@ en: Icons (ICO) are much smaller: the 256 px size is stored as PNG
   PNG became a 362 KB icon. The 256 px size is now stored as PNG, as Windows does it since Vista; the smaller sizes
   stay bitmaps, which every program that reads icons opens. The same icon is now about a third of that size, most of
   it the 128 px size. Cursors (CUR) are written as before.
+
+- **Excel dates in the system long date and the East Asian built-in formats** (#1795). A cell formatted as Excel's
+  *Long Date* (`[$-F800]`) or *Long Time* (`[$-F400]`) now follows the system's region format, as in Excel:
+  `2026年11月23日` with a Chinese region format, instead of the English `Monday, November 23, 2026` the file keeps
+  as a fallback. The built-in date and time formats of Chinese, Japanese and Korean Excel (ids 27–36 and 50–58)
+  came out as serial numbers such as `46349`; they now show as in that locale's Excel, with Japanese eras
+  (`令和8年11月23日`), Minguo years and 上午/下午. Their locale is the system's region format when it is Chinese,
+  Japanese or Korean, else the workbook's (from its fonts), else Simplified Chinese. XLSX and XLS files get both,
+  in every output (PDF, HWPX, CSV, ...).
 
 ## 2.5.0
 

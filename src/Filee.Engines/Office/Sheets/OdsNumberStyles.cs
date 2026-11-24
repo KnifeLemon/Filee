@@ -406,7 +406,7 @@ internal static class OdsNumberStyles
 
     private static int AmPmLength(string text, int index)
     {
-        foreach (var marker in new[] { "AM/PM", "A/P" })
+        foreach (var marker in new[] { "AM/PM", "A/P", "上午/下午" }) // 上午/下午: Chinese Excel's AM/PM
         {
             if (string.Compare(text, index, marker, 0, marker.Length, StringComparison.OrdinalIgnoreCase) == 0)
                 return marker.Length;

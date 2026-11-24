@@ -131,6 +131,12 @@ internal sealed class XlsxReader
             Color = colors.Spreadsheet(f.Element(S + "color")),
         }).ToList();
 
+        // Chinese, Japanese and Korean Excel add a font with their character set (the phonetic or East Asian font):
+        // the workbook's locale for formats whose meaning depends on it.
+        _formatter.WorkbookCulture = (root.Element(S + "fonts")?.Elements(S + "font") ?? [])
+            .Select(f => int.TryParse((string?)f.Element(S + "charset")?.Attribute("val"), out var charset) ? NumberFormatter.CultureOfCharset(charset) : null)
+            .FirstOrDefault(c => c is not null);
+
         var fills = (root.Element(S + "fills")?.Elements(S + "fill") ?? []).Select(f =>
         {
             var pattern = f.Element(S + "patternFill");
@@ -183,7 +189,7 @@ internal sealed class XlsxReader
                 Bottom = border.Item4,
             };
             var formatId = Index(xf, "numFmtId");
-            _cellFormats.Add((style, formats.GetValueOrDefault(formatId) ?? NumberFormatter.BuiltInFormats.GetValueOrDefault(formatId, "General")));
+            _cellFormats.Add((style, formats.GetValueOrDefault(formatId) ?? _formatter.BuiltIn(formatId) ?? "General"));
         }
     }
 
