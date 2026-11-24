@@ -204,6 +204,10 @@ public static class FormatRegistry
         new("ics", "iCalendar", FormatCategory.Data, ["ics", "ical"]),
         // The settings and data files of macOS and iOS apps, XML or binary, read into the data tree (issue #1256).
         new("plist", "Property list", FormatCategory.Data, ["plist"], Writable: false),
+        // Sequence alignments for phylogenetics and bioinformatics (issue #1798).
+        new("nex", "NEXUS", FormatCategory.Data, ["nex", "nxs", "nexus"]),
+        new("fasta", "FASTA", FormatCategory.Data, ["fasta", "fa", "fas", "fna", "faa"]),
+        new("phy", "PHYLIP", FormatCategory.Data, ["phy", "phylip"]),
 
         // E-books
         new("epub", "EPUB", FormatCategory.Ebook, ["epub"]),

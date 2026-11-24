@@ -34,6 +34,8 @@ ko: 클립 자르기에서 음악을 클립이 끝날 때까지 반복할 수 �
 en: Cut a clip can loop its music until the clip ends
 ko: 바로 가기를 변환하면 결과가 대상 파일 옆이 아니라 바로 가기 옆에 저장돼요
 en: A shortcut's results are saved next to the shortcut, not next to the file it points to
+ko: 생물정보학 서열 정렬 형식(NEXUS, FASTA, PHYLIP)을 서로 변환할 수 있어요
+en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -75,6 +77,12 @@ en: A shortcut's results are saved next to the shortcut, not next to the file it
 - **Cut a clip can loop its music** (#1432). With music on A2, **Loop music** next to **Music** plays the song again
   from its start each time it ends, until the clip ends, and fades it out with the clip. Off, the music stops when the
   song ends, as before. Several songs one after another on A2 are not there yet.
+
+- **NEXUS, FASTA and PHYLIP alignments** (#1798). Sequence alignments in NEXUS (`.nex`, `.nxs`, `.nexus`), FASTA
+  (`.fasta`, `.fa`, `.fas`, `.fna`, `.faa`) and PHYLIP (`.phy`, `.phylip`) convert between each other in the built-in
+  data engine, supporting sequential and interleaved layouts, nested NEXUS comments, quoted taxon names and `MATCHCHAR`.
+  Unaligned FASTA files with unequal sequence lengths are refused when targeting PHYLIP or NEXUS. The formats belong to
+  the Science & medical field (off by default in Settings → Fields).
 
 ## 2.5.0
 

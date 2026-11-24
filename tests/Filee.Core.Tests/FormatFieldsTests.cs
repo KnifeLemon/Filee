@@ -27,12 +27,12 @@ public class FormatFieldsTests
     [
         "3g2", "3gp", "3mf", "602", "aab", "ac3", "adoc", "ai", "amr", "ani", "ape", "apks", "arj", "ass", "au", "azw",
         "azw4", "bik", "bsp", "bz2", "cab", "caf", "cavs", "cdr", "cgm", "chm", "cpio", "cur", "cwk", "dav", "dbk", "dcm", "dds", "deb",
-        "dff", "dot", "dsf", "dss", "dst", "dts", "dv", "dwg", "eac3", "eot", "eps", "exr", "fbx", "fit", "fits",
+        "dff", "dot", "dsf", "dss", "dst", "dts", "dv", "dwg", "eac3", "eot", "eps", "exr", "fasta", "fbx", "fit", "fits",
         "flc", "flv", "fodg", "fodp", "fods", "fodt", "fon", "gcode", "geojson", "gerber", "glb", "gltf", "gma", "gpx", "gz", "h264", "h265", "har",
         "hdr", "htmlz", "icns", "ipynb", "it", "jar", "jp2", "jsonl", "kml", "kmz", "kra", "lha", "lit", "lrf", "lwp", "lz",
         "lzma", "m4s", "man", "mcaddon", "mcpack", "mctemplate", "mcw", "mcworld", "mdl", "mediawiki", "miff", "mng", "mobi",
-        "mod", "mp2", "mpc", "mrpack", "msix", "mxf", "nov", "nupkg", "obj", "oeb",
-        "org", "osm", "otf", "pam", "pcd", "pcx", "pdb", "pdn", "pfm", "plist", "plt", "ply", "pml", "ppm", "prc", "ps", "psb", "psd",
+        "mod", "mp2", "mpc", "mrpack", "msix", "mxf", "nex", "nov", "nupkg", "obj", "oeb",
+        "org", "osm", "otf", "pam", "pcd", "pcx", "pdb", "pdn", "pfm", "phy", "plist", "plt", "ply", "pml", "ppm", "prc", "ps", "psb", "psd",
         "psw", "qoi", "ras", "raw", "rb", "rm", "rpm", "rst", "s3m", "scc", "sda", "sdc", "sdw", "sgi", "shp", "smd", "snb", "spx",
         "ssa", "stl", "sub", "swf", "tak", "tar", "tar7z", "tbz2", "tcr", "tex", "textile", "tgz", "tlz", "toml",
         "tta", "ttf", "ttml", "txtz", "txz", "typ", "tz", "tzst", "usm", "vob", "voc", "vpk", "vtf", "w64", "wbmp", "wmf", "woff", "woff2",
@@ -47,7 +47,7 @@ public class FormatFieldsTests
         { "font", ["otf", "ttf", "woff", "woff2"] },
         { "game", ["bik", "bsp", "dds", "gma", "mcaddon", "mcpack", "mctemplate", "mcworld", "mdl", "mrpack", "smd", "usm", "vpk", "vtf"] },
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "kra", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
-        { "science", ["dcm", "fits"] },
+        { "science", ["dcm", "fasta", "fits", "nex", "phy"] },
         { "developer", [
                 "aab", "ani", "apks", "bz2", "cab", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har",
                 "icns", "jar", "jsonl", "lz", "lzma", "m4s", "man", "miff", "msix", "nupkg", "pam", "pfm", "plist", "ppm", "qoi",
@@ -74,7 +74,7 @@ public class FormatFieldsTests
         { "font", ["eot", "fon", "otf", "ttf", "woff", "woff2"] },
         { "game", ["bik", "bsp", "dds", "flc", "gma", "it", "mcaddon", "mcpack", "mctemplate", "mcworld", "mdl", "mrpack", "smd", "tga", "usm", "vpk", "vtf", "xm"] },
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "jp2", "kra", "pcd", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
-        { "science", ["dcm", "fits", "ipynb", "jp2"] },
+        { "science", ["dcm", "fasta", "fits", "ipynb", "jp2", "nex", "phy"] },
         { "developer", [
                 "aab", "ani", "apks", "bz2", "cab", "caf", "chm", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt",
                 "gz", "har", "icns", "ipynb", "jar", "jsonl", "lz", "lzma", "m4s", "man", "miff", "msix", "nupkg", "pam", "pfm",
@@ -145,7 +145,7 @@ public class FormatFieldsTests
             {
                 [FormatGrade.Everyday] = 19,
                 [FormatGrade.General] = 99,
-                [FormatGrade.Specialist] = 135,
+                [FormatGrade.Specialist] = 138,
                 [FormatGrade.Legacy] = 52,
             },
             counts);
