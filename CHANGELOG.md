@@ -38,6 +38,8 @@ ko: PowerPoint를 Markdown으로 바꾸면 슬라이드마다 한 구역이 되�
 en: PowerPoint to Markdown keeps the slides, titles, lists, tables, pictures and speaker notes, ready for reveal.js
 ko: PNG를 ICO로 바꿀 때 256 크기를 PNG로 저장해서 아이콘 파일이 훨씬 작아져요
 en: Icons (ICO) are much smaller: the 256 px size is stored as PNG
+ko: Blizzard 텍스처(.blp)를 PNG, JPG 같은 이미지로 변환할 수 있어요
+en: Blizzard textures (.blp) convert to PNG, JPG and other image formats
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -90,6 +92,11 @@ en: Icons (ICO) are much smaller: the 256 px size is stored as PNG
   PNG became a 362 KB icon. The 256 px size is now stored as PNG, as Windows does it since Vista; the smaller sizes
   stay bitmaps, which every program that reads icons opens. The same icon is now about a third of that size, most of
   it the 128 px size. Cursors (CUR) are written as before.
+
+- **Blizzard textures (`.blp`)** (#644). Warcraft III (BLP1: JPEG and palette) and World of Warcraft (BLP2: palette,
+  DXT1/DXT3/DXT5 and uncompressed BGRA) textures now open on the images donut and convert to PNG, JPG, TGA, DDS and the
+  other image formats. Filee reads the largest mipmap and does not write BLP files; Warcraft III beta BLP0 files with
+  separate mipmap files are not supported.
 
 ## 2.5.0
 
