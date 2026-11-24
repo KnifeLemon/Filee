@@ -51,6 +51,7 @@ public static class EngineRegistry
         new MarkdownConverter(),
         new SpreadsheetConverter(),
         new OoxmlConverter(),
+        new Office.Slides.SlidesMarkdownConverter(),
         new HwpxConverter(),
         new Translation.TranslatorConverter(loggers?.CreateLogger<Translation.TranslatorConverter>()),
         new ArchiveConverter(),

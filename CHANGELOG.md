@@ -34,6 +34,10 @@ ko: 클립 자르기에서 음악을 클립이 끝날 때까지 반복할 수 �
 en: Cut a clip can loop its music until the clip ends
 ko: 바로 가기를 변환하면 결과가 대상 파일 옆이 아니라 바로 가기 옆에 저장돼요
 en: A shortcut's results are saved next to the shortcut, not next to the file it points to
+ko: PowerPoint를 Markdown으로 바꾸면 슬라이드마다 한 구역이 되고 제목, 목록, 표, 그림, 발표자 노트가 남아요 (reveal.js)
+en: PowerPoint to Markdown keeps the slides, titles, lists, tables, pictures and speaker notes, ready for reveal.js
+ko: 데이터 트랙 하나짜리 BIN/CUE 디스크 이미지를 ISO로 변환하고 압축을 풀 수 있어요
+en: Single-track BIN/CUE disc images convert to ISO (and extract or repack from there)
 ko: SRTM 고도 타일(.hgt)을 GeoTIFF나 흑백 이미지로 변환할 수 있어요
 en: SRTM elevation tiles (.hgt) convert to signed 16-bit GeoTIFF and grayscale images
 -->
@@ -77,6 +81,17 @@ en: SRTM elevation tiles (.hgt) convert to signed 16-bit GeoTIFF and grayscale i
 - **Cut a clip can loop its music** (#1432). With music on A2, **Loop music** next to **Music** plays the song again
   from its start each time it ends, until the clip ends, and fades it out with the clip. Off, the music stops when the
   song ends, as before. Several songs one after another on A2 are not there yet.
+
+- **PowerPoint → Markdown keeps the slides, ready for reveal.js** (#1702). A presentation converted to Markdown now
+  has one section per slide with `---` between them, the slide titles as headings, bullet and numbered lists at
+  their levels, links, bold and italic, tables, the pictures next to the file and the speaker notes after `Note:`,
+  which is what [reveal.js](https://revealjs.com/markdown/) reads. Before, the text of all slides ran together with
+  titles as plain paragraphs. Charts, SmartArt and equations aren't converted.
+
+- **BIN/CUE disc images to ISO** (#1680). Drop a `.cue` sheet with its `.bin` beside it to copy a single data track
+  (`MODE1/2048`, `MODE1/2352`, `MODE2/2352` or `MODE2/2336`) straight into an ISO 9660 image without re-mastering, or
+  extract and repack its files through ISO. Multi-track discs (such as PlayStation 1 images with audio tracks), Mode 2
+  Form 2 sectors and non-ISO payloads are refused with a clear reason. CHD and CSO are not supported.
 
 - **SRTM elevation tiles (`.hgt`) convert to GeoTIFF and pictures** (#1793). Headerless NASA SRTM / DEM `.hgt` grids
   (big-endian signed 16-bit metres) convert straight to single-channel signed 16-bit TIFFs that keep the exact

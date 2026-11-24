@@ -378,6 +378,7 @@ public static class FormatRegistry
         new("dmg", "DMG", FormatCategory.Archive, ["dmg"], Writable: false),
         new("iso", "ISO", FormatCategory.Archive, ["iso"]),
         new("img", "IMG", FormatCategory.Archive, ["img"], Writable: false),
+        new("cue", "CUE (BIN/CUE disc image)", FormatCategory.Archive, ["cue"], Writable: false),
         new("lha", "LHA", FormatCategory.Archive, ["lha", "lzh"], Writable: false),
         new("arj", "ARJ", FormatCategory.Archive, ["arj"], Writable: false),
         new("alz", "ALZ", FormatCategory.Archive, ["alz"], Writable: false),

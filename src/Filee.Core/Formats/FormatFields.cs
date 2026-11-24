@@ -83,7 +83,7 @@ public static class FormatFields
             "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "tzst", "gz", "bz2", "xz", "lz", "lzma", "zst", "jar", "zxp", "nupkg", "apks",
             "aab", "msix", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack", "cab", "gerber",
             "cpio", "deb", "rpm", "dwg", "ttf", "otf", "woff", "woff2", "ass", "ssa", "ttml", "scc", "glb", "gltf",
-            "stl", "obj", "3mf", "ply", "fbx", "gcode", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm", "xm", "it", "ani", "vtf", "gma", "vpk", "bsp", "mdl", "smd"
+            "stl", "obj", "3mf", "ply", "fbx", "gcode", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm", "xm", "it", "ani", "vtf", "gma", "vpk", "bsp", "mdl", "smd", "cue"
         ]),
         (FormatGrade.Legacy,
         [
@@ -99,8 +99,8 @@ public static class FormatFields
     [
         // Layout, print, photo post-production, signs and embroidery.
         (["psd", "psb", "exr", "hdr", "xcf", "kra", "pdn", "raw", "eps", "ps", "ai", "cdr", "plt", "dst"], ["design"]),
-        // Game textures and cutscenes, Minecraft packs and modpacks.
-        (["dds", "vtf", "usm", "bik", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack", "gma", "vpk", "bsp", "mdl", "smd"], ["game"]),
+        // Game textures and cutscenes, Minecraft packs and modpacks, emulator disc images.
+        (["dds", "vtf", "usm", "bik", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack", "gma", "vpk", "bsp", "mdl", "smd", "cue"], ["game"]),
         // Medical imaging and astronomy.
         (["dcm", "fits"], ["science"]),
         // SRTM elevation tiles: read as images/GeoTIFFs, made for maps and GIS.

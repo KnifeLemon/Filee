@@ -1148,6 +1148,30 @@ file became and once on a merged PDF, so the box means the same whichever engine
   are converted and the PDF is left as it is, with `notice.pdfa_needs_ghostscript` in the result, unless LibreOffice
   made it PDF/A.
 
+## Slides → Markdown (reveal.js)
+
+The slides engine (`Office/Slides/SlidesMarkdownConverter.cs`, id `slides-md`, #1702) writes a PowerPoint file (PPTX,
+PPTM, POTX, POTM, PPSX; PPT and ODP through LibreOffice first) as Markdown that [reveal.js](https://revealjs.com/markdown/)
+shows as a deck and any editor reads as a document. Before it, PPTX → Markdown went through HWPX and Unhwp, which
+placed the slides' objects on pages and lost the slides, titles and lists.
+
+- One section per visible slide, `---` between them. A slide with nothing to show (blank, or a chart only) stays an
+  empty section, so the slide count matches (an empty first slide gets `<!-- slide 1 -->` so the file never starts with
+  `---`).
+- The title placeholder leads the slide: `#` on a title slide (`ctrTitle`), `##` otherwise.
+- Text in the slide's order: body and content placeholders are bullet lists unless a paragraph has no bullet
+  (`buNone`); text boxes are paragraphs unless a paragraph has one. Levels become indented items, automatic numbering
+  becomes `1.`, `2.`; runs keep bold, italic and web/mail links. Text that would read as Markdown, a slide break
+  (`---`) or a `Note:` marker is escaped.
+- Tables become pipe tables (the first row as header, a cell's paragraphs joined by `<br>`, merged cells keeping
+  columns aligned).
+- Pictures go into `<name>_files` next to the file (one file per picture part, even when reused across slides), like the
+  other Markdown outputs; **Leave out pictures** leaves them out.
+- The speaker notes follow a `Note:` line, which reveal.js shows in its speaker view.
+- Right-to-left and other scripts are written as they are; Markdown has no direction of its own.
+
+Not converted: charts, SmartArt, equations, animations, hidden slides, and footer / date / slide-number placeholders.
+
 ## Office Open XML variants
 
 `Office/OoxmlConverter.cs` converts between the variants of a family (Word, Excel, PowerPoint) by copying the
@@ -2044,6 +2068,18 @@ source timestamps are unchanged. On Windows, a marked input file transfers Mark 
 File contents are streamed, progress reports bytes written, and cancellation is checked during enumeration and
 streaming. A previous destination inside the source is excluded. A new image replaces its destination only after
 all expected bytes have been written; failures and cancellation preserve any previous image.
+
+**BIN/CUE → ISO** (`Archives/CueSheet.cs`, #1680): drop a `.cue` sheet with its `.bin` beside it. The `.bin` is always
+read from the cue's folder: a relative path is followed only while it stays inside it, and an absolute path (a drive, a
+root or a UNC share) or one that climbs out with `..` is never opened or checked; only its file name is looked for in
+the cue's folder, which also finds the file when the cue keeps an old absolute path from the ripping PC. A cue that
+isn't valid UTF-8 is read in the system's ANSI code page (Windows-1252, Shift-JIS, CP949, ...). Filee accepts a single
+data track in `MODE1/2048`, `MODE1/2352`, `MODE2/2352` or `MODE2/2336`, starting at `INDEX 01`, and streams the
+2048-byte user data of each sector verbatim into the ISO without re-mastering. Multi-track discs (such as PlayStation 1
+images with audio tracks), non-data tracks (`AUDIO`, `CDG`), Mode 2 Form 2 sectors (video or XA audio, submode bit
+`0x20`), missing or truncated `.bin` files and tracks whose sector 16 lacks the ISO 9660 `CD001` signature (checked
+before anything is copied) are refused. Extracting or repacking a `.cue` chains `cue → iso → …` through the existing ISO
+reader. CHD and CSO are not supported.
 
 ## LibreOffice
 
