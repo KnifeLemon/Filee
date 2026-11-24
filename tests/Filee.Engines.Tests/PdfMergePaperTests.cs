@@ -115,6 +115,28 @@ public class PdfMergePaperTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void A_push_button_destination_follows_the_page_transform_like_a_link()
+    {
+        const string GoTo = "<< /S /GoTo /D [5 0 R /XYZ 20 40 1.25] >>";
+        var input = Make(["/MediaBox [0 0 100 100] /Annots [6 0 R 7 0 R]", "/MediaBox [0 0 200 100]"],
+            [
+                $"<< /Subtype /Link /Rect [10 10 20 20] /A {GoTo} >>",
+                $"<< /Subtype /Widget /FT /Btn /Ff 65536 /T (go) /Rect [30 30 50 50] /A {GoTo} /AA << /U {GoTo} >> >>",
+            ], "/AcroForm << /Fields [7 0 R] >>");
+        using var result = PdfReader.Open(Merge([input], Same), PdfDocumentOpenMode.Import);
+        var link = A(D(Annotation(result.Pages[0]).Elements["/A"]).Elements["/D"]);
+        Assert.NotEqual(20, Num(link.Elements[2]));
+        var button = Annotation(result.Pages[0], 1);
+        foreach (var action in new[] { button.Elements["/A"], D(button.Elements["/AA"]).Elements["/U"] })
+        {
+            var destination = A(D(action).Elements["/D"]);
+            Assert.Same(result.Pages[1], D(destination.Elements[0]));
+            Assert.Equal(S(link.Elements[1]), S(destination.Elements[1]));
+            Near(link.Elements.Skip(2).Select(Num), destination.Elements.Skip(2).Select(Num));
+        }
+    }
+
+    [Fact]
     public void E1_Null_matches_the_original_import_and_structure_path()
     {
         var input = Make(["/MediaBox [20 30 220 130] /CropBox [30 40 200 120] /Rotate 90 /Annots [5 0 R]"],
