@@ -1,4 +1,4 @@
-// Carries bookmarks, destinations, links and page-backed AcroForm fields when PDFsharp imports pages.
+// Carries bookmarks, destinations, labels, links and page-backed AcroForm fields when PDFsharp imports pages.
 // The extra catalog graphs are untrusted: traversal is iterative, bounded and checked before linking.
 
 using System.Globalization;
@@ -55,6 +55,126 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
     private readonly Dictionary<PdfPage, List<(PdfDictionary Original, PdfDictionary Imported)>> _annotations = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<PdfDocument, Dictionary<PdfObjectID, List<(PdfDictionary Original, PdfDictionary Imported)>>> _sourceAnnotations = [];
     private readonly HashSet<PdfDictionary> _rejectedLinks = new(ReferenceEqualityComparer.Instance);
+    private sealed record Page(string? Style, PdfString? Prefix, int TextId, int Number);
+    private sealed record Range(int Index, string? Style, PdfString? Prefix, int TextId, long Start);
+    private readonly Dictionary<string, int> _labelTexts = new(StringComparer.Ordinal) { [""] = 0 };
+    private readonly Dictionary<PdfDocument, Range[]?> _labelRanges = new(ReferenceEqualityComparer.Instance);
+    private readonly List<Page> _labels = [];
+    private bool _anyLabels;
+
+    internal void Label(PdfDocument source, int index, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (!_labelRanges.TryGetValue(source, out var ranges))
+        {
+            ranges = ReadLabels(source, ct);
+            _labelRanges.Add(source, ranges);
+        }
+        var page = new Page("/D", null, 0, index + 1);
+        if (ranges is not null)
+        {
+            _anyLabels = true;
+            var low = 0;
+            var high = ranges.Length - 1;
+            while (low <= high)
+            {
+                var middle = low + (high - low) / 2;
+                if (ranges[middle].Index <= index)
+                    low = middle + 1;
+                else
+                    high = middle - 1;
+            }
+            if (high >= 0)
+            {
+                var range = ranges[high];
+                var offset = index - range.Index;
+                if (range.Style is null)
+                    page = new Page(null, range.Prefix, range.TextId, 1);
+                else if (range.Start <= int.MaxValue - offset)
+                    page = new Page(range.Style, range.Prefix, range.TextId, (int)range.Start + offset);
+            }
+        }
+        _labels.Add(page);
+    }
+
+    private Range[]? ReadLabels(PdfDocument source, CancellationToken ct)
+    {
+        if (Dictionary(source.Internals.Catalog.Elements["/PageLabels"]) is not { } tree)
+            return null;
+        var ranges = new SortedDictionary<int, Range>();
+        var prefixes = new Dictionary<PdfItem, int>(ReferenceEqualityComparer.Instance);
+        var accepted = false;
+        WalkTree(tree, "/Nums", pairs =>
+        {
+            for (var i = 0; i + 1 < pairs.Elements.Count; i += 2)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (Integer(pairs.Elements[i]) is not { } index || index < 0 ||
+                    Dictionary(pairs.Elements[i + 1]) is not { } section)
+                    continue;
+                var style = Present(section.Elements["/S"]);
+                var prefix = Present(section.Elements["/P"]);
+                var start = Present(section.Elements["/St"]);
+                if (style is not null && (style is not PdfName name || name.Value is not ("/D" or "/R" or "/r" or "/A" or "/a")) ||
+                    prefix is not null and not PdfString ||
+                    start is not null && (Integer(start) is not { } number || number < 1))
+                    continue;
+                accepted = true;
+                // Valid entries beyond the document still enable labels, but cannot apply to a page.
+                if (index >= source.PageCount || ranges.ContainsKey((int)index))
+                    continue;
+                var textId = 0;
+                if (prefix is PdfString value)
+                {
+                    // Value wraps indirect strings; cache by the original string object instead.
+                    PdfItem key = section.Elements["/P"] is PdfReference reference ? reference.Value : value;
+                    if (!prefixes.TryGetValue(key, out textId))
+                    {
+                        string text;
+                        if (value.Encoding == PdfStringEncoding.Unicode)
+                        {
+                            var visible = new StringBuilder(value.Value.Length);
+                            for (var position = 0; position < value.Value.Length; position++)
+                            {
+                                if (value.Value[position] == '\u001B' && value.Value.IndexOf('\u001B', position + 1) is var end && end >= 0)
+                                    position = end;
+                                else
+                                    visible.Append(value.Value[position]);
+                            }
+                            text = visible.ToString();
+                        }
+                        else
+                            text = DocText(value.Value);
+                        if (!_labelTexts.TryGetValue(text, out textId))
+                        {
+                            textId = _labelTexts.Count;
+                            _labelTexts.Add(text, textId);
+                        }
+                        prefixes.Add(key, textId);
+                    }
+                }
+                ranges.Add((int)index, new Range((int)index, (style as PdfName)?.Value, prefix as PdfString,
+                    textId, start is null ? 1 : Integer(start)!.Value));
+            }
+        }, ct);
+        return accepted ? ranges.Values.ToArray() : null;
+    }
+
+    private static string DocText(string value)
+    {
+        const string Low = "\u02D8\u02C7\u02C6\u02D9\u02DD\u02DB\u02DA\u02DC";
+        const string High = "\u2022\u2020\u2021\u2026\u2014\u2013\u0192\u2044\u2039\u203A\u2212\u2030\u201E\u201C\u201D\u2018\u2019\u201A\u2122\uFB01\uFB02\u0141\u0152\u0160\u0178\u017D\u0131\u0142\u0153\u0161\u017E";
+        var text = new StringBuilder(value.Length);
+        foreach (var c in value)
+            text.Append(c switch
+            {
+                >= '\u0018' and <= '\u001F' => Low[c - '\u0018'],
+                >= '\u0080' and <= '\u009E' => High[c - '\u0080'],
+                '\u00A0' => '\u20AC',
+                _ => c,
+            });
+        return text.ToString();
+    }
 
     internal void Carry(PdfDocument source, IReadOnlyDictionary<PdfObjectID, PdfPage> pages, CancellationToken ct,
         string? sourceName = null, PdfPage? firstPage = null,
@@ -299,6 +419,14 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
     private static PdfArray? Array(PdfItem? item) => Value(item) as PdfArray;
     private static string? Name(PdfItem? item) => (Value(item) as PdfName)?.Value;
     private static PdfString? Text(PdfItem? item) => Value(item) as PdfString;
+    private static PdfItem? Present(PdfItem? item) => Value(item) is { } value and not PdfNull ? value : null;
+    private static long? Integer(PdfItem? item) => Value(item) switch
+    {
+        PdfInteger integer => integer.Value,
+        PdfLongInteger integer => integer.Value,
+        PdfLongIntegerObject integer => integer.Value,
+        _ => null,
+    };
 
     private static (PdfObjectID Id, PdfObject? Direct) Identity(PdfObject item) =>
         item.Reference is { } reference ? (reference.ObjectID, null) : (default, item);
@@ -464,43 +592,20 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
         if (Dictionary(catalog.Elements["/Names"]) is { } catalogNames &&
             Dictionary(catalogNames.Elements["/Dests"]) is { } tree)
         {
-            var stack = new Stack<(PdfDictionary Node, int Depth)>();
-            var visited = new HashSet<(PdfObjectID Id, PdfObject? Direct)>();
-            // Nodes may share one /Names or /Kids array; reading it again would multiply the work. A /Kids
-            // array is read again only from a shallower depth, where children cut by the depth limit may fit.
-            var expandedNames = new HashSet<(PdfObjectID Id, PdfObject? Direct)>();
-            var expandedKids = new Dictionary<(PdfObjectID Id, PdfObject? Direct), int>();
             var seenKeys = new HashSet<string>(ReferenceEqualityComparer.Instance);
-            stack.Push((tree, 1));
-            while (stack.TryPop(out var entry))
+            WalkTree(tree, "/Names", pairs =>
             {
-                ct.ThrowIfCancellationRequested();
-                if (entry.Depth > limits.NameTreeDepth || visited.Count >= limits.NameTreeNodes ||
-                    !visited.Add(Identity(entry.Node)))
-                    continue;
-                if (Array(entry.Node.Elements["/Names"]) is { } pairs && expandedNames.Add(Identity(pairs)))
-                    for (var i = 0; i + 1 < pairs.Elements.Count; i += 2)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        // Keys are unique in a name tree; a long key repeated by reference would be converted
-                        // and hashed again for every pair.
-                        if (Text(pairs.Elements[i]) is { } key && ByteCount(key) <= limits.StringBytes - _stringBytes &&
-                            (key.Value.Length < CacheLength || !seenKeys.Contains(key.Value)) &&
-                            Register(false, () => Bytes(key), pairs.Elements[i + 1]) && key.Value.Length >= CacheLength)
-                            seenKeys.Add(key.Value);
-                    }
-                if (Array(entry.Node.Elements["/Kids"]) is { } kids &&
-                    (!expandedKids.TryGetValue(Identity(kids), out var depth) || entry.Depth < depth))
+                for (var i = 0; i + 1 < pairs.Elements.Count; i += 2)
                 {
-                    expandedKids[Identity(kids)] = entry.Depth;
-                    for (var i = kids.Elements.Count - 1; i >= 0; i--)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        if (Dictionary(kids.Elements[i]) is { } child && !visited.Contains(Identity(child)))
-                            stack.Push((child, entry.Depth + 1));
-                    }
+                    ct.ThrowIfCancellationRequested();
+                    // Keys are unique in a name tree; a long key repeated by reference would be converted
+                    // and hashed again for every pair.
+                    if (Text(pairs.Elements[i]) is { } key && ByteCount(key) <= limits.StringBytes - _stringBytes &&
+                        (key.Value.Length < CacheLength || !seenKeys.Contains(key.Value)) &&
+                        Register(false, () => Bytes(key), pairs.Elements[i + 1]) && key.Value.Length >= CacheLength)
+                        seenKeys.Add(key.Value);
                 }
-            }
+            }, ct);
         }
         if (Dictionary(catalog.Elements["/Dests"]) is { } old)
             foreach (var key in old.Elements.Keys)
@@ -511,6 +616,37 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
                     Register(true, () => key[1..], old.Elements[key]);
             }
         return names;
+    }
+
+    private void WalkTree(PdfDictionary root, string leaf, Action<PdfArray> pairs, CancellationToken ct)
+    {
+        var stack = new Stack<(PdfDictionary Node, int Depth)>();
+        var visited = new HashSet<(PdfObjectID Id, PdfObject? Direct)>();
+        // Shared leaves are read once. Shared /Kids are read again only from a shallower depth,
+        // where children cut by the depth limit may fit.
+        var expandedLeaves = new HashSet<(PdfObjectID Id, PdfObject? Direct)>();
+        var expandedKids = new Dictionary<(PdfObjectID Id, PdfObject? Direct), int>();
+        stack.Push((root, 1));
+        while (stack.TryPop(out var entry))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (entry.Depth > limits.NameTreeDepth || visited.Count >= limits.NameTreeNodes ||
+                !visited.Add(Identity(entry.Node)))
+                continue;
+            if (Array(entry.Node.Elements[leaf]) is { } values && expandedLeaves.Add(Identity(values)))
+                pairs(values);
+            if (Array(entry.Node.Elements["/Kids"]) is { } kids &&
+                (!expandedKids.TryGetValue(Identity(kids), out var depth) || entry.Depth < depth))
+            {
+                expandedKids[Identity(kids)] = entry.Depth;
+                for (var i = kids.Elements.Count - 1; i >= 0; i--)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (Dictionary(kids.Elements[i]) is { } child && !visited.Contains(Identity(child)))
+                        stack.Push((child, entry.Depth + 1));
+                }
+            }
+        }
     }
 
     private PdfItem? Destination(PdfItem? item, IReadOnlyDictionary<PdfObjectID, PdfPage> pages,
@@ -1477,5 +1613,56 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
             output.Internals.AddObject(form);
             catalog.Elements["/AcroForm"] = form.Reference;
         }
+        if (_anyLabels)
+        {
+            var nums = new PdfArray(output);
+            var remaining = limits.StringBytes;
+            Page? previous = null;
+            var previousIndex = 0;
+            for (var index = 0; index < _labels.Count;)
+            {
+                ct.ThrowIfCancellationRequested();
+                var page = _labels[index];
+                var end = index + 1;
+                while (end < _labels.Count && Joins(page, _labels[end], end - index))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    end++;
+                }
+                if (page.Prefix is { Value.Length: > 0 } prefix)
+                {
+                    var cost = ByteCount(prefix);
+                    if (cost <= remaining)
+                        remaining -= cost;
+                    else
+                        page = page with { Prefix = null, TextId = 0 };
+                }
+                if (previous is null || !Joins(previous, page, index - previousIndex))
+                {
+                    var section = new PdfDictionary(output);
+                    if (page.Style is not null)
+                    {
+                        section.Elements["/S"] = new PdfName(page.Style);
+                        if (page.Number != 1)
+                            section.Elements["/St"] = new PdfInteger(page.Number);
+                    }
+                    if (page.Prefix is { Value.Length: > 0 } text)
+                        section.Elements["/P"] = new PdfString(text.Value, text.Encoding);
+                    nums.Elements.Add(new PdfInteger(index));
+                    nums.Elements.Add(section);
+                    previous = page;
+                    previousIndex = index;
+                }
+                index = end;
+            }
+            var tree = new PdfDictionary(output);
+            tree.Elements["/Nums"] = nums;
+            output.Internals.AddObject(tree);
+            catalog.Elements["/PageLabels"] = tree.Reference;
+        }
     }
+
+    private static bool Joins(Page first, Page next, int distance) =>
+        first.Style == next.Style && first.TextId == next.TextId &&
+        (first.Style is null || (long)first.Number + distance == next.Number);
 }
