@@ -274,6 +274,8 @@
   "engine.gcode.description": "Trayectorias de impresoras 3D y máquinas CNC (G-code) a PDF, SVG e imágenes, o la vista previa del laminador.",
   "engine.slides-md.name": "Diapositivas a Markdown (built-in)",
   "engine.slides-md.description": "Diapositivas de PowerPoint (PPTX, PPTM, POTX, POTM, PPSX) a Markdown, una sección por diapositiva: títulos, listas, tablas, imágenes y notas del orador, lista para reveal.js.",
+  "engine.palette.name": "Paletas de colores (built-in)",
+  "engine.palette.description": "Paletas de colores (PAL, GIMP GPL, Adobe ACT) entre sí, como lista de códigos HEX (TXT, JSON) o como imagen de las muestras.",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "Modelos 3D: GLB, glTF, STL, OBJ, 3MF y PLY entre sí, FBX a cualquiera de ellos, además de una vista previa en PNG.",
   "engine.image3d.name": "Imágenes a relieve 3D (integrado)",

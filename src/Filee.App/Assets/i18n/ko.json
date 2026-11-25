@@ -281,6 +281,8 @@
   "engine.gcode.description": "3D 프린터와 CNC 기계의 툴패스(G-code)를 PDF, SVG, 그림으로 바꿔요. 슬라이서가 저장한 미리보기도 쓸 수 있어요.",
   "engine.slides-md.name": "슬라이드를 Markdown으로 (built-in)",
   "engine.slides-md.description": "PowerPoint 슬라이드(PPTX, PPTM, POTX, POTM, PPSX)를 슬라이드마다 한 구역씩 Markdown으로 바꿔요. 제목, 목록, 표, 그림, 발표자 노트가 남아서 reveal.js에서 바로 쓸 수 있어요.",
+  "engine.palette.name": "색상 팔레트 (built-in)",
+  "engine.palette.description": "색상 팔레트(PAL, GIMP GPL, Adobe ACT)를 서로 바꾸거나 HEX 코드 목록(TXT, JSON), 색 견본 그림으로 만들어요.",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "3D 모델: GLB, glTF, STL, OBJ, 3MF, PLY를 서로 변환하고, FBX도 이 형식들로 바꾸고, PNG 미리보기도 만들어요.",
   "engine.image3d.name": "이미지를 3D 부조로 (내장)",

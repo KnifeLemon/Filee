@@ -288,6 +288,8 @@
   "engine.gcode.description": "مسیرهای چاپگرهای سه‌بعدی و دستگاه‌های CNC (G-code) به PDF، SVG و تصویر، یا پیش‌نمایش خود اسلایسر.",
   "engine.slides-md.name": "اسلایدها به Markdown (داخلی)",
   "engine.slides-md.description": "اسلایدهای PowerPoint (PPTX، PPTM، POTX، POTM، PPSX) به Markdown، یک بخش برای هر اسلاید: عنوان‌ها، فهرست‌ها، جدول‌ها، تصویرها و یادداشت‌های سخنران، آماده برای reveal.js.",
+  "engine.palette.name": "پالت‌های رنگ (داخلی)",
+  "engine.palette.description": "پالت‌های رنگ (PAL، GIMP GPL، Adobe ACT) به یکدیگر، به‌صورت فهرست کدهای HEX (TXT، JSON) یا تصویری از نمونه‌رنگ‌ها.",
   "engine.model3d.name": "مدل‌های سه‌بعدی (داخلی)",
   "engine.model3d.description": "مدل‌های سه‌بعدی: GLB، glTF، STL، OBJ، 3MF و PLY به یکدیگر، FBX به هر یک از آن‌ها، همراه با پیش‌نمایش PNG.",
   "engine.image3d.name": "تبدیل تصاویر به برجسته‌سازی سه‌بعدی (داخلی)",

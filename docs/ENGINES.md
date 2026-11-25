@@ -29,6 +29,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
+| Color palettes | built in | **PAL (RIFF, JASC-PAL or a raw 768-byte palette), GIMP GPL, Adobe ACT → GPL, ACT**, a list of HEX codes (**TXT, JSON**) or a **swatch (SVG**; → PNG, JPG, PDF from there), see [below](#color-palettes-pal-gpl-act) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
@@ -1306,6 +1307,23 @@ not guaranteed to match. CSV → ICS writes the normalized columns as VEVENTs or
 Start (or End when no Start); offsets in other years, including past years, may therefore be lost. The original
 VTIMEZONE definition is not preserved, and only these columns are supported rather than arbitrary calendar data.
 VALARM, X-properties, VJOURNAL, VFREEBUSY, binary attachments and other unsupported properties are lost.
+
+## Color palettes (PAL, GPL, ACT)
+
+The palette engine (`Palettes/PaletteConverter.cs`, id `palette`, #1615) reads a palette into one list of colours and
+writes it again. It needs no external program.
+
+| Format | Read | Write |
+|---|---|---|
+| PAL | the three documented layouts, told apart by signature and size: **RIFF PAL** (Microsoft, `RIFF`…`PAL `, a LOGPALETTE in its `data` chunk), **JASC-PAL** (Paint Shop Pro's text) and a **raw palette** of exactly 768 bytes (256 RGB triplets, as DOS and retro games keep it; when no value is above 63 it is a VGA palette with 6 bits per channel and is scaled to 0–255) | — (which layout a program wants can't be told) |
+| GPL | GIMP palette: `Name:`, `Columns:`, `#` comments, `R G B name` lines; names are kept | GIMP palette, 16 columns, names kept (a colour without one is named by its HEX code) |
+| ACT | Adobe Color Table: 768 bytes, or 772 with the number of colours used (big-endian) and the transparent index | 772 bytes, the count stated, no transparent index; colours past 256 are left out |
+| TXT | — | one `#RRGGBB` per line |
+| JSON | — | `{"name", "colors": [{"hex", "r", "g", "b", "name"?}]}` |
+| SVG | — | the swatch: one square per colour, rows of 16 (one shorter row for a small palette); PNG, JPG, PDF, … follow from SVG |
+
+A `.pal` in any other layout (some programs wrote their own, with headers of their own) is refused as unsupported
+instead of being guessed at. Files over 1 MB are not palettes and are refused too.
 
 ## CAD drawings (DWG, DXF)
 

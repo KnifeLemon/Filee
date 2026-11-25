@@ -44,6 +44,8 @@ ko: 데이터 트랙 하나짜리 BIN/CUE 디스크 이미지를 ISO로 변환�
 en: Single-track BIN/CUE disc images convert to ISO (and extract or repack from there)
 ko: SRTM 고도 타일(.hgt)을 GeoTIFF나 흑백 이미지로 변환할 수 있어요
 en: SRTM elevation tiles (.hgt) convert to signed 16-bit GeoTIFF and grayscale images
+ko: 색상 팔레트(PAL, GIMP GPL, Adobe ACT)를 서로 바꾸거나 HEX 코드 목록, 색 견본 그림으로 만들어요
+en: Color palettes (PAL, GIMP GPL, Adobe ACT) convert to each other, a list of HEX codes or a swatch picture
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -116,6 +118,12 @@ en: SRTM elevation tiles (.hgt) convert to signed 16-bit GeoTIFF and grayscale i
   elevations, `-32768` voids (`GDAL_NODATA`), and WGS 84 GeoTIFF placement tags when the file name encodes a tile
   corner such as `N37W122.hgt` or `S12E045.hgt`. Converting to PNG, JPG or other picture formats stretches the valid
   elevations to grayscale with voids in black. The format is read-only and belongs to the Maps field.
+
+- **Color palettes: PAL, GIMP GPL and Adobe ACT** (#1615). A `.pal` (a raw 256-colour palette from DOS and retro
+  games, Paint Shop Pro's JASC-PAL or Microsoft's RIFF PAL), a GIMP `.gpl` or a Photoshop `.act` turns into the
+  others (GPL, ACT), a list of HEX codes (TXT, JSON) or a swatch picture (PNG, SVG, PDF, …). VGA palettes with 6 bits
+  per channel are scaled to full colour. A `.pal` in a layout of its own, which some old programs wrote, isn't read.
+  The formats are in the Design and Games fields.
 
 ## 2.5.0
 

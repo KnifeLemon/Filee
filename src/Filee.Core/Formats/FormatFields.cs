@@ -76,7 +76,7 @@ public static class FormatFields
         (FormatGrade.Specialist,
         [
             "jp2", "psd", "psb", "ppm", "icns", "qoi", "dds", "cur", "xpm", "xbm", "pam", "pfm", "miff", "dcm",
-            "exr", "hdr", "fits", "hgt", "xcf", "kra", "pdn", "raw", "eps", "ps", "ai", "cdr", "cgm", "plt", "dst", "fodg",
+            "exr", "hdr", "fits", "hgt", "xcf", "kra", "pdn", "pal", "gpl", "act", "raw", "eps", "ps", "ai", "cdr", "cgm", "plt", "dst", "fodg",
             "fodt", "fods", "fodp", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "ipynb", "textile", "man",
             "jsonl", "yaml", "toml", "har", "plist", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "nov", "bik",
             "h265", "h264", "ac3", "caf", "mp2", "dss", "wv", "tta", "w64", "eac3", "ape", "tak", "dsf", "dff",
@@ -99,6 +99,9 @@ public static class FormatFields
     [
         // Layout, print, photo post-production, signs and embroidery.
         (["psd", "psb", "exr", "hdr", "xcf", "kra", "pdn", "raw", "eps", "ps", "ai", "cdr", "plt", "dst"], ["design"]),
+        // Colour palettes: GIMP's and Photoshop's for design work; .pal also from retro games and their mods.
+        (["gpl", "act"], ["design"]),
+        (["pal"], ["design", "game"]),
         // Game textures and cutscenes, Minecraft packs and modpacks, emulator disc images.
         (["dds", "vtf", "usm", "bik", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack", "gma", "vpk", "bsp", "mdl", "smd", "cue"], ["game"]),
         // Medical imaging and astronomy.
