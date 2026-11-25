@@ -64,8 +64,8 @@ public static class EngineDownloads
         .. (OperatingSystem.IsWindows() ? [new EnginePackage("weasyprint", ["weasyprint"], 65_000_000, ["weasyprint"])] : Array.Empty<EnginePackage>()),
         new("tesseract", ["tesseract"], 168_000_000, ["tesseract"]),
         new("upscayl-bin", OperatingSystem.IsWindows() && architecture != Architecture.Arm64 ? ["upscayl-bin", "vcruntime", "vcomp14"] : OperatingSystem.IsWindows() ? [] : ["upscayl-bin"], 8_600_000, ["upscaler"]),
-        // Linux and macOS have no download yet (#1629), like Tesseract there: a whisper-cli on PATH or a folder picked
-        // with "Use my copy…" (whisper-cli and a ggml-*.bin model) is used.
+        // Linux and macOS have no download yet (#1629): the user's own copy is used, a folder picked with
+        // "Use my copy…" that holds whisper-cli and a ggml-*.bin model (see UnavailableReason).
         new("whisper", ["whisper", "whisper-model"], 156_880_105, ["whisper"]),
         // The Metadata tool reads with it and its conversions write with it (Filee.Engines.Metadata).
         new("exiftool", ["exiftool"], 30_000_000, ["exiftool"]),
@@ -122,6 +122,7 @@ public static class EngineDownloads
                 "tesseract" => "Install Tesseract with Homebrew (brew install tesseract), then check again or select its bin folder.",
                 "exiftool" => "Install ExifTool with Homebrew (brew install exiftool), then check again or select its folder.",
                 "calibre" => "The calibre Filee downloads needs macOS 14 or later. Install calibre 7.26 from calibre-ebook.com and select its .app folder.",
+                "whisper" => "Install whisper.cpp (brew install whisper-cpp), put whisper-cli and a ggml-*.bin model (e.g. ggml-base.bin) in one folder, and select that folder.",
                 _ => $"No Filee download is available for {RuntimeIdentifier}. Install {package.Id} for this Mac and select its program or .app folder.",
             };
         if (OperatingSystem.IsLinux())
@@ -130,6 +131,7 @@ public static class EngineDownloads
                 "libreoffice" => "Install LibreOffice using your distribution's package manager (Ubuntu/Debian: sudo apt install libreoffice), then check again. HWP import through LibreOffice also needs Java and the H2Orestart extension.",
                 "ghostscript" => "Install Ghostscript using your distribution's package manager (Ubuntu/Debian: sudo apt install ghostscript), then check again.",
                 "tesseract" => "Install Tesseract using your distribution's package manager (Ubuntu/Debian: sudo apt install tesseract-ocr), then check again.",
+                "whisper" => "Install or build whisper.cpp, put whisper-cli and a ggml-*.bin model (e.g. ggml-base.bin) in one folder, and select that folder.",
                 _ => $"No Filee download is available for {RuntimeIdentifier}. Install {package.Id} using your distribution's package manager and select its program folder.",
             };
         return $"No Filee download is available for {RuntimeIdentifier}. Select a compatible installed copy.";
