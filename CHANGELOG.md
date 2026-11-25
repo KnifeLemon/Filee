@@ -64,6 +64,8 @@ ko: 클립 자르기의 '이 프레임에 주석'으로 지금 보이는 프레�
 en: Mark this frame in Cut a clip opens the frame shown in Annotate
 ko: PDF 페이지 편집에 PDF를 끌어다 놓을 수 있고, 저장해도 책갈피·링크·양식이 남아요
 en: Drop PDFs into Edit PDF pages, and saving keeps bookmarks, links and form fields
+ko: 16비트 정수·부동소수점 GeoTIFF 래스터를 PNG, JPG 같은 그림으로 변환하면 값 범위에 맞춰 선명하게 나와요
+en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched across their data range
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -290,6 +292,12 @@ en: Drop PDFs into Edit PDF pages, and saving keeps bookmarks, links and form fi
 
 - **Turkish** (by @YusufMntm): one word each for install, original and metadata throughout, so buttons and the
   messages that name them agree.
+
+- **16-bit and floating-point GeoTIFF rasters convert to pictures** (#155). GeoTIFF elevation and satellite rasters
+  (16- and 32-bit integers, 32- and 64-bit floats, striped or tiled, uncompressed, LZW, Deflate or PackBits, with
+  horizontal or floating-point predictors) are now read directly and stretched linearly per band to grayscale (1–2
+  bands) or RGB (3+ bands), with `GDAL_NODATA` and NaN cells drawn black instead of coming out nearly black or clipped
+  white. Ordinary 8-bit TIFFs and non-GeoTIFFs stay on ImageMagick unchanged.
 
 ## 2.5.0
 

@@ -372,6 +372,7 @@ so a separate ARM64 one would break their updates.
     `PixelIsPoint`). Uncompressed, LZW or Deflate follows the preset's TIFF compression.
   - **PNG and every other picture target**: valid elevations stretched linearly from min..max to 8-bit grayscale with
     voids in black. HGT → TIFF costs a little more than other edges so multi-step routes use the stretched picture.
+- **GeoTIFF** (`Magick/GeoTiff.cs`): 16/32-bit integer and 32/64-bit float GeoTIFF bands are read by Filee and stretched linearly to grayscale (1–2 bands) or RGB (3+ bands) pictures, with `GDAL_NODATA` and NaN cells drawn black; ordinary 8-bit TIFFs stay on ImageMagick.
 - **Fujifilm HEIF** (`.hif`) is read as HEIC.
 - **Rotate and flip** happen after the EXIF orientation is applied, in the one step of a route that turns images
   (`IImageTransformer`). There is no lossless JPEG rotation: a turned JPEG is re-encoded, at its own estimated quality

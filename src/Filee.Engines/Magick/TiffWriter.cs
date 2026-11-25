@@ -65,8 +65,9 @@ internal static class TiffWriter
     /// kinds are rounded and clamped to their range; floating point is written as it is.
     /// </summary>
     public static void Write(string path, IReadOnlyList<float[]> planes, int width, int height, TiffSampleKind kind,
-        TiffCompression compression, int dpi, CancellationToken cancellationToken = default) =>
-        WriteCore(path, planes.Count, width, height, kind, compression, dpi, extraTags: null,
+        TiffCompression compression, int dpi, CancellationToken cancellationToken = default,
+        IReadOnlyList<TiffTag>? extraTags = null) =>
+        WriteCore(path, planes.Count, width, height, kind, compression, dpi, extraTags,
             (row, start, w, predictor) => FillRow(row, planes, start, w, kind, predictor), cancellationToken);
 
     /// <summary>
