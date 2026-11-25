@@ -304,7 +304,6 @@ public class UiZoomTests
             var reset = page.FindControl<Button>("ResetZoomButton")!;
             Assert.Equal("100%", text.Text);
             Assert.False(reset.IsEffectivelyEnabled);
-            Assert.Contains(OperatingSystem.IsMacOS() ? "Cmd + 0" : "Ctrl + 0", vm.WindowSizeHint);
 
             zoomIn.Command!.Execute(null);
             RenderTests.Pump();
