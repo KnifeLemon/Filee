@@ -444,12 +444,16 @@
                          SliceOpacity="{Binding DonutOpacity, Converter={x:Static vm:ToolbarConverters.Percent}}"
                          ShowCaptions="{Binding DonutCaptions}" />
           </Border>
-          <!-- Sample buttons are decorative; the switch below is an isolated interactive demo. -->
+          <!-- Sample buttons react to hover and press like the real ones, but nothing is saved; Save shows the same tick as the
+               Save buttons elsewhere, and the switch below is an isolated interactive demo too. -->
           <StackPanel Spacing="14">
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center"
-                        IsHitTestVisible="False" Focusable="False">
-              <Button x:Name="PreviewPrimaryButton" Classes="accent" Content="{DynamicResource common.save}"
-                      Focusable="False" IsTabStop="False" />
+                        Focusable="False">
+              <Button x:Name="PreviewPrimaryButton" Classes="accent" Click="OnPreviewSaveClick"
+                      AutomationProperties.Name="{DynamicResource common.save}"
+                      Focusable="False" IsTabStop="False">
+                <c:SaveFeedback x:Name="PreviewSaveFeedback" Text="{DynamicResource common.save}" />
+              </Button>
               <Button x:Name="PreviewSecondaryButton" Content="{DynamicResource common.cancel}"
                       Focusable="False" IsTabStop="False" />
             </StackPanel>
