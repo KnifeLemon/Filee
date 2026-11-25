@@ -50,6 +50,20 @@ ko: 자노메 자수 디자인(.jef)을 실 색상 그대로 PNG, JPG, PDF, SVG�
 en: Janome embroidery designs (.jef) turn into PNG, JPG, PDF and SVG in their thread colours
 ko: 동영상 프리셋에서 휴대폰 세로 동영상을 화질 저하 없이 똑바로 돌려 저장할 수 있어요
 en: Video presets can turn vertical phone videos upright without lowering the quality
+ko: Garry's Mod 애드온(GMA), Valve 팩(VPK), Source 맵(BSP)의 압축을 풀고 폴더를 GMA로 묶을 수 있어요
+en: Garry's Mod addons (GMA), Valve paks (VPK) and Source maps (BSP) unpack, and folders pack into a GMA
+ko: Source 엔진 모델(MDL)을 GLB, OBJ 같은 3D 형식이나 QC + SMD로 바꿀 수 있어요
+en: Source engine models (MDL) convert to GLB, OBJ and the other 3D formats, or into a QC with its SMDs
+ko: Windows 앱 패키지(MSIX, AppX)의 압축을 풀거나 다른 압축 형식으로 바꿀 수 있어요
+en: Windows app packages (MSIX, AppX) extract and convert to other archive formats
+ko: 동영상을 WebP로 바꾸면 정지 사진이 아니라 움직이는 WebP가 돼요
+en: Videos converted to WebP become animated WebPs, not a still picture
+ko: 변환 형식의 '오디오와 같은 형식'으로 동영상의 소리를 다시 인코딩하지 않고 그대로 꺼내요
+en: Same format as the audio copies a video's sound track out without encoding it again
+ko: 클립 자르기의 '이 프레임에 주석'으로 지금 보이는 프레임을 주석에서 열어요
+en: Mark this frame in Cut a clip opens the frame shown in Annotate
+ko: PDF 페이지 편집에 PDF를 끌어다 놓을 수 있고, 저장해도 책갈피·링크·양식이 남아요
+en: Drop PDFs into Edit PDF pages, and saving keeps bookmarks, links and form fields
 ko: JSP 파일(.jsp)을 텍스트처럼 PDF, Word 등으로 바꿀 수 있어요
 en: JavaServer Pages (.jsp) convert like text, to PDF, Word and more
 -->
@@ -140,6 +154,142 @@ en: JavaServer Pages (.jsp) convert like text, to PDF, Word and more
   encoded again so the picture itself stands upright on TVs and players that ignore the note: at High quality (Small
   stays Small), and an HEVC video stays HEVC with the default codec, so an iPhone's 10-bit HDR video keeps its 10 bits
   and colour tags. Videos without a rotation note are still copied as usual.
+
+- **Garry's Mod addons, Valve paks and Source maps unpack (GMA, VPK, BSP)** (by @ltsammy, #1526). A `.gma` unpacks
+  to a folder or converts to another archive, with an `addon.json` beside the files that gmad reads to pack them
+  again. A `_dir.vpk` unpacks with the `_000.vpk`… parts next to it; a part dropped on its own is refused with the
+  name of the `_dir.vpk` to drop instead. A `.bsp` map gives the textures, models and sounds packed into it. Every
+  file's checksum is checked. The formats are in the Games field.
+
+- **Folders pack into a Garry's Mod addon (GMA)** (by @ltsammy, #1526). The **GMA** preset in the palette turns a
+  folder, or a ZIP of one, into a `.gma` the way gmad makes it, with the title and tags from its `addon.json` (else
+  the folder's name as the title). Only the files Garry's Mod loads go in: a `.psd` or `readme.txt` beside them is
+  left out. The preset isn't on the folders donut.
+
+- **Source engine models (MDL) to 3D formats, and SMD both ways** (by @ltsammy, #1526). A `.mdl` with its `.vvd`
+  and `.vtx` beside it converts to GLB, glTF, OBJ, STL, 3MF and PLY, or a PNG preview, in its bind pose (default
+  body groups, first skin, most detailed level); in an addon's `models` folder it takes its textures from
+  `materials`. Studiomdl data (`.smd`) is read and written: the **SMD** preset makes one from any model, and from an
+  MDL it keeps the skeleton and bone weights. The **QC + SMD** preset decompiles a model into the folder studiomdl
+  builds it from: a `.qc` with its sequences, body groups and collision model, and SMDs of the meshes, their levels
+  of detail, the physics and every animation. Flexes, eyeballs and IK rules aren't written, and compiling back to
+  MDL still needs Valve's studiomdl. Both formats are in the Games field.
+
+- **A VTF preset** (by @ltsammy): **VTF** in the palette (Games field) turns any picture into a Valve texture.
+  Before, making one needed a preset of your own.
+
+- **Windows app packages extract (MSIX, AppX)** (by @Stamina9, #1521). `.msix`, `.appx`, `.msixbundle` and
+  `.appxbundle` files extract or convert to ZIP, 7Z and the other archive formats; the packages inside a bundle stay
+  files. What comes out isn't an installer, and encrypted packages (`.emsix`, `.eappx`) aren't read. The formats are
+  in the Developer field.
+
+- **CrossOver logs (`.cxlog`)** convert like any `.log`, to PDF, DOCX, HTML, Markdown and the other text targets
+  (#1383).
+
+- **Videos to animated WebP** (by @adnan-bhaldar). Converting a video to WebP made a single still picture; it now
+  makes a looping animation through FFmpeg, at the preset's playback speed. The picture quality sets its quality, and
+  **Lossless WEBP** keeps every frame lossless (up to 30 fps). A lossy WebP is at most 1920, 1280 or 854 px wide,
+  depending on the video quality, and never larger than the video. *Ask every time* for the compression asks here too.
+
+- **Same format as the audio** (by @cre8ive-marketing, #1490). A new choice in **Convert to** copies a video's sound
+  track out as it is, without encoding it again: AAC becomes `.m4a`, MP3 `.mp3`, FLAC `.flac`, Opus `.opus`, Vorbis
+  `.ogg`, little-endian PCM `.wav`, and anything else (AC-3, DTS, TrueHD, …) `.mka`. It takes the default track, else the first.
+  A file without sound fails with "The file has no sound track". The command line has `--to same-audio`. The
+  built-in **Extract audio** still makes M4A.
+
+- **Mark this frame in Cut a clip** (by @lightscape-jm, #1205). **Mark this frame** under the picture, or F, opens
+  the frame shown in Annotate; a playing clip pauses first. Saving writes `<video> <time> Annotated.png` next to the
+  video. Cut a clip stays open, and a frame marked while Annotate is open becomes its next picture. The time beside
+  Play now shows the time of the frame in the picture, and the label that covered the picture is gone.
+
+- **Cut a clip cuts at the frame shown** (by @lightscape-jm, #1205). The picture, the timeline pictures, playback,
+  exact and copied clips and Live / Motion Photos now start and end at the frame shown for the time chosen. Before,
+  they could be a frame late in most MP4s and a whole group of pictures late in MPEG-TS, M2TS and MPEG-PS files, and
+  a copied clip could start a group early or late.
+
+- **Crop video offers 4:5 and 5:4** (#1602), next to 4:3 and 3:4 in *Crop the frame* of a Crop video preset. 4:5 is
+  the portrait post size of Instagram and Facebook.
+
+- **Whisper transcribes with the largest model it finds** (#1568, Windows). Filee used the `ggml-base.bin` it
+  downloads even when a larger model, such as `ggml-small.bin` or `ggml-medium.bin`, was next to it. Now the largest
+  model file in Whisper's folders is used, multilingual models before English-only (`.en`) ones.
+
+- **Drop PDFs into the page editor** (#1596). In *Edit PDF pages*, PDFs dragged in from Explorer, Finder or a Linux
+  file manager can be dropped between two pages to insert their pages there; a line shows where. Other files in the
+  drop are left out, and the status line says so.
+
+- **The PDF page editor keeps bookmarks, links and form fields** (by @SeoJCalive, #1379). Saving after deleting,
+  reordering, rotating, duplicating or adding pages dropped every bookmark and form field, and links could point at
+  the wrong page. Now bookmarks and links follow their page to its new place, fields keep their values, and the ones
+  pointing at deleted pages are gone. Extracting pages keeps them too.
+
+- **Push buttons that jump to a page keep working in merged PDFs** (by @SeoJCalive, #965). After Merge PDF or the
+  page editor, such a button in the second file jumped to a page of the first; it now goes to its own page, as
+  links already did.
+
+- **PDF/A keeps filled-in form fields visible** (by @SeoJCalive, #1496). Values typed into a form's fields
+  disappeared when the PDF was made PDF/A. They now stay on the page. The fields can't be filled in anymore, and the
+  job card says so when the file had any.
+
+- **ISO volume labels** (by @Feraris20, #1492). An ISO image's volume label (the disc name a file manager shows) now
+  comes from the folder or archive it's made from, fitted to the file system's limit, with `FILEE` when nothing
+  usable is left. The ISO preset has a **Volume label** field for a name of your own, and the command line
+  `--iso-label`. A label that doesn't fit Joliet or UDF shows an error instead of being changed. Joliet labels with
+  non-English letters are written correctly too.
+
+- **Remove one conversion from Recent conversions** (by @XXingmfy, #1678). Each card on Home has an × (*Remove from
+  history*) that forgets only that entry; its files stay where they are. **Clear** still empties the whole list.
+
+- **A progress ring with ticks** (by @adnan-bhaldar, #1747). *Settings → Theme → Progress ring* can show the ring
+  while a file converts as ticks that light up one by one around the percentage. *Arc*, the ring so far, stays the
+  default.
+
+- **Theme page** (by @adnan-bhaldar): *Appearance* is three buttons, System, Light and Dark, instead of a list. The
+  preview's Save and Cancel buttons react to the mouse like real ones, and still save nothing.
+
+- **Smooth scrolling** (by @adnan-bhaldar). Pages glide when scrolled with a mouse wheel or touchpad instead of
+  jumping a notch at a time. It's off with *Reduce animations*. On macOS only mouse-wheel notches are smoothed, since
+  the system already glides trackpads.
+
+- **Look** (by @adnan-bhaldar): the move up / down buttons are thin chevrons everywhere, like those of the number
+  boxes. Flyouts (the icon picker, *Pick a running app*) take the theme's surface colour instead of grey, and so do
+  the chip inputs under Material You. On the Toolbar page, the focus ring after Edit Donut Size or Done shows only
+  when you use the keyboard.
+
+- **About page** (by @adnan-bhaldar): *Help Filee grow* has four tiles, Star, Report, Suggest and Sponsor. Report and
+  Suggest open the bug report and the feature request form straight away.
+
+- **Edit Donut Size shows the donut the first time** (by @lightscape-jm, #1630). The donut on screen was placed for
+  the wrong size the first time it opened, and on macOS its window stayed empty.
+
+- **FFmpeg 9.1 on Windows** (by @adnan-bhaldar): the FFmpeg engine Filee downloads on Windows is now version 9.1.
+  Linux stays on 9.0.2 until its 9.1 builds are out.
+
+- **Linux:** [Flea](https://github.com/thisisgm/flea) counts as a file manager for gestures, and *Add "Convert with
+  Filee" to the file manager* puts a Filee script in Flea's scripts (by @manish0467). On GNOME, a copy installed with
+  `install.sh` shows Filee's icon in the taskbar and dock instead of a gear (by @lBRAHIM8323). INSTALL.txt tells
+  packagers to delete `filee.portable` from an installed copy, and the error Filee shows when its portable data
+  folder can't be written is readable in every language and says on the terminal which folder and why (#1590).
+
+- **macOS:** the menu bar icon has no tooltip, which on macOS 27.2 could stay on screen far from the icon (#1193).
+
+- **Merging into one PDF or a multi-page TIFF** (by @Marouane-elfadli): cancelling the merge marks the files as
+  cancelled instead of failing the job, and an error during it (a full disk, a locked output file) now shows on each
+  file instead of leaving them without a message.
+
+- **16-bit pictures no longer make oversized files** (by @mohamedelghazali, #1547). A 16-bit PNG, TIFF or Camera RAW
+  converted to TIFF, PSD, PSB, PPM, PAM, MIFF, JPEG XL, JPEG 2000 or AVIF came out as a 16-bit (AVIF 12-bit) file
+  holding only 8 bits of detail, so it was larger for nothing. These are now 8-bit, with the same detail.
+
+- **Merge videos with a line break in a file name** (by @mohamedelghazali): such a name (possible on Linux and macOS)
+  could add instructions to the list FFmpeg joins the videos from. Those videos are now joined by encoding them;
+  other names are copied as before.
+
+- **Video codec tooltip** (#1482): it now says which videos are only rewrapped. With H.264 (VP9 for WebM), any video
+  the new format can hold as it is; with HEVC or AV1, only a video already in that codec.
+
+- **Turkish** (by @YusufMntm): one word each for install, original and metadata throughout, so buttons and the
+  messages that name them agree.
 
 - **JavaServer Pages (`.jsp`) convert like text** (#1789). A `.jsp` page is read as its source code, never run, so
   it becomes a PDF, DOCX, HTML, Markdown or the other text formats, like Java and the other source files.
