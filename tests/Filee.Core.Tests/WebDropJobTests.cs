@@ -104,10 +104,16 @@ public class WebDropJobTests
         using var downloads = new TempDir();
         using var work = new TempDir();
         var ended = false;
-        var drop = new WebDrop([WebDropItem.FromStream("a.png", _ => Task.FromResult<Stream>(new MemoryStream(Png)), owner: new Disposer(() => ended = true))], work.Path);
+        // The stream only opens once the gate does, which it never does here: if the job starts before the Cancel below,
+        // it is still fetching, so the Cancel always lands before the conversion and the test does not race it.
+        var gate = new TaskCompletionSource();
+        var drop = new WebDrop([WebDropItem.FromStream("a.png", async ct =>
+        {
+            await gate.Task.WaitAsync(ct);
+            return new MemoryStream(Png);
+        }, owner: new Disposer(() => ended = true))], work.Path);
         using var downloader = new WebDownloader();
         var fetcher = drop.CreateFetcher(new WebDropOptions(downloads.Path, true), downloader);
-        var gate = new TaskCompletionSource();
         await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("magick", new ConversionEdge("png", "jpg"))]));
         var finished = new TaskCompletionSource<ConversionJob>();
         queue.JobFinished += (_, j) => finished.TrySetResult(j);
