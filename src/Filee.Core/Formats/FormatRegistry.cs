@@ -59,6 +59,9 @@ public static class FormatRegistry
         // Astronomy pictures from telescope cameras and stacking software, read by Filee itself (issue #460). ".fit" is
         // left to Garmin's FIT activity files (issue #451).
         new("fits", "FITS", FormatCategory.Image, ["fits", "fts"], Writable: false),
+        // NASA SRTM / DEM elevation tiles (#1793): headerless square grids of big-endian signed 16-bit metres, read by
+        // Filee itself into signed 16-bit GeoTIFFs or stretched grayscale pictures.
+        new("hgt", "SRTM elevation tile", FormatCategory.Image, ["hgt"], Writable: false),
         // Read on Windows only, with its own codec (HDR screenshots of Windows are JPEG XR).
         new("jxr", "JPEG XR", FormatCategory.Image, ["jxr", "wdp", "hdp"], Writable: false),
         // GIMP's own file, read and written by Filee: layers merged for other pictures, kept between XCF, PDN and PSD.
@@ -199,6 +202,12 @@ public static class FormatRegistry
         new("jsonl", "JSON Lines", FormatCategory.Data, ["jsonl", "ndjson"]),
         new("yaml", "YAML", FormatCategory.Data, ["yaml", "yml"]),
         new("toml", "TOML", FormatCategory.Data, ["toml"]),
+        // Colour palettes (#1615), see PaletteConverter: lists of colours, not pictures (a swatch is drawn as SVG). A
+        // .pal is read in its documented layouts (raw 768 bytes, JASC-PAL, RIFF PAL) but never written, since which of
+        // them a program wants is anyone's guess.
+        new("pal", "PAL (color palette)", FormatCategory.Data, ["pal"], Writable: false),
+        new("gpl", "GPL (GIMP palette)", FormatCategory.Data, ["gpl"]),
+        new("act", "ACT (Adobe Color Table)", FormatCategory.Data, ["act"]),
         new("xml", "XML", FormatCategory.Data, ["xml"]),
         new("vcf", "vCard", FormatCategory.Data, ["vcf", "vcard"]),
         // A browser's recorded network requests (HTTP Archive): JSON, read as one table row per request (issue #328).
@@ -377,6 +386,7 @@ public static class FormatRegistry
         new("dmg", "DMG", FormatCategory.Archive, ["dmg"], Writable: false),
         new("iso", "ISO", FormatCategory.Archive, ["iso"]),
         new("img", "IMG", FormatCategory.Archive, ["img"], Writable: false),
+        new("cue", "CUE (BIN/CUE disc image)", FormatCategory.Archive, ["cue"], Writable: false),
         new("lha", "LHA", FormatCategory.Archive, ["lha", "lzh"], Writable: false),
         new("arj", "ARJ", FormatCategory.Archive, ["arj"], Writable: false),
         new("alz", "ALZ", FormatCategory.Archive, ["alz"], Writable: false),

@@ -1221,6 +1221,9 @@ internal static class SettingsMigrations
         //       donut.
         if (from < 101 && presets.All(p => p.Id != BuiltInData.DecompileModelId))
             changed |= AddLikeNewLibrary(presets, BuiltInData.DecompileModelId);
+        // v102: SRTM elevation tiles (.hgt, #1793) learn the images donut; custom claims stay put.
+        if (from < 102)
+            changed |= LearnExtensions(profiles, out _, ["hgt"]);
         return changed;
     }
 
