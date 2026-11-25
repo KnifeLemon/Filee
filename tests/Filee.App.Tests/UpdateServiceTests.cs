@@ -703,36 +703,65 @@ public class UpdateServiceTests
     [Fact]
     public void ExtractMacArchive_requires_a_filee_application_bundle()
     {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "macOS archives require the system tar extractor.");
         var folder = TempFolder();
         var archiveFile = Path.Combine(folder, "package.tar.gz");
         var destFolder = Path.Combine(folder, "extracted");
         var root = "Filee-1.0.0-osx-arm64";
         File.WriteAllBytes(archiveFile, CreateTarGz(writer =>
         {
-            AddFileEntry(writer, $"{root}/install.sh", "#!/bin/sh\nexit 0\n");
-            AddFileEntry(writer, $"{root}/Filee.app/Contents/MacOS/Filee", "app");
+            AddFileEntry(writer, $"{root}/install.sh", "#!/bin/sh\nexit 0\n", UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            AddFileEntry(writer, $"{root}/Filee.app/Contents/MacOS/Filee", "app", UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            AddFileEntry(writer, $"{root}/Filee.app/Contents/Info.plist", MacInfoPlist);
         }));
 
         var payloadDir = UpdateService.ExtractMacArchive(archiveFile, destFolder);
 
         Assert.Equal(Path.Combine(destFolder, root), payloadDir);
         Assert.True(File.Exists(Path.Combine(payloadDir, "Filee.app", "Contents", "MacOS", "Filee")));
-        Assert.Empty(Directory.GetDirectories(destFolder, ".validation-*"));
     }
 
     [Fact]
-    public void ExtractMacArchive_rejects_unsafe_entries_before_system_extraction()
+    public void ExtractMacArchive_with_extended_attributes_uses_system_tar()
     {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "macOS extended attributes require the system tar extractor.");
+        if (!OperatingSystem.IsMacOS())
+            return;
         var folder = TempFolder();
-        var archiveFile = Path.Combine(folder, "traversal.tar.gz");
+        var source = Path.Combine(folder, "source");
+        var destFolder = Path.Combine(folder, "extracted");
+        var root = "Filee-1.0.0-osx-arm64";
+        var payload = Path.Combine(source, root);
+        Directory.CreateDirectory(Path.Combine(payload, "Filee.app", "Contents", "MacOS"));
+        File.WriteAllText(Path.Combine(payload, "install.sh"), "#!/bin/sh\nexit 0\n");
+        File.WriteAllText(Path.Combine(payload, "Filee.app", "Contents", "MacOS", "Filee"), "app");
+        File.WriteAllText(Path.Combine(payload, "Filee.app", "Contents", "Info.plist"), MacInfoPlist);
+        File.SetUnixFileMode(Path.Combine(payload, "install.sh"), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        File.SetUnixFileMode(Path.Combine(payload, "Filee.app", "Contents", "MacOS", "Filee"), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        RunChecked("/usr/bin/xattr", "-w", "com.filee.test", "signed", Path.Combine(payload, "Filee.app", "Contents", "MacOS", "Filee"));
+
+        var archiveFile = Path.Combine(folder, "package.tar.gz");
+        RunChecked("/usr/bin/tar", "-czf", archiveFile, "-C", source, root);
+
+        var extracted = UpdateService.ExtractMacArchive(archiveFile, destFolder);
+        Assert.Equal(Path.Combine(destFolder, root), extracted);
+        var attribute = RunChecked("/usr/bin/xattr", "-p", "com.filee.test", Path.Combine(extracted, "Filee.app", "Contents", "MacOS", "Filee"));
+        Assert.Contains("signed", attribute);
+    }
+
+    [Fact]
+    public void ExtractMacArchive_rejects_an_escaping_symlink()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "macOS archives require the system tar extractor.");
+        var folder = TempFolder();
+        var archiveFile = Path.Combine(folder, "symlink.tar.gz");
         var destFolder = Path.Combine(folder, "extracted");
         File.WriteAllBytes(archiveFile, CreateTarGz(writer =>
         {
-            AddFileEntry(writer, "../outside", "must not extract");
+            AddSymlinkEntry(writer, "Filee-1.0.0-osx-arm64/escape", "/tmp/outside");
         }));
 
         Assert.Throws<InvalidDataException>(() => UpdateService.ExtractMacArchive(archiveFile, destFolder));
-        Assert.False(File.Exists(Path.Combine(folder, "outside")));
     }
 
     [Fact]
@@ -859,11 +888,13 @@ public class UpdateServiceTests
     [AvaloniaFact]
     public async Task UpdateAsync_on_macos_downloads_the_matching_archive_and_delegates_to_the_bundle_upgrader()
     {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "macOS archives require the system tar extractor.");
         var root = "Filee-9.9.9-osx-arm64";
         var tarBytes = CreateTarGz(writer =>
         {
-            AddFileEntry(writer, $"{root}/install.sh", "#!/bin/sh\nexit 0\n");
-            AddFileEntry(writer, $"{root}/Filee.app/Contents/MacOS/Filee", "app");
+            AddFileEntry(writer, $"{root}/install.sh", "#!/bin/sh\nexit 0\n", UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            AddFileEntry(writer, $"{root}/Filee.app/Contents/MacOS/Filee", "app", UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            AddFileEntry(writer, $"{root}/Filee.app/Contents/Info.plist", MacInfoPlist);
         });
         var hash = Sha256(tarBytes);
         var network = new FakeUnixRelease(tarBytes, hash, "Filee-9.9.9-osx-arm64.tar.gz", "9.9.9", "osx-arm64");
@@ -1341,6 +1372,31 @@ public class UpdateServiceTests
 
         Assert.False(Directory.Exists(workspace), "Workspace must be cleaned up on timeout");
         Assert.Contains("Update aborted: Filee", File.ReadAllText(installLog));
+    }
+
+    private const string MacInfoPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.filee.app</string></dict></plist>
+        """;
+
+    private static string RunChecked(string fileName, params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo(fileName)
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var argument in arguments)
+            startInfo.ArgumentList.Add(argument);
+        using var process = Process.Start(startInfo);
+        Assert.NotNull(process);
+        var output = process.StandardOutput.ReadToEnd();
+        var error = process.StandardError.ReadToEnd();
+        Assert.True(process.WaitForExit(5000), $"{fileName} timed out.");
+        Assert.True(process.ExitCode == 0, $"{fileName} failed: {error}");
+        return output;
     }
 
     private static byte[] CreateTarGz(Action<TarWriter> populate)

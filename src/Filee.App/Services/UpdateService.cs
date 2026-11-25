@@ -21,6 +21,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Filee.Core.Settings;
@@ -972,22 +973,17 @@ public sealed partial class UpdateService : ObservableObject
         ExtractUnixArchive(archivePath, destinationDirectory, "Filee", "filee-cli");
 
     /// <summary>
-    /// Extracts a macOS release archive after validating every entry with the managed reader. The system tar extractor
-    /// is required here because macOS code signatures for the managed assemblies are stored in extended attributes.
+    /// Extracts a macOS release archive with the system tar extractor. The managed reader cannot parse the pax headers
+    /// that macOS tar writes for extended attributes, which hold part of the app's code signature.
     /// </summary>
     internal static string ExtractMacArchive(string archivePath, string destinationDirectory)
     {
-        var validationDirectory = Path.Combine(destinationDirectory, ".validation-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            // Keep the same path, link, and payload checks used by Linux before handing the archive to tar.
-            ExtractUnixArchive(archivePath, validationDirectory, Path.Combine("Filee.app", "Contents", "MacOS", "Filee"), null);
-        }
-        finally
-        {
-            if (Directory.Exists(validationDirectory))
-                Directory.Delete(validationDirectory, recursive: true);
-        }
+        if (!OperatingSystem.IsMacOS())
+            throw new PlatformNotSupportedException("macOS archives can only be extracted on macOS.");
+        if (!File.Exists(archivePath))
+            throw new FileNotFoundException("Archive file not found", archivePath);
+        if (Directory.Exists(destinationDirectory) && Directory.EnumerateFileSystemEntries(destinationDirectory).Any())
+            throw new InvalidDataException("macOS archive destination must be empty.");
 
         Directory.CreateDirectory(destinationDirectory);
         var tar = new ProcessStartInfo("/usr/bin/tar")
@@ -1006,7 +1002,58 @@ public sealed partial class UpdateService : ObservableObject
         if (process.ExitCode != 0)
             throw new InvalidDataException($"macOS archive extraction failed: {error.Trim()}");
 
-        return ValidateExtractedUnixPayload(destinationDirectory, Path.Combine("Filee.app", "Contents", "MacOS", "Filee"), null);
+        ValidateMacArchiveTree(destinationDirectory);
+        var payloadDir = ValidateExtractedUnixPayload(destinationDirectory, Path.Combine("Filee.app", "Contents", "MacOS", "Filee"), null);
+        var bundleId = ReadBundleIdentifier(Path.Combine(payloadDir, "Filee.app", "Contents", "Info.plist"));
+        if (bundleId != "com.filee.app")
+            throw new InvalidDataException("Archive Filee.app does not have the com.filee.app bundle identifier.");
+        return payloadDir;
+    }
+
+    private static void ValidateMacArchiveTree(string destinationDirectory)
+    {
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(destinationDirectory));
+        var rootWithSeparator = root + Path.DirectorySeparatorChar;
+        var pending = new Stack<string>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            var directory = pending.Pop();
+            foreach (var path in Directory.EnumerateFileSystemEntries(directory))
+            {
+                var info = new FileInfo(path);
+                if (info.LinkTarget is not null || info.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                {
+                    var target = Path.GetFullPath(Path.Combine(directory, info.LinkTarget ?? string.Empty));
+                    if (!target.StartsWith(rootWithSeparator, StringComparison.Ordinal))
+                        throw new InvalidDataException($"Archive symlink '{path}' points outside the extraction directory.");
+                    continue;
+                }
+
+                if (Directory.Exists(path))
+                    pending.Push(path);
+            }
+        }
+    }
+
+    private static string? ReadBundleIdentifier(string infoPlist)
+    {
+        try
+        {
+            var dictionary = XDocument.Load(infoPlist).Root?.Element("dict")?.Elements().ToList();
+            if (dictionary is null)
+                return null;
+            for (var index = 0; index + 1 < dictionary.Count; index += 2)
+            {
+                if (dictionary[index].Name.LocalName == "key" && dictionary[index].Value == "CFBundleIdentifier")
+                    return dictionary[index + 1].Value;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or System.Xml.XmlException)
+        {
+            return null;
+        }
+        return null;
     }
 
     private static string ExtractUnixArchive(string archivePath, string destinationDirectory, string executablePath, string? cliPath)
