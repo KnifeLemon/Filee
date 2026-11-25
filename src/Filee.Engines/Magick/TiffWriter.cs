@@ -1,9 +1,11 @@
-// A small baseline TIFF writer (TIFF 6.0) for pictures deeper than ImageMagick's Q8 build stores: 8-bit, 16-bit or 32-bit
-// floating-point samples, grey or RGB, little-endian, in strips, uncompressed or with LZW or Deflate (the preset's TIFF
-// compression; integer samples with the horizontal predictor). Used for FITS → TIFF (FitsRendering).
+// A small baseline TIFF writer (TIFF 6.0) for pictures deeper than ImageMagick's Q8 build stores: 8-bit, unsigned or
+// signed 16-bit, or 32-bit floating-point samples, grey or RGB, little-endian, in strips, uncompressed or with LZW or
+// Deflate (the preset's TIFF compression; integer samples with the horizontal predictor), plus optional extra tags
+// (GeoTIFF placement, GDAL_NODATA). Used for FITS → TIFF (FitsRendering) and SRTM .hgt → TIFF (Hgt).
 
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Text;
 using Filee.Core.Presets;
 
 namespace Filee.Engines.Magick;
@@ -13,7 +15,39 @@ internal enum TiffSampleKind
 {
     UInt8,
     UInt16,
+    Int16,
     Float32,
+}
+
+/// <summary>An extra TIFF IFD tag (e.g. GeoTIFF placement or GDAL_NODATA) written alongside the baseline image tags.</summary>
+internal readonly record struct TiffTag(ushort Tag, ushort Type, uint Count, byte[] Value)
+{
+    private const ushort AsciiType = 2, ShortType = 3, DoubleType = 12;
+
+    /// <summary>A NUL-terminated ASCII tag (TIFF type 2); Count includes the trailing NUL byte.</summary>
+    public static TiffTag Ascii(ushort tag, string text)
+    {
+        var bytes = Encoding.ASCII.GetBytes(text + '\0');
+        return new(tag, AsciiType, (uint)bytes.Length, bytes);
+    }
+
+    /// <summary>A little-endian unsigned 16-bit integer array tag (TIFF type 3).</summary>
+    public static TiffTag UInt16s(ushort tag, params ushort[] values)
+    {
+        var bytes = new byte[values.Length * 2];
+        for (var i = 0; i < values.Length; i++)
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(i * 2), values[i]);
+        return new(tag, ShortType, (uint)values.Length, bytes);
+    }
+
+    /// <summary>A little-endian IEEE 754 double array tag (TIFF type 12).</summary>
+    public static TiffTag Doubles(ushort tag, params double[] values)
+    {
+        var bytes = new byte[values.Length * 8];
+        for (var i = 0; i < values.Length; i++)
+            BinaryPrimitives.WriteDoubleLittleEndian(bytes.AsSpan(i * 8), values[i]);
+        return new(tag, DoubleType, (uint)values.Length, bytes);
+    }
 }
 
 /// <summary>Writes planes of samples as a TIFF.</summary>
@@ -24,15 +58,31 @@ internal static class TiffWriter
 
     private const ushort Short = 3, Long = 4, Rational = 5;
 
+    private delegate void RowFiller(Span<byte> row, int start, int width, bool predictor);
+
     /// <summary>
     /// Writes one (grey) or three (RGB) planes of <paramref name="width"/> × <paramref name="height"/> values. Integer
     /// kinds are rounded and clamped to their range; floating point is written as it is.
     /// </summary>
     public static void Write(string path, IReadOnlyList<float[]> planes, int width, int height, TiffSampleKind kind,
-        TiffCompression compression, int dpi, CancellationToken cancellationToken = default)
+        TiffCompression compression, int dpi, CancellationToken cancellationToken = default) =>
+        WriteCore(path, planes.Count, width, height, kind, compression, dpi, extraTags: null,
+            (row, start, w, predictor) => FillRow(row, planes, start, w, kind, predictor), cancellationToken);
+
+    /// <summary>
+    /// Writes a single-channel signed 16-bit grid (<c>SampleFormat = 2</c>, <c>BitsPerSample = 16</c>) with optional
+    /// extra IFD tags (such as GeoTIFF placement and <c>GDAL_NODATA</c>).
+    /// </summary>
+    public static void Write(string path, short[] samples, int width, int height, TiffCompression compression, int dpi,
+        IReadOnlyList<TiffTag>? extraTags = null, CancellationToken cancellationToken = default) =>
+        WriteCore(path, samples: 1, width, height, TiffSampleKind.Int16, compression, dpi, extraTags,
+            (row, start, w, predictor) => FillInt16Row(row, samples, start, w, predictor), cancellationToken);
+
+    private static void WriteCore(string path, int samples, int width, int height, TiffSampleKind kind,
+        TiffCompression compression, int dpi, IReadOnlyList<TiffTag>? extraTags, RowFiller fillRow,
+        CancellationToken cancellationToken)
     {
-        var samples = planes.Count;
-        var bytesPerSample = kind switch { TiffSampleKind.UInt8 => 1, TiffSampleKind.UInt16 => 2, _ => 4 };
+        var bytesPerSample = kind switch { TiffSampleKind.UInt8 => 1, TiffSampleKind.UInt16 or TiffSampleKind.Int16 => 2, _ => 4 };
         var rowBytes = (long)width * samples * bytesPerSample;
         var rowsPerStrip = (int)Math.Clamp(StripBytes / rowBytes, 1, height);
         var strips = (height + rowsPerStrip - 1) / rowsPerStrip;
@@ -53,7 +103,7 @@ internal static class TiffWriter
             var rows = Math.Min(rowsPerStrip, height - firstRow);
             var data = strip.AsSpan(0, (int)(rows * rowBytes));
             for (var r = 0; r < rows; r++)
-                FillRow(data.Slice((int)(r * rowBytes), (int)rowBytes), planes, (firstRow + r) * width, width, kind, predictor);
+                fillRow(data.Slice((int)(r * rowBytes), (int)rowBytes), (firstRow + r) * width, width, predictor);
 
             byte[] encoded = compression switch
             {
@@ -69,26 +119,31 @@ internal static class TiffWriter
         }
 
         var bits = (ushort)(bytesPerSample * 8);
-        var format = (ushort)(kind == TiffSampleKind.Float32 ? 3 : 1);
-        var entries = new List<(ushort Tag, ushort Type, uint Count, byte[] Value)>
+        var format = (ushort)(kind switch { TiffSampleKind.Float32 => 3, TiffSampleKind.Int16 => 2, _ => 1 });
+        var entries = new List<TiffTag>
         {
-            (256, Long, 1, UInt32s((uint)width)),
-            (257, Long, 1, UInt32s((uint)height)),
-            (258, Short, (uint)samples, UInt16s([.. Enumerable.Repeat(bits, samples)])),
-            (259, Short, 1, UInt16s(compression switch { TiffCompression.Lzw => 5, TiffCompression.Zip => 8, _ => 1 })),
-            (262, Short, 1, UInt16s((ushort)(samples == 3 ? 2 : 1))), // RGB, or grey with 0 = black
-            (273, Long, (uint)strips, UInt32s(offsets)),
-            (277, Short, 1, UInt16s((ushort)samples)),
-            (278, Long, 1, UInt32s((uint)rowsPerStrip)),
-            (279, Long, (uint)strips, UInt32s(counts)),
-            (282, Rational, 1, UInt32s((uint)Math.Max(1, dpi), 1)),
-            (283, Rational, 1, UInt32s((uint)Math.Max(1, dpi), 1)),
-            (284, Short, 1, UInt16s(1)), // samples of a pixel side by side
-            (296, Short, 1, UInt16s(2)), // inches
+            new(256, Long, 1, UInt32s((uint)width)),
+            new(257, Long, 1, UInt32s((uint)height)),
+            new(258, Short, (uint)samples, UInt16s([.. Enumerable.Repeat(bits, samples)])),
+            new(259, Short, 1, UInt16s(compression switch { TiffCompression.Lzw => 5, TiffCompression.Zip => 8, _ => 1 })),
+            new(262, Short, 1, UInt16s((ushort)(samples == 3 ? 2 : 1))), // RGB, or grey with 0 = black
+            new(273, Long, (uint)strips, UInt32s(offsets)),
+            new(277, Short, 1, UInt16s((ushort)samples)),
+            new(278, Long, 1, UInt32s((uint)rowsPerStrip)),
+            new(279, Long, (uint)strips, UInt32s(counts)),
+            new(282, Rational, 1, UInt32s((uint)Math.Max(1, dpi), 1)),
+            new(283, Rational, 1, UInt32s((uint)Math.Max(1, dpi), 1)),
+            new(284, Short, 1, UInt16s(1)), // samples of a pixel side by side
+            new(296, Short, 1, UInt16s(2)), // inches
         };
         if (predictor)
-            entries.Add((317, Short, 1, UInt16s(2)));
-        entries.Add((339, Short, (uint)samples, UInt16s([.. Enumerable.Repeat(format, samples)])));
+            entries.Add(new(317, Short, 1, UInt16s(2)));
+        entries.Add(new(339, Short, (uint)samples, UInt16s([.. Enumerable.Repeat(format, samples)])));
+        if (extraTags is { Count: > 0 })
+        {
+            entries.AddRange(extraTags);
+            entries.Sort((a, b) => a.Tag.CompareTo(b.Tag));
+        }
 
         // The IFD, then the values that don't fit into its entries' four bytes.
         var ifd = file.Position;
@@ -125,6 +180,23 @@ internal static class TiffWriter
         file.Position = 4;
         BinaryPrimitives.WriteUInt32LittleEndian(number, Offset(ifd));
         file.Write(number);
+    }
+
+    /// <summary>One row of signed 16-bit samples, little-endian; with the predictor, modular 16-bit differences.</summary>
+    private static void FillInt16Row(Span<byte> row, short[] samples, int start, int width, bool predictor)
+    {
+        ushort previous = 0;
+        for (var x = 0; x < width; x++)
+        {
+            var value = unchecked((ushort)samples[start + x]);
+            var stored = value;
+            if (predictor)
+            {
+                stored = unchecked((ushort)(value - previous));
+                previous = value;
+            }
+            BinaryPrimitives.WriteUInt16LittleEndian(row[(x * 2)..], stored);
+        }
     }
 
     /// <summary>One row of samples, pixel by pixel, little-endian; with the predictor, each sample minus the one before.</summary>

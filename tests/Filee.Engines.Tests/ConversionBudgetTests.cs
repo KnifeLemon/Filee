@@ -294,7 +294,7 @@ public class ConversionBudgetTests(EngineFixture fx) : IClassFixture<EngineFixtu
         // Metafiles go through GDI+ and ImageMagick has their coders on Windows only, as Filee offers them.
         var formats = ImageEncoder.Readable.Concat(ImageEncoder.Writable)
             .Concat(OperatingSystem.IsWindows() ? ImageEncoder.Metafiles : [])
-            .Where(f => f is not ("fits" or "ani")) // read by Filee itself
+            .Where(f => f is not ("fits" or "ani" or "hgt")) // read by Filee itself
             .Distinct();
         foreach (var format in formats)
         {

@@ -5,7 +5,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 
 | Engine | How it gets there | Handles |
 |---|---|---|
-| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), a **GIMP XCF** (Filee's own reader and writer: layers merged as GIMP shows them, or kept between XCF, PDN and PSD/PSB), a **Valve Texture VTF** (Filee's own reader and writer, for the Source engine and Garry's Mod), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
+| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), **SRTM elevation tiles (`.hgt`)** (Filee's own reader; signed 16-bit GeoTIFF by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), a **GIMP XCF** (Filee's own reader and writer: layers merged as GIMP shows them, or kept between XCF, PDN and PSD/PSB), a **Valve Texture VTF** (Filee's own reader and writer, for the Source engine and Garry's Mod), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there), **Obsidian boards (JSON Canvas `.canvas`) → SVG** (→ PDF, PNG, … from there) **and Markdown** (→ DOCX, HTML, TXT, … from there), **Gerber PCB layers → SVG** (RS-274X / X2, see [below](#gerber-pcb-layers); → PDF, PNG, DXF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
@@ -361,6 +361,17 @@ so a separate ARM64 one would break their updates.
     Uncompressed, LZW or Deflate as the preset's TIFF compression says (integers with the horizontal predictor);
     turning and mirroring apply, resizing and the other picture options don't. FITS → TIFF costs a little more than
     other edges, so other formats are reached through a stretched picture, never through the linear TIFF.
+- **SRTM elevation tiles** (`.hgt`, read only; `Magick/Hgt.cs`). Headerless square grids of big-endian signed 16-bit
+  elevations in metres (north row first; 1201 × 1201 for SRTM-3, 3601 × 3601 for SRTM-1, or any `2 × n × n` byte grid
+  with `n` in `2..10001`), `-32768` marking voids.
+  - **TIFF** (`TiffWriter`): single-channel signed 16-bit (`SampleFormat = 2`, `BitsPerSample = 16`) keeping the exact
+    elevations and `-32768` voids (`GDAL_NODATA` tag 42113). When the file name encodes a south-west tile corner (such
+    as `N37W122.hgt` or `S12E045.hgt`, case-insensitive) and the tile is not rotated or mirrored, GeoTIFF placement tags
+    are added (`ModelPixelScaleTag` 33550 with `1 / (n - 1)` degree spacing, `ModelTiepointTag` 33922 mapping raster
+    `(0, 0)` to `(lon, lat + 1)`, and `GeoKeyDirectoryTag` 34735 for WGS 84 geographic `EPSG:4326` with
+    `PixelIsPoint`). Uncompressed, LZW or Deflate follows the preset's TIFF compression.
+  - **PNG and every other picture target**: valid elevations stretched linearly from min..max to 8-bit grayscale with
+    voids in black. HGT → TIFF costs a little more than other edges so multi-step routes use the stretched picture.
 - **Fujifilm HEIF** (`.hif`) is read as HEIC.
 - **Rotate and flip** happen after the EXIF orientation is applied, in the one step of a route that turns images
   (`IImageTransformer`). There is no lossless JPEG rotation: a turned JPEG is re-encoded, at its own estimated quality
@@ -2075,6 +2086,18 @@ source timestamps are unchanged. On Windows, a marked input file transfers Mark 
 File contents are streamed, progress reports bytes written, and cancellation is checked during enumeration and
 streaming. A previous destination inside the source is excluded. A new image replaces its destination only after
 all expected bytes have been written; failures and cancellation preserve any previous image.
+
+**BIN/CUE → ISO** (`Archives/CueSheet.cs`, #1680): drop a `.cue` sheet with its `.bin` beside it. The `.bin` is always
+read from the cue's folder: a relative path is followed only while it stays inside it, and an absolute path (a drive, a
+root or a UNC share) or one that climbs out with `..` is never opened or checked; only its file name is looked for in
+the cue's folder, which also finds the file when the cue keeps an old absolute path from the ripping PC. A cue that
+isn't valid UTF-8 is read in the system's ANSI code page (Windows-1252, Shift-JIS, CP949, ...). Filee accepts a single
+data track in `MODE1/2048`, `MODE1/2352`, `MODE2/2352` or `MODE2/2336`, starting at `INDEX 01`, and streams the
+2048-byte user data of each sector verbatim into the ISO without re-mastering. Multi-track discs (such as PlayStation 1
+images with audio tracks), non-data tracks (`AUDIO`, `CDG`), Mode 2 Form 2 sectors (video or XA audio, submode bit
+`0x20`), missing or truncated `.bin` files and tracks whose sector 16 lacks the ISO 9660 `CD001` signature (checked
+before anything is copied) are refused. Extracting or repacking a `.cue` chains `cue → iso → …` through the existing ISO
+reader. CHD and CSO are not supported.
 
 ## LibreOffice
 

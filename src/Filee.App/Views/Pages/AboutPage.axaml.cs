@@ -48,9 +48,15 @@ public partial class AboutPage : UserControl
             await SponsorWindow.Create(AppHost.Get<ILocalizer>()).ShowDialog(owner);
     }
 
-    private async void OnIssue(object? sender, RoutedEventArgs e)
+    private async void OnReport(object? sender, RoutedEventArgs e)
     {
         if (TopLevel.GetTopLevel(this) is { } top)
-            await top.Launcher.LaunchUriAsync(new Uri(Services.UpdateService.NewIssueUrl));
+            await top.Launcher.LaunchUriAsync(new Uri(Services.UpdateService.BugReportUrl));
+    }
+
+    private async void OnSuggest(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is { } top)
+            await top.Launcher.LaunchUriAsync(new Uri(Services.UpdateService.FeatureRequestUrl));
     }
 }
