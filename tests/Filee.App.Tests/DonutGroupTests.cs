@@ -750,7 +750,7 @@ public class DonutGroupTests
         }
     }
 
-    [Theory]
+    [AvaloniaTheory] // DonutMenu's statics are Avalonia objects: made on the UI thread like the rest
     [InlineData(5, 5)]           // top-left corner
     [InlineData(1915, 1075)]     // bottom-right corner
     [InlineData(960, 3)]         // top edge
