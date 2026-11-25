@@ -66,6 +66,8 @@ ko: PDF 페이지 편집에 PDF를 끌어다 놓을 수 있고, 저장해도 책
 en: Drop PDFs into Edit PDF pages, and saving keeps bookmarks, links and form fields
 ko: JSP 파일(.jsp)을 텍스트처럼 PDF, Word 등으로 바꿀 수 있어요
 en: JavaServer Pages (.jsp) convert like text, to PDF, Word and more
+ko: 생물정보학 서열 정렬 형식(NEXUS, FASTA, PHYLIP)을 서로 변환할 수 있어요
+en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -295,6 +297,13 @@ en: JavaServer Pages (.jsp) convert like text, to PDF, Word and more
 
 - **JavaServer Pages (`.jsp`) convert like text** (#1789). A `.jsp` page is read as its source code, never run, so
   it becomes a PDF, DOCX, HTML, Markdown or the other text formats, like Java and the other source files.
+
+- **NEXUS, FASTA and PHYLIP alignments** (#1798). Sequence alignments in NEXUS (`.nex`, `.nxs`, `.nexus`), FASTA
+  (`.fasta`, `.fa`, `.fas`, `.fna`, `.faa`) and PHYLIP (`.phy`, `.phylip`) convert between each other in the built-in
+  data engine, supporting sequential and interleaved layouts, nested NEXUS comments, quoted taxon names and `MATCHCHAR`.
+  Unaligned FASTA files with unequal sequence lengths are refused when targeting PHYLIP or NEXUS. The formats belong to
+  the Science & medical field (off by default in Settings → Fields). The **FASTA**, **PHYLIP** and **NEXUS** presets in
+  the palette make each one.
 
 ## 2.5.0
 
