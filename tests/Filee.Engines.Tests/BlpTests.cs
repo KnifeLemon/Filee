@@ -158,16 +158,17 @@ public class BlpTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
-    public void Blp1_jpeg_4_channel_maps_cmyk_channels_as_raw_bgra()
+    public void Blp1_jpeg_4_channel_reads_the_stored_samples_as_bgra()
     {
-        // Four channels stored as B = 30, G = 160, R = 220, A = 110 in a CMYK JPEG.
+        // The JPEG must store B = 30, G = 160, R = 220, A = 110. Magick.NET writes a CMYK JPEG Adobe-style, inverting
+        // every channel on the way out, so it is handed 255 - sample to leave the plain samples in the file.
         var cmyk = new byte[8 * 8 * 4];
         for (var i = 0; i < 8 * 8; i++)
         {
-            cmyk[i * 4] = 30;      // C -> B
-            cmyk[i * 4 + 1] = 160; // M -> G
-            cmyk[i * 4 + 2] = 220; // Y -> R
-            cmyk[i * 4 + 3] = 110; // K -> A
+            cmyk[i * 4] = 255 - 30;      // B
+            cmyk[i * 4 + 1] = 255 - 160; // G
+            cmyk[i * 4 + 2] = 255 - 220; // R
+            cmyk[i * 4 + 3] = 255 - 110; // A
         }
         byte[] jpeg;
         using (var src = new MagickImage())

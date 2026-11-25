@@ -138,16 +138,18 @@ internal static class Blp
         if (decoded.ColorSpace == ColorSpace.CMYK)
         {
             // A 4-channel BLP1 JPEG stores raw B, G, R, A across the four channels without CMYK conversion.
+            // ImageMagick reads any 4-channel JPEG as Adobe-style inverted CMYK and hands back 255 - sample for every
+            // channel, with or without an Adobe marker, so each value is flipped back to the stored sample.
             var raw = decoded.GetPixels().ToByteArray("CMYK")
                 ?? throw Refuse("The BLP1 JPEG pixels could not be read.");
             var opaque = alphaBits == 0;
             for (var i = 0; i < (int)pixelCount; i++)
             {
                 var o = i * 4;
-                rgba[o] = raw[o + 2];
-                rgba[o + 1] = raw[o + 1];
-                rgba[o + 2] = raw[o];
-                rgba[o + 3] = opaque ? (byte)255 : raw[o + 3];
+                rgba[o] = (byte)(255 - raw[o + 2]);
+                rgba[o + 1] = (byte)(255 - raw[o + 1]);
+                rgba[o + 2] = (byte)(255 - raw[o]);
+                rgba[o + 3] = opaque ? (byte)255 : (byte)(255 - raw[o + 3]);
             }
         }
         else
