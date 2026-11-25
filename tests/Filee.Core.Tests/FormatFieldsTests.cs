@@ -26,10 +26,10 @@ public class FormatFieldsTests
     private static readonly string[] HiddenWithEverythingOff =
     [
         "3g2", "3gp", "3mf", "602", "aab", "ac3", "adoc", "ai", "amr", "ani", "ape", "apks", "arj", "ass", "au", "azw",
-        "azw4", "bik", "bsp", "bz2", "cab", "caf", "cavs", "cdr", "cgm", "chm", "cpio", "cur", "cwk", "dav", "dbk", "dcm", "dds", "deb",
+        "azw4", "bik", "bsp", "bz2", "cab", "caf", "cavs", "cdr", "cgm", "chm", "cpio", "cue", "cur", "cwk", "dav", "dbk", "dcm", "dds", "deb",
         "dff", "dot", "dsf", "dss", "dst", "dts", "dv", "dwg", "eac3", "eot", "eps", "exr", "fbx", "fit", "fits",
         "flc", "flv", "fodg", "fodp", "fods", "fodt", "fon", "gcode", "geojson", "gerber", "glb", "gltf", "gma", "gpx", "gz", "h264", "h265", "har",
-        "hdr", "htmlz", "icns", "ipynb", "it", "jar", "jp2", "jsonl", "kml", "kmz", "kra", "lha", "lit", "lrf", "lwp", "lz",
+        "hdr", "hgt", "htmlz", "icns", "ipynb", "it", "jar", "jp2", "jsonl", "kml", "kmz", "kra", "lha", "lit", "lrf", "lwp", "lz",
         "lzma", "m4s", "man", "mcaddon", "mcpack", "mctemplate", "mcw", "mcworld", "mdl", "mediawiki", "miff", "mng", "mobi",
         "mod", "mp2", "mpc", "mrpack", "msix", "mxf", "nov", "nupkg", "obj", "oeb",
         "org", "osm", "otf", "pam", "pcd", "pcx", "pdb", "pdn", "pfm", "plist", "plt", "ply", "pml", "ppm", "prc", "ps", "psb", "psd",
@@ -43,9 +43,9 @@ public class FormatFieldsTests
     {
         { "cad", ["dwg", "gerber"] },
         { "model3d", ["fbx", "glb", "gltf", "ply"] },
-        { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "osm", "shp"] },
+        { "geo", ["fit", "geojson", "gpx", "hgt", "kml", "kmz", "osm", "shp"] },
         { "font", ["otf", "ttf", "woff", "woff2"] },
-        { "game", ["bik", "bsp", "dds", "gma", "mcaddon", "mcpack", "mctemplate", "mcworld", "mdl", "mrpack", "smd", "usm", "vpk", "vtf"] },
+        { "game", ["bik", "bsp", "cue", "dds", "gma", "mcaddon", "mcpack", "mctemplate", "mcworld", "mdl", "mrpack", "smd", "usm", "vpk", "vtf"] },
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "kra", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits"] },
         { "developer", [
@@ -70,9 +70,9 @@ public class FormatFieldsTests
     {
         { "cad", ["3mf", "dwg", "dxf", "gcode", "gerber", "obj", "stl"] },
         { "model3d", ["3mf", "fbx", "gcode", "glb", "gltf", "obj", "ply", "stl"] },
-        { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "osm", "shp"] },
+        { "geo", ["fit", "geojson", "gpx", "hgt", "kml", "kmz", "osm", "shp"] },
         { "font", ["eot", "fon", "otf", "ttf", "woff", "woff2"] },
-        { "game", ["bik", "bsp", "dds", "flc", "gma", "it", "mcaddon", "mcpack", "mctemplate", "mcworld", "mdl", "mrpack", "smd", "tga", "usm", "vpk", "vtf", "xm"] },
+        { "game", ["bik", "bsp", "cue", "dds", "flc", "gma", "it", "mcaddon", "mcpack", "mctemplate", "mcworld", "mdl", "mrpack", "smd", "tga", "usm", "vpk", "vtf", "xm"] },
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "jp2", "kra", "pcd", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits", "ipynb", "jp2"] },
         { "developer", [
@@ -145,7 +145,7 @@ public class FormatFieldsTests
             {
                 [FormatGrade.Everyday] = 19,
                 [FormatGrade.General] = 99,
-                [FormatGrade.Specialist] = 135,
+                [FormatGrade.Specialist] = 137,
                 [FormatGrade.Legacy] = 52,
             },
             counts);

@@ -222,20 +222,20 @@ public class ScriptTextTests
         Assert.Equal("text", ProfileSelector.Select(BuiltInData.CreateProfiles(), ["index.jsp"])?.Id);
 
     [Fact]
-    public void Version_101_text_donuts_learn_jsp_without_taking_custom_claims()
+    public void Version_102_text_donuts_learn_jsp_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var text = profiles.Single(p => p.Id == "text").Extensions;
         text.Remove("jsp");
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(101, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(102, presets, profiles));
         Assert.Contains("jsp", text);
-        Assert.False(SettingsMigrations.ApplyToLibrary(101, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(102, presets, profiles));
 
         text.Remove("jsp");
         profiles.Insert(0, new ToolbarProfile { Id = "my-jsp", Name = "JSP", Extensions = ["JSP"] });
-        Assert.False(SettingsMigrations.ApplyToLibrary(101, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(102, presets, profiles));
         Assert.DoesNotContain("jsp", text); // the user's own donut has it
     }
 }

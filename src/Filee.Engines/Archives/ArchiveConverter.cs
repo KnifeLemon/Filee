@@ -38,6 +38,7 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
            from target in ArchivePacker.SingleFileFormats
            select new ConversionEdge(source, target),
         .. ArchiveExtractor.ReadableFormats.Select(source => new ConversionEdge(source, "iso", DirectOnly: true)),
+        new ConversionEdge("cue", "iso"),
         .. new[] { "zip", "7z", "tar", "tgz", "tbz2", "txz", "gma" }
             .Select(target => new ConversionEdge(FormatRegistry.Folder, target, DirectOnly: true)),
     ];
@@ -63,6 +64,8 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
             if (mark is not null) MarkOfTheWeb.TryWrite(output, mark);
             return [output];
         }
+        if (step.From == "cue" && step.To == "iso")
+            return await Task.Run(() => CueSheet.ConvertToIso(step, progress, cancellationToken), cancellationToken);
         var sevenZip = _sevenZip ??= SevenZip.Locate();
         var extractor = new ArchiveExtractor(sevenZip);
         if (step.To == FormatRegistry.Folder)
