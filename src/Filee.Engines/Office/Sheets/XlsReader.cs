@@ -146,10 +146,10 @@ internal static class XlsReader
                 break;
         }
 
-        // Built-in formats the XLSX reader knows (dates in ISO order) look the same from XLS; ExcelDataReader's
-        // string is used for the workbook's own formats and localized built-ins.
+        // Built-in formats the XLSX reader knows (dates in ISO order, East Asian ids by locale) look the same from
+        // XLS; ExcelDataReader's string is used for the workbook's own formats and other localized built-ins.
         var index = reader.GetNumberFormatIndex(column);
-        var format = NumberFormatter.BuiltInFormats.TryGetValue(index, out var builtIn) ? builtIn : reader.GetNumberFormatString(column);
+        var format = formatter.BuiltIn(index) ?? reader.GetNumberFormatString(column);
         return new SheetCell(formatter.Format(number, format), style, IsNumber: true)
         {
             Value = number,

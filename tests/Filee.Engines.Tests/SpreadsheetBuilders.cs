@@ -21,10 +21,11 @@ internal sealed class XlsBuilder
     public const int Percent = 4;   // 0.0% (custom format 165)
     public const int Time = 5;      // built-in 20 (h:mm)
     public const int RightTop = 6;  // right aligned at the top
+    public const int EastAsianDate = 7; // built-in 31 (yyyy"年"m"月"d"日" in Chinese and Japanese)
 
     /// <summary>(format id, horizontal alignment, vertical alignment) of each XF.</summary>
     private static readonly (int Format, int Horizontal, int Vertical)[] Xfs =
-        [(0, 0, 2), (0, 2, 2), (164, 0, 2), (14, 0, 2), (165, 0, 2), (20, 0, 2), (0, 3, 0)];
+        [(0, 0, 2), (0, 2, 2), (164, 0, 2), (14, 0, 2), (165, 0, 2), (20, 0, 2), (0, 3, 0), (31, 0, 2)];
 
     private static readonly (int Id, string Code)[] Formats = [(164, "#,##0\"원\""), (165, "0.0%")];
 

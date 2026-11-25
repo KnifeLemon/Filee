@@ -38,6 +38,16 @@ ko: PowerPoint를 Markdown으로 바꾸면 슬라이드마다 한 구역이 되�
 en: PowerPoint to Markdown keeps the slides, titles, lists, tables, pictures and speaker notes, ready for reveal.js
 ko: PNG를 ICO로 바꿀 때 256 크기를 PNG로 저장해서 아이콘 파일이 훨씬 작아져요
 en: Icons (ICO) are much smaller: the 256 px size is stored as PNG
+ko: Excel의 시스템 긴 날짜·시간 형식과 중국어·일본어·한국어 기본 날짜 형식이 PDF 등에서 Excel처럼 나와요
+en: Excel cells in the system long date or time, or in a Chinese, Japanese or Korean built-in date format, show as in Excel
+ko: 데이터 트랙 하나짜리 BIN/CUE 디스크 이미지를 ISO로 변환하고 압축을 풀 수 있어요
+en: Single-track BIN/CUE disc images convert to ISO (and extract or repack from there)
+ko: SRTM 고도 타일(.hgt)을 GeoTIFF나 흑백 이미지로 변환할 수 있어요
+en: SRTM elevation tiles (.hgt) convert to signed 16-bit GeoTIFF and grayscale images
+ko: 색상 팔레트(PAL, GIMP GPL, Adobe ACT)를 서로 바꾸거나 HEX 코드 목록, 색 견본 그림으로 만들어요
+en: Color palettes (PAL, GIMP GPL, Adobe ACT) convert to each other, a list of HEX codes or a swatch picture
+ko: 자노메 자수 디자인(.jef)을 실 색상 그대로 PNG, JPG, PDF, SVG로 바꿔요
+en: Janome embroidery designs (.jef) turn into PNG, JPG, PDF and SVG in their thread colours
 ko: 동영상 프리셋에서 휴대폰 세로 동영상을 화질 저하 없이 똑바로 돌려 저장할 수 있어요
 en: Video presets can turn vertical phone videos upright without lowering the quality
 -->
@@ -92,6 +102,36 @@ en: Video presets can turn vertical phone videos upright without lowering the qu
   PNG became a 362 KB icon. The 256 px size is now stored as PNG, as Windows does it since Vista; the smaller sizes
   stay bitmaps, which every program that reads icons opens. The same icon is now about a third of that size, most of
   it the 128 px size. Cursors (CUR) are written as before.
+
+- **Excel dates in the system long date and the East Asian built-in formats** (#1795). A cell formatted as Excel's
+  *Long Date* (`[$-F800]`) or *Long Time* (`[$-F400]`) now follows the system's region format, as in Excel:
+  `2026年11月23日` with a Chinese region format, instead of the English `Monday, November 23, 2026` the file keeps
+  as a fallback. The built-in date and time formats of Chinese, Japanese and Korean Excel (ids 27–36 and 50–58)
+  came out as serial numbers such as `46349`; they now show as in that locale's Excel, with Japanese eras
+  (`令和8年11月23日`), Minguo years and 上午/下午. Their locale is the system's region format when it is Chinese,
+  Japanese or Korean, else the workbook's (from its fonts), else Simplified Chinese. XLSX and XLS files get both,
+  in every output (PDF, HWPX, CSV, ...).
+
+- **BIN/CUE disc images to ISO** (#1680). Drop a `.cue` sheet with its `.bin` beside it to copy a single data track
+  (`MODE1/2048`, `MODE1/2352`, `MODE2/2352` or `MODE2/2336`) straight into an ISO 9660 image without re-mastering, or
+  extract and repack its files through ISO. Multi-track discs (such as PlayStation 1 images with audio tracks), Mode 2
+  Form 2 sectors and non-ISO payloads are refused with a clear reason. CHD and CSO are not supported.
+
+- **SRTM elevation tiles (`.hgt`) convert to GeoTIFF and pictures** (#1793). Headerless NASA SRTM / DEM `.hgt` grids
+  (big-endian signed 16-bit metres) convert straight to single-channel signed 16-bit TIFFs that keep the exact
+  elevations, `-32768` voids (`GDAL_NODATA`), and WGS 84 GeoTIFF placement tags when the file name encodes a tile
+  corner such as `N37W122.hgt` or `S12E045.hgt`. Converting to PNG, JPG or other picture formats stretches the valid
+  elevations to grayscale with voids in black. The format is read-only and belongs to the Maps field.
+
+- **Color palettes: PAL, GIMP GPL and Adobe ACT** (#1615). A `.pal` (a raw 256-colour palette from DOS and retro
+  games, Paint Shop Pro's JASC-PAL or Microsoft's RIFF PAL), a GIMP `.gpl` or a Photoshop `.act` turns into the
+  others (GPL, ACT), a list of HEX codes (TXT, JSON) or a swatch picture (PNG, SVG, PDF, …). VGA palettes with 6 bits
+  per channel are scaled to full colour. A `.pal` in a layout of its own, which some old programs wrote, isn't read.
+  The formats are in the Design and Games fields.
+
+- **Janome embroidery designs (`.jef`) turn into PNG, JPG, PDF and SVG** (#1716), like Tajima `.dst` designs already
+  do: the stitches drawn as lines at the design's real size, each thread in its colour from Janome's thread chart.
+  Filee reads JEF but doesn't write it, and it doesn't make Wilcom `.emb` files. JEF is in the Design field.
 
 - **Turn phone videos upright** (#1586). A video preset can now turn vertical phone videos upright without lowering
   their quality (*Turn phone videos upright* in the video card, off by default). Videos saved with a rotation note are
