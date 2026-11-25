@@ -48,6 +48,8 @@ ko: 색상 팔레트(PAL, GIMP GPL, Adobe ACT)를 서로 바꾸거나 HEX 코드
 en: Color palettes (PAL, GIMP GPL, Adobe ACT) convert to each other, a list of HEX codes or a swatch picture
 ko: 자노메 자수 디자인(.jef)을 실 색상 그대로 PNG, JPG, PDF, SVG로 바꿔요
 en: Janome embroidery designs (.jef) turn into PNG, JPG, PDF and SVG in their thread colours
+ko: 동영상 프리셋에서 휴대폰 세로 동영상을 화질 저하 없이 똑바로 돌려 저장할 수 있어요
+en: Video presets can turn vertical phone videos upright without lowering the quality
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -130,6 +132,12 @@ en: Janome embroidery designs (.jef) turn into PNG, JPG, PDF and SVG in their th
 - **Janome embroidery designs (`.jef`) turn into PNG, JPG, PDF and SVG** (#1716), like Tajima `.dst` designs already
   do: the stitches drawn as lines at the design's real size, each thread in its colour from Janome's thread chart.
   Filee reads JEF but doesn't write it, and it doesn't make Wilcom `.emb` files. JEF is in the Design field.
+
+- **Turn phone videos upright** (#1586). A video preset can now turn vertical phone videos upright without lowering
+  their quality (*Turn phone videos upright* in the video card, off by default). Videos saved with a rotation note are
+  encoded again so the picture itself stands upright on TVs and players that ignore the note: at High quality (Small
+  stays Small), and an HEVC video stays HEVC with the default codec, so an iPhone's 10-bit HDR video keeps its 10 bits
+  and colour tags. Videos without a rotation note are still copied as usual.
 
 ## 2.5.0
 

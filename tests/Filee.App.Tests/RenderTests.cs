@@ -2629,6 +2629,37 @@ public class RenderTests
     }
 
     [AvaloniaFact]
+    public void Preset_editor_offers_turn_upright_for_video_targets_and_round_trips()
+    {
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<ILocalizer>();
+        var preset = new Filee.Core.Presets.Preset { TargetFormat = "mp4", Name = "Phone" };
+        var vm = new PresetEditorViewModel(preset, loc);
+        Assert.True(vm.ShowTurnUpright);
+        Assert.False(vm.TurnUpright); // off unless asked for
+        vm.TurnUpright = true;
+
+        vm.Target = vm.Targets.Single(t => t.Value == "webm");
+        Assert.True(vm.ShowTurnUpright);
+        vm.Target = vm.Targets.Single(t => t.Value == "avi");
+        Assert.True(vm.ShowTurnUpright);
+        vm.Target = vm.Targets.Single(t => t.Value == "mp3");
+        Assert.False(vm.ShowTurnUpright);
+        vm.Target = vm.Targets.Single(t => t.Value == "png");
+        Assert.False(vm.ShowTurnUpright);
+        vm.Target = vm.Targets.Single(t => t.Value == "mp4");
+        Assert.True(vm.ShowTurnUpright);
+
+        Assert.True(vm.Apply());
+        Assert.True(preset.Media.TurnUpright);
+        Assert.True(new PresetEditorViewModel(preset, loc).TurnUpright);
+        Assert.Contains(loc["presets.turn_upright"], GallerySummaries.Describe(preset, [preset], loc).Options);
+
+        var audio = new Filee.Core.Presets.Preset { TargetFormat = "mp3", Name = "Audio", Media = { TurnUpright = true } };
+        Assert.DoesNotContain(loc["presets.turn_upright"], GallerySummaries.Describe(audio, [audio], loc).Options);
+    }
+
+    [AvaloniaFact]
     public void Preset_editor_offers_the_codecs_each_target_can_hold()
     {
         TestServices.EnsureInitialized("en");

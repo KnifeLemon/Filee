@@ -290,6 +290,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _videoCodecValue = _edit.Media.VideoCodec;
         _audioCodecValue = _edit.Media.AudioCodec;
         _hardwareEncoding = _edit.Media.HardwareEncoding;
+        _turnUpright = _edit.Media.TurnUpright;
         _caption = _edit.Media.Caption;
         _spokenLanguage = SpokenLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Media.SpokenLanguage, StringComparison.OrdinalIgnoreCase))
             ?? SpokenLanguageChoices[0];
@@ -558,7 +559,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
         nameof(ShowVideoSplit), nameof(ShowVideoParts),
-        nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
+        nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowTurnUpright), nameof(ShowCaption),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec), nameof(ShowRingtone),
         nameof(ShowIso), nameof(IsoLabelError), nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
         nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowCad), nameof(ShowCadColors), nameof(ShowGcode), nameof(ShowExtractMotionPhoto), nameof(ShowSlideshow),
@@ -1049,6 +1050,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     /// <summary>Encode H.264 / HEVC / AV1 on the graphics chip when one works (MediaOptions.HardwareEncoding).</summary>
     [ObservableProperty] private bool _hardwareEncoding;
+    /// <summary>Encode videos saved with a rotation note so they stand upright everywhere (MediaOptions.TurnUpright).</summary>
+    [ObservableProperty] private bool _turnUpright;
     /// <summary>Burn subtitles from speech recognized by Whisper AI (MediaOptions.Caption).</summary>
     [ObservableProperty] private bool _caption;
     /// <summary>Language spoken in the audio for Whisper transcription (MediaOptions.SpokenLanguage).</summary>
@@ -1251,7 +1254,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowDocument => TargetId == "pdf";
     /// <summary>Markdown can't hold pictures: they go into a folder next to it, or are left out.</summary>
     public bool ShowLeaveOutPictures => TargetId == "md";
-    public bool ShowMedia => ShowCropFrame || ShowMediaQuality || ShowMaxHeight || ShowRemoveAudio || ShowAudioChannels || ShowVideoCodec || ShowAudioCodec || ShowCaption
+    public bool ShowMedia => ShowCropFrame || ShowMediaQuality || ShowMaxHeight || ShowRemoveAudio || ShowTurnUpright || ShowAudioChannels || ShowVideoCodec || ShowAudioCodec || ShowCaption
         || ShowRingtone;
     /// <summary>An iPhone ringtone (M4R) is a part of the sound of at most 40 s: where it starts and how long it is.</summary>
     public bool ShowRingtone => !IsTool && TargetId == "m4r";
@@ -1263,6 +1266,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowVideoCodec => TargetIsVideo && VideoCodecs.Count > 1;
     /// <summary>Hardware encoding applies to H.264, HEVC and AV1 only (not VP9, MPEG-2, …).</summary>
     public bool ShowHardwareEncoding => TargetIsVideo && MediaCodecs.TakesHardwareEncoding(TargetId, _videoCodecValue);
+    /// <summary>Turn phone videos upright: any video target (MediaOptions.TurnUpright, #1586).</summary>
+    public bool ShowTurnUpright => TargetIsVideo;
     /// <summary>Generate Whisper AI subtitles for speech, or its text alone for TXT.</summary>
     public bool ShowCaption => MediaOptions.CaptionTargets.Contains(TargetId);
     /// <summary>M4A / M4B can hold Apple Lossless besides AAC.</summary>
@@ -1517,6 +1522,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
             : MediaCodecs.Effective(TargetId, _videoCodecValue);
         media.AudioCodec = MediaCodecs.Effective(TargetId, _audioCodecValue);
         media.HardwareEncoding = HardwareEncoding;
+        media.TurnUpright = ShowTurnUpright && TurnUpright;
         media.Caption = ShowCaption && Caption;
         media.SpokenLanguage = SpokenLanguage.Value;
         // Only where the option is shown: a box ticked for PNG and left behind by another target saves nothing.

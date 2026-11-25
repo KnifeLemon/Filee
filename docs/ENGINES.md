@@ -2332,8 +2332,13 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   *MaxSizeMb* and *MaxSizePercent* (a size limit in MB or as 1–99% of the source file, #553, #680) cap the bitrate at
   what the video's length allows, re-encoding once more if it missed;
   *AudioBitrateKbps* overrides the audio bitrate (snapped to the MP3/MP2/AC-3 bitrate tables; the editor offers 32 to
-  320 kbit/s); *RemoveAudio* drops the sound; *AudioChannels* (0 source, 1 mono, 2 stereo) applies to every audio
-  target but AMR; *AudioSampleRate* (8 to 48 kHz) and *WavFormat* (bit depth) apply to WAV and W64.
+  320 kbit/s); *RemoveAudio* drops the sound; *TurnUpright* (*Turn phone videos upright*, #1586; off by default)
+  encodes a video saved with a rotation note again, so the picture itself stands upright on TVs and players that ignore
+  the note (videos without one are still copied). When the switch is all that forces the encode
+  (`MediaEncoding.UprightOptions`), it runs at High unless the preset asks for Small, and with the default codec an HEVC
+  video stays HEVC where the target takes it (10-bit and colour tags kept); *AudioChannels* (0 source, 1 mono, 2 stereo)
+  applies to every audio target but AMR; *AudioSampleRate* (8 to 48 kHz) and *WavFormat* (bit depth) apply to WAV and
+  W64.
 - *VideoCodec* (Default, HEVC, AV1) and *AudioCodec* (Default, ALAC) pick another codec where the target takes it
   (`MediaCodecs` in Filee.Core: HEVC for MP4/M4V/MKV/MOV, AV1 for MP4/M4V/MKV/WEBM, ALAC for M4A/M4B); for any other
   target the usual codec is written. The presets "MP4 HEVC" (on the video donut), "MP4 AV1" and "ALAC" use them. With

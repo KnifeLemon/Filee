@@ -103,6 +103,8 @@ internal static class GallerySummaries
                 yield return loc.Format("gallery.option.max_height", media.MaxHeight);
             if (media.RemoveAudio)
                 yield return loc["presets.remove_audio"];
+            if (category == FormatCategory.Video && media.TurnUpright)
+                yield return loc["presets.turn_upright"];
         }
 
         if (preset.Translate.Enabled)

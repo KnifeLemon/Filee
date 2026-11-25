@@ -1175,6 +1175,8 @@
   "presets.video_codec.av1": "AV1 (le plus léger, lent)",
   "presets.hardware_encoding": "Utiliser l'accélération matérielle (puce graphique)",
   "presets.hardware_encoding_hint": "Encode le H.264, le HEVC et l'AV1 sur la puce graphique.\nBeaucoup plus rapide et moins gourmand en énergie.\nQualité légèrement inférieure à taille de fichier égale.\nSans puce compatible (l'AV1 en exige une récente), la vidéo est encodée normalement.",
+  "presets.turn_upright": "Redresser les vidéos de téléphone",
+  "presets.turn_upright_hint": "Réencode les vidéos verticales de téléphone afin qu'elles s'affichent droites sur les téléviseurs et lecteurs qui les montrent couchées.\nEnregistre en haute qualité (les vidéos HEVC restent en HEVC), mais prend plus de temps.\nLes vidéos sans indication de rotation ne sont pas modifiées.",
   "presets.caption_video": "Générer des sous-titres (Whisper)",
   "presets.caption_video_hint": "Transcrit la parole des vidéos et audios en un fichier de sous-titres SRT à l'aide de Whisper. Avec le format TXT, seul le texte parlé est écrit, sans minutage.",
   "presets.spoken_language": "Langue parlée",

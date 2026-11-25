@@ -1159,6 +1159,8 @@
 "presets.video_codec.av1": "AV1 (il più piccolo, lento)",
 "presets.hardware_encoding": "Usa l'accelerazione hardware (chip grafico)",
 "presets.hardware_encoding_hint": "Codifica H.264, HEVC e AV1 sul chip grafico.\nMolto più veloce e consuma meno energia.\nQualità leggermente inferiore a parità di dimensione del file.\nSenza un chip utilizzabile (AV1 ne richiede uno recente), il video viene codificato normalmente.",
+"presets.turn_upright": "Raddrizza i video del telefono",
+"presets.turn_upright_hint": "Ricodifica i video verticali del telefono affinché vengano riprodotti dritti su TV e lettori che li mostrano di lato.\nSalva in alta qualità (i video HEVC restano HEVC), ma richiede più tempo.\nI video senza indicazione di rotazione non vengono modificati.",
   "presets.caption_video": "Genera sottotitoli (Whisper)",
   "presets.caption_video_hint": "Trascrive la voce in video e audio in un file di sottotitoli SRT utilizzando Whisper. Con il formato TXT viene scritto solo il testo parlato, senza tempi.",
   "presets.spoken_language": "Lingua parlata",
