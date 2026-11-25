@@ -1382,8 +1382,9 @@
   "theme.window_size_smaller": "Nhỏ hơn",
   "theme.window_size_larger": "Lớn hơn",
   "theme.window_size_reset": "Đặt lại",
-  "theme.window_size_hint": "Làm mọi thứ trong cửa sổ Filee lớn hơn hoặc nhỏ hơn. Trong mọi cửa sổ, {0} + con lăn chuột và {0} + dấu cộng / dấu trừ cũng làm như vậy, còn {0} + 0 đưa về 100%.",
+  "theme.window_size_hint": "Làm mọi thứ trong cửa sổ Filee lớn hơn hoặc nhỏ hơn.",
   "theme.preview": "Xem trước",
+  "theme.display": "Hiển thị",
   "theme.preview_toggle": "Công tắc mẫu (chỉ để xem trước, không phải cài đặt)",
   "theme.preview_toggle_hint": "Cho thấy công tắc trông thế nào trong chủ đề này. Không thay đổi cài đặt nào.",
 

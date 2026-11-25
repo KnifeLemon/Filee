@@ -60,7 +60,6 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
         ];
         _loading = false;
         UiZoom.Changed += OnZoomChanged;
-        loc.LanguageChanged += OnLanguageChanged;
     }
 
     public IReadOnlyList<Choice<ThemeStyle>> Styles { get; }
@@ -124,9 +123,6 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
     /// <summary>The window size in percent (<see cref="UiZoom.Scale"/>): the same for every window, saved by UiZoom.</summary>
     public double WindowSize => Math.Round(UiZoom.Scale * 100);
 
-    /// <summary>Where the shortcuts do the same, with the platform's key: Ctrl, or Cmd on a Mac.</summary>
-    public string WindowSizeHint => _loc.Format("theme.window_size_hint", OperatingSystem.IsMacOS() ? "Cmd" : "Ctrl");
-
     [RelayCommand(CanExecute = nameof(CanZoomOut))]
     private void ZoomOut() => UiZoom.ZoomOut();
 
@@ -149,13 +145,10 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
         ResetZoomCommand.NotifyCanExecuteChanged();
     }
 
-    private void OnLanguageChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(WindowSizeHint));
-
     public void Dispose()
     {
         DonutLookSave.Flush();
         UiZoom.Changed -= OnZoomChanged;
-        _loc.LanguageChanged -= OnLanguageChanged;
     }
 
     partial void OnStyleChanged(Choice<ThemeStyle>? oldValue, Choice<ThemeStyle> newValue)

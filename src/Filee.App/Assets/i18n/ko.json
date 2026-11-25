@@ -1382,8 +1382,9 @@
   "theme.window_size_smaller": "작게",
   "theme.window_size_larger": "크게",
   "theme.window_size_reset": "초기화",
-  "theme.window_size_hint": "Filee 창의 모든 것을 크게 또는 작게 보여 줘요. 어느 창에서든 {0} + 마우스 휠, {0} + 더하기 / 빼기로도 바꿀 수 있고, {0} + 0을 누르면 100%로 돌아가요.",
+  "theme.window_size_hint": "Filee 창의 모든 것을 크게 또는 작게 보여 줘요.",
   "theme.preview": "미리보기",
+  "theme.display": "화면",
   "theme.preview_toggle": "예시 스위치(미리보기 전용, 설정 아님)",
   "theme.preview_toggle_hint": "이 테마에서 스위치가 어떻게 보이는지 보여 줘요. 어떤 설정도 바꾸지 않아요.",
 

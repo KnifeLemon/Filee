@@ -1382,8 +1382,9 @@
   "theme.window_size_smaller": "Reduzir",
   "theme.window_size_larger": "Ampliar",
   "theme.window_size_reset": "Repor",
-  "theme.window_size_hint": "Aumenta ou reduz todos os elementos nas janelas do Filee. Em qualquer janela, {0} + roda do rato e {0} + mais / menos fazem o mesmo; {0} + 0 repõe 100%.",
+  "theme.window_size_hint": "Aumenta ou reduz todos os elementos nas janelas do Filee.",
   "theme.preview": "Pré-visualização",
+  "theme.display": "Visualização",
   "theme.preview_toggle": "Interruptor de exemplo (só pré-visualização, não é uma definição)",
   "theme.preview_toggle_hint": "Mostra o aspeto dos interruptores neste tema. Não altera nenhuma definição.",
 

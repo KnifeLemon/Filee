@@ -291,49 +291,11 @@
             <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.progress_ring_hint}" />
           </StackPanel>
         </Border>
-
-        <!-- The system's UI font instead of the embedded Noto fonts, which still draw the scripts it lacks (#1065). -->
-        <Border Classes="card">
-          <StackPanel Spacing="4">
-            <CheckBox Content="{DynamicResource theme.system_font}" IsChecked="{Binding UseSystemFont}" FontWeight="SemiBold" />
-            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.system_font_hint}" Margin="28,0,0,0" />
-          </StackPanel>
-        </Border>
-
-        <!-- Reduced Motion -->
-        <Border Classes="card">
-          <StackPanel Spacing="4">
-            <CheckBox Content="{DynamicResource theme.reduce_motion}" IsChecked="{Binding ReduceMotion}" FontWeight="SemiBold" />
-            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.reduce_motion_hint}" Margin="28,0,0,0" />
-          </StackPanel>
-        </Border>
-        <!-- Window size: the zoom of every Filee window (UiZoom), saved by itself. Ctrl + wheel and the keys change it too. -->
-        <Border Classes="card">
-          <StackPanel Spacing="8">
-            <TextBlock Classes="label" Text="{DynamicResource theme.window_size}" />
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <Button x:Name="ZoomOutButton" Classes="icon" Command="{Binding ZoomOutCommand}"
-                      ToolTip.Tip="{DynamicResource theme.window_size_smaller}"
-                      AutomationProperties.Name="{DynamicResource theme.window_size_smaller}">
-                <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Minus}" />
-              </Button>
-              <TextBlock x:Name="WindowSizeText" MinWidth="52" TextAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
-                         FlowDirection="LeftToRight" Text="{Binding WindowSize, StringFormat={}{0:0}%}" />
-              <Button x:Name="ZoomInButton" Classes="icon" Command="{Binding ZoomInCommand}"
-                      ToolTip.Tip="{DynamicResource theme.window_size_larger}"
-                      AutomationProperties.Name="{DynamicResource theme.window_size_larger}">
-                <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Plus}" />
-              </Button>
-              <Button x:Name="ResetZoomButton" Margin="8,0,0,0" Command="{Binding ResetZoomCommand}"
-                      Content="{DynamicResource theme.window_size_reset}" />
-            </StackPanel>
-            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding WindowSizeHint}" />
-          </StackPanel>
-        </Border>
       </StackPanel>
 
+      <StackPanel Grid.Row="1" Grid.Column="2" Spacing="16" VerticalAlignment="Top">
       <!-- Live preview -->
-      <Border Grid.Row="1" Grid.Column="2" Classes="card" VerticalAlignment="Top">
+      <Border Classes="card">
         <StackPanel Spacing="14">
           <TextBlock Classes="label" Text="{DynamicResource theme.preview}" />
           <!-- The donut over a stand-in for the desktop, so its opacity shows. -->
@@ -360,6 +322,53 @@
           </StackPanel>
         </StackPanel>
       </Border>
+
+      <!-- Display: the system font (#1065), reduced motion and the window size (UiZoom, saved by itself; Ctrl + wheel and the keys change it too). -->
+      <Border Classes="card">
+        <StackPanel Spacing="14">
+          <TextBlock Classes="label" Text="{DynamicResource theme.display}" />
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="2" VerticalAlignment="Center">
+              <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="{DynamicResource theme.system_font}" />
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.system_font_hint}" />
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1" IsChecked="{Binding UseSystemFont}" VerticalAlignment="Center"
+                          AutomationProperties.Name="{DynamicResource theme.system_font}" />
+          </Grid>
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="2" VerticalAlignment="Center">
+              <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="{DynamicResource theme.reduce_motion}" />
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.reduce_motion_hint}" />
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1" IsChecked="{Binding ReduceMotion}" VerticalAlignment="Center"
+                          AutomationProperties.Name="{DynamicResource theme.reduce_motion}" />
+          </Grid>
+          <Border Height="1" Background="{DynamicResource SubtleBorderBrush}" />
+          <StackPanel Spacing="8">
+            <TextBlock FontWeight="SemiBold" Text="{DynamicResource theme.window_size}" />
+            <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Button x:Name="ZoomOutButton" Classes="icon" Command="{Binding ZoomOutCommand}"
+                      ToolTip.Tip="{DynamicResource theme.window_size_smaller}"
+                      AutomationProperties.Name="{DynamicResource theme.window_size_smaller}">
+                <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Minus}" />
+              </Button>
+              <TextBlock x:Name="WindowSizeText" MinWidth="52" TextAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
+                         FlowDirection="LeftToRight" Text="{Binding WindowSize, StringFormat={}{0:0}%}" />
+              <Button x:Name="ZoomInButton" Classes="icon" Command="{Binding ZoomInCommand}"
+                      ToolTip.Tip="{DynamicResource theme.window_size_larger}"
+                      AutomationProperties.Name="{DynamicResource theme.window_size_larger}">
+                <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Plus}" />
+              </Button>
+            </StackPanel>
+            <Button x:Name="ResetZoomButton" Grid.Column="1" Command="{Binding ResetZoomCommand}"
+                    Content="{DynamicResource theme.window_size_reset}" />
+            </Grid>
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.window_size_hint}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+      </StackPanel>
     </Grid>
   </ScrollViewer>
 </UserControl>

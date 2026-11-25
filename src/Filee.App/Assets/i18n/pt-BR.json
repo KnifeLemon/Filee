@@ -1382,8 +1382,9 @@
   "theme.window_size_smaller": "Menor",
   "theme.window_size_larger": "Maior",
   "theme.window_size_reset": "Redefinir",
-  "theme.window_size_hint": "Deixa tudo nas janelas do Filee maior ou menor. Em qualquer janela, {0} + roda do mouse e {0} + mais / menos fazem o mesmo, e {0} + 0 volta para 100%.",
+  "theme.window_size_hint": "Deixa tudo nas janelas do Filee maior ou menor.",
   "theme.preview": "Prévia",
+  "theme.display": "Exibição",
   "theme.preview_toggle": "Chave de exemplo (só pré-visualização, não é uma configuração)",
   "theme.preview_toggle_hint": "Mostra como as chaves ficam neste tema. Não altera nenhuma configuração.",
 

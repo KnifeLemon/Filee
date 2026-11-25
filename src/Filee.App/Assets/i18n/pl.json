@@ -1382,8 +1382,9 @@
   "theme.window_size_smaller": "Mniejsze",
   "theme.window_size_larger": "Większe",
   "theme.window_size_reset": "Resetuj",
-  "theme.window_size_hint": "Powiększa lub pomniejsza całą zawartość okien Filee. W każdym oknie to samo robią {0} + kółko myszy i {0} + plus / minus, a {0} + 0 przywraca 100%.",
+  "theme.window_size_hint": "Powiększa lub pomniejsza całą zawartość okien Filee.",
   "theme.preview": "Podgląd",
+  "theme.display": "Wyświetlanie",
   "theme.preview_toggle": "Przykładowy przełącznik (tylko podgląd, nie ustawienie)",
   "theme.preview_toggle_hint": "Pokazuje, jak wyglądają przełączniki w tym motywie. Nie zmienia żadnego ustawienia.",
 

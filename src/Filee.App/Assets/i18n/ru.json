@@ -1382,8 +1382,9 @@
   "theme.window_size_smaller": "Меньше",
   "theme.window_size_larger": "Больше",
   "theme.window_size_reset": "Сбросить",
-  "theme.window_size_hint": "Увеличивает или уменьшает всё в окнах Filee. В любом окне то же делают {0} + колесо мыши и {0} + плюс / минус, а {0} + 0 возвращает 100%.",
+  "theme.window_size_hint": "Увеличивает или уменьшает всё в окнах Filee.",
   "theme.preview": "Предпросмотр",
+  "theme.display": "Отображение",
   "theme.preview_toggle": "Пример переключателя (только предпросмотр, не настройка)",
   "theme.preview_toggle_hint": "Показывает, как выглядят переключатели в этой теме. Не меняет никаких настроек.",
 

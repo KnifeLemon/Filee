@@ -1382,8 +1382,9 @@
   "theme.window_size_smaller": "縮小",
   "theme.window_size_larger": "放大",
   "theme.window_size_reset": "重設",
-  "theme.window_size_hint": "放大或縮小 Filee 視窗中的所有內容。在任何視窗中，{0} + 滑鼠滾輪和 {0} + 加號 / 減號也能調整，{0} + 0 會恢復為 100%。",
+  "theme.window_size_hint": "放大或縮小 Filee 視窗中的所有內容。",
   "theme.preview": "預覽",
+  "theme.display": "顯示",
   "theme.preview_toggle": "範例開關（僅供預覽，不是設定）",
   "theme.preview_toggle_hint": "顯示此主題中開關的外觀，不會變更任何設定。",
 
