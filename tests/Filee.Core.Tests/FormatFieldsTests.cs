@@ -29,7 +29,7 @@ public class FormatFieldsTests
         "azw4", "bik", "bsp", "bz2", "cab", "caf", "cavs", "cdr", "cgm", "chm", "cpio", "cue", "cur", "cwk", "dav", "dbk", "dcm", "dds", "deb",
         "dff", "dot", "dsf", "dss", "dst", "dts", "dv", "dwg", "eac3", "eot", "eps", "exr", "fbx", "fit", "fits",
         "flc", "flv", "fodg", "fodp", "fods", "fodt", "fon", "gcode", "geojson", "gerber", "glb", "gltf", "gma", "gpl", "gpx", "gz", "h264", "h265", "har",
-        "hdr", "hgt", "htmlz", "icns", "ipynb", "it", "jar", "jp2", "jsonl", "kml", "kmz", "kra", "lha", "lit", "lrf", "lwp", "lz",
+        "hdr", "hgt", "htmlz", "icns", "ipynb", "it", "jar", "jef", "jp2", "jsonl", "kml", "kmz", "kra", "lha", "lit", "lrf", "lwp", "lz",
         "lzma", "m4s", "man", "mcaddon", "mcpack", "mctemplate", "mcw", "mcworld", "mdl", "mediawiki", "miff", "mng", "mobi",
         "mod", "mp2", "mpc", "mrpack", "msix", "mxf", "nov", "nupkg", "obj", "oeb",
         "org", "osm", "otf", "pal", "pam", "pcd", "pcx", "pdb", "pdn", "pfm", "plist", "plt", "ply", "pml", "ppm", "prc", "ps", "psb", "psd",
@@ -46,7 +46,7 @@ public class FormatFieldsTests
         { "geo", ["fit", "geojson", "gpx", "hgt", "kml", "kmz", "osm", "shp"] },
         { "font", ["otf", "ttf", "woff", "woff2"] },
         { "game", ["bik", "bsp", "cue", "dds", "gma", "mcaddon", "mcpack", "mctemplate", "mcworld", "mdl", "mrpack", "smd", "usm", "vpk", "vtf"] },
-        { "design", ["act", "ai", "cdr", "dst", "eps", "exr", "gpl", "hdr", "kra", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
+        { "design", ["act", "ai", "cdr", "dst", "eps", "exr", "gpl", "hdr", "jef", "kra", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits"] },
         { "developer", [
                 "aab", "ani", "apks", "bz2", "cab", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har",
@@ -73,7 +73,7 @@ public class FormatFieldsTests
         { "geo", ["fit", "geojson", "gpx", "hgt", "kml", "kmz", "osm", "shp"] },
         { "font", ["eot", "fon", "otf", "ttf", "woff", "woff2"] },
         { "game", ["bik", "bsp", "cue", "dds", "flc", "gma", "it", "mcaddon", "mcpack", "mctemplate", "mcworld", "mdl", "mrpack", "pal", "smd", "tga", "usm", "vpk", "vtf", "xm"] },
-        { "design", ["act", "ai", "cdr", "dst", "eps", "exr", "gpl", "hdr", "jp2", "kra", "pal", "pcd", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
+        { "design", ["act", "ai", "cdr", "dst", "eps", "exr", "gpl", "hdr", "jef", "jp2", "kra", "pal", "pcd", "pdn", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits", "ipynb", "jp2"] },
         { "developer", [
                 "aab", "ani", "apks", "bz2", "cab", "caf", "chm", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt",
@@ -145,7 +145,7 @@ public class FormatFieldsTests
             {
                 [FormatGrade.Everyday] = 19,
                 [FormatGrade.General] = 99,
-                [FormatGrade.Specialist] = 140,
+                [FormatGrade.Specialist] = 141,
                 [FormatGrade.Legacy] = 52,
             },
             counts);

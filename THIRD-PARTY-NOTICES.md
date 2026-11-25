@@ -124,6 +124,12 @@ Windows headers, without a C runtime. Pieces of these projects that can end up i
 the x86 branch filter of the LZMA SDK (public domain, Igor Pavlov, https://www.7-zip.org/sdk.html), and the published
 app as its payload. Filee 1.x's installer was built with Inno Setup, which is no longer used.
 
+## Data from other projects
+
+| Component | License | Project |
+|---|---|---|
+| Janome thread chart (the 78 thread colours in `Filee.Engines/Vector/JefEmbroidery.cs`, from `EmbThreadJef.py`), from pyembroidery | MIT | https://github.com/EmbroidePy/pyembroidery |
+
 ## Fonts and icons
 
 | Component | License | Project |

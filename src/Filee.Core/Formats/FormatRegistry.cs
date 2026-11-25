@@ -96,6 +96,8 @@ public static class FormatRegistry
         new("vsd", "VSD", FormatCategory.Vector, ["vsd", "vsdx"], Writable: false),
         // Tajima embroidery designs: the stitches drawn as lines (issue #397).
         new("dst", "DST", FormatCategory.Vector, ["dst"], Writable: false),
+        // Janome embroidery designs, drawn the same way in their thread colours (issue #1716).
+        new("jef", "JEF (Janome embroidery)", FormatCategory.Vector, ["jef"], Writable: false),
         new("odg", "ODG", FormatCategory.Vector, ["odg"]),
         // Obsidian's visual boards (JSON Canvas 1.0): cards, groups and the lines between them, read by Filee itself and
         // drawn as SVG (then PDF and pictures), or their text as Markdown. A .canvas that isn't one is refused.
