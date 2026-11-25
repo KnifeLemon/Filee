@@ -263,9 +263,6 @@ public sealed class PresetAvailability
         // "Caption": Whisper transcribes speech in video and audio into SRT subtitles.
         if (formats.Any(f => preset.CaptionsVideo(f.Id)))
         {
-            if (!OperatingSystem.IsWindows())
-                return new(PresetUse.Unusable, _loc["engine.reason.unsupported_platform"]);
-
             var mediaFiles = formats.Where(f => f.Category is FormatCategory.Video or FormatCategory.Audio).ToList();
             if (mediaFiles.Count == 0)
                 return new(PresetUse.Unusable, _loc["error.unsupported_source"]);

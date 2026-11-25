@@ -60,12 +60,9 @@ public class WhisperTests
         var status = converter.GetStatus();
 
         Assert.NotNull(status);
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.False(status.IsAvailable);
-            Assert.Equal("engine.reason.unsupported_platform", status.ReasonKey);
-        }
-        else if (!status.IsAvailable)
+        // Every platform: available with a whisper-cli and a model, else "not installed" (Linux and macOS use
+        // the user's own copy or one on PATH, #1629).
+        if (!status.IsAvailable)
         {
             Assert.Equal("engine.reason.not_installed", status.ReasonKey);
         }

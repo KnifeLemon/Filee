@@ -43,7 +43,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG / WebP, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, a video split into parts every so often or into equal parts (copied, not encoded), copies without metadata (see "Media tools") |
 | Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF, CHM, PDB, PML, RB, SNB, TCR, OEB → EPUB; EPUB → MOBI, AZW3, LIT, LRF, PDB, PML, RB, SNB, TCR; e-books → PDF (ranked above the HWPX writer, see below) |
 | WeasyPrint | **optional download** (Windows only for now; ~32 MB, 65 MB on disk) | **HTML, Markdown, EML, MSG, MHTML → PDF** laid out as a browser prints them (headings, tables, bold, Arabic and Indic shaping), instead of the built-in route; nothing changes without it (see below) |
-| Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
+| Whisper | **optional download** on Windows (~157 MB with model, ~160 MB on disk); on Linux and macOS your own `whisper-cli` and model | **Speech-to-text transcription**: video and audio → SRT subtitles or plain TXT in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 | ExifTool | **optional download** (~11 MB on Windows, ~8 MB elsewhere; 30 MB on disk) | **the Metadata tool**: reads every metadata field of pictures, PDFs, video and sound, and writes changes into a copy in the file's own format without re-encoding it (JPG, PNG, TIFF, WEBP, HEIC, AVIF, JPEG XL, GIF, PSD, camera RAW, PDF, MP4, MOV, M4A, 3GP, …; not MP3, FLAC, WAV, MKV, AVI or BMP, which it shows read-only). Without it the Metadata tool shows nothing and offers it |
 
 DOCX, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written as HWPX
@@ -2594,8 +2594,10 @@ A preset converting to TXT with *Generate subtitles* on gets the text alone (#12
 subtitle engine's TXT writer (see *Subtitles*).
 Transcription runs entirely locally and offline on your computer; no audio or data is sent to external servers.
 
-- **Platform**: Windows only (x64). On macOS and Linux, the Whisper package is not offered and the engine reports
-  `engine.reason.unsupported_platform` ("Not available on this platform").
+- **Platform**: Windows (x64) downloads `whisper-cli.exe` and its model. Linux and macOS have no download (#1629): put a
+  `whisper-cli` you installed or built (whisper.cpp; Homebrew: `brew install whisper-cpp`) and a `ggml-*.bin` model in one
+  folder and select it with *Use my copy…* in Settings → *Engines*. Until then the engine reports
+  `engine.reason.not_installed`. Tested on Linux (Linux Mint 22.3); macOS is not tested yet.
 - **Download size**: ~157 MB total (~9 MB for `whisper-cli.exe` and ~148 MB for the default `ggml-base.bin` model; ~160 MB on disk).
   Downloads are pinned by SHA-256 in `engines.json`. Users can also place larger Whisper models (such as `ggml-small.bin`,
   `ggml-medium.bin` or `ggml-large-v3-turbo.bin`) into the engine directory or point to a custom installation in

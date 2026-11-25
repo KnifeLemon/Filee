@@ -64,7 +64,15 @@ ko: 클립 자르기의 '이 프레임에 주석'으로 지금 보이는 프레�
 en: Mark this frame in Cut a clip opens the frame shown in Annotate
 ko: PDF 페이지 편집에 PDF를 끌어다 놓을 수 있고, 저장해도 책갈피·링크·양식이 남아요
 en: Drop PDFs into Edit PDF pages, and saving keeps bookmarks, links and form fields
+ko: Linux와 macOS에서도 직접 설치한 whisper-cli와 모델로 자막(Whisper)을 만들 수 있어요
+en: Subtitles with Whisper work on Linux and macOS with a whisper-cli and model you installed
 -->
+
+- **Whisper subtitles on Linux and macOS, with a `whisper-cli` you installed** (#1629). *Generate subtitles
+  (Whisper)* was greyed out with "Not available on this platform" everywhere but Windows. Filee still downloads
+  Whisper only on Windows, but on Linux and macOS a folder holding `whisper-cli` (from whisper.cpp, e.g. Homebrew's
+  `whisper-cpp`) and a `ggml-*.bin` model can now be picked with *Use my copy…* in Settings → Engines, and video and
+  audio turn into SRT subtitles or a TXT transcript as on Windows. Tested on Linux; macOS not yet.
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
   rectangles, typed notes) without an appearance stream, which PDF/A requires, so the PDF/A preset's output was marked
