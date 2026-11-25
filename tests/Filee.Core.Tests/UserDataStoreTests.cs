@@ -637,6 +637,33 @@ public partial class UserDataStoreTests
     }
 
     [Fact]
+    public void Turn_upright_is_saved_and_stays_off_for_presets_from_before_it()
+    {
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        Assert.All(store.Presets, p => Assert.False(p.Media.TurnUpright)); // no built-in preset turns it on
+        store.Presets.Add(new Preset { Id = "upright", Name = "Upright", TargetFormat = "mp4", Media = { TurnUpright = true } });
+        store.Presets.Add(new Preset { Id = "old", Name = "Old", TargetFormat = "mp4" });
+        store.SaveLibrary();
+
+        // A Filee from before the option saved no "turnUpright".
+        var path = Path.Combine(dir.Path, "presets.json");
+        var presets = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsArray();
+        Assert.True((bool)presets.Single(p => (string?)p!["id"] == "upright")!["media"]!["turnUpright"]!);
+        Assert.True(presets.Single(p => (string?)p!["id"] == "old")!["media"]!.AsObject().Remove("turnUpright"));
+        File.WriteAllText(path, presets.ToJsonString());
+
+        var reloaded = new UserDataStore(dir.Path);
+        reloaded.Load();
+
+        var upright = reloaded.FindPreset("upright")!;
+        Assert.True(upright.Media.TurnUpright);
+        Assert.True(upright.Clone().Media.TurnUpright);
+        Assert.False(reloaded.FindPreset("old")!.Media.TurnUpright);
+    }
+
+    [Fact]
     public void Animation_speed_is_saved_and_is_the_original_speed_for_presets_from_before_it()
     {
         using var dir = new TempDir();

@@ -96,6 +96,8 @@ public static class FormatRegistry
         new("vsd", "VSD", FormatCategory.Vector, ["vsd", "vsdx"], Writable: false),
         // Tajima embroidery designs: the stitches drawn as lines (issue #397).
         new("dst", "DST", FormatCategory.Vector, ["dst"], Writable: false),
+        // Janome embroidery designs, drawn the same way in their thread colours (issue #1716).
+        new("jef", "JEF (Janome embroidery)", FormatCategory.Vector, ["jef"], Writable: false),
         new("odg", "ODG", FormatCategory.Vector, ["odg"]),
         // Obsidian's visual boards (JSON Canvas 1.0): cards, groups and the lines between them, read by Filee itself and
         // drawn as SVG (then PDF and pictures), or their text as Markdown. A .canvas that isn't one is refused.
@@ -201,6 +203,12 @@ public static class FormatRegistry
         new("jsonl", "JSON Lines", FormatCategory.Data, ["jsonl", "ndjson"]),
         new("yaml", "YAML", FormatCategory.Data, ["yaml", "yml"]),
         new("toml", "TOML", FormatCategory.Data, ["toml"]),
+        // Colour palettes (#1615), see PaletteConverter: lists of colours, not pictures (a swatch is drawn as SVG). A
+        // .pal is read in its documented layouts (raw 768 bytes, JASC-PAL, RIFF PAL) but never written, since which of
+        // them a program wants is anyone's guess.
+        new("pal", "PAL (color palette)", FormatCategory.Data, ["pal"], Writable: false),
+        new("gpl", "GPL (GIMP palette)", FormatCategory.Data, ["gpl"]),
+        new("act", "ACT (Adobe Color Table)", FormatCategory.Data, ["act"]),
         new("xml", "XML", FormatCategory.Data, ["xml"]),
         new("vcf", "vCard", FormatCategory.Data, ["vcf", "vcard"]),
         // A browser's recorded network requests (HTTP Archive): JSON, read as one table row per request (issue #328).
