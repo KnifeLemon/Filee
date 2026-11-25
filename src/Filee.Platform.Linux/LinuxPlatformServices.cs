@@ -15,6 +15,7 @@ public sealed class LinuxPlatformServices : IPlatformServices
     private static readonly HashSet<string> FileManagers = new(StringComparer.OrdinalIgnoreCase)
     {
         "thunar", "nautilus", "org.gnome.nautilus", "nemo", "dolphin", "caja", "pcmanfm", "pcmanfm-qt", "xfdesktop", "flea", "flea-gui",
+        "rox-filer", "rox", "rox-pinboard",
     };
 
     public static bool IsWaylandSession =>
@@ -75,7 +76,11 @@ public sealed class LinuxPlatformServices : IPlatformServices
 
     public bool IsFileManagerAt(int x, int y) =>
         UsesGnomePointerBridge && GnomePointerIsDesktop
-        || WaylandGestures || ProcessNameAt(x, y) is { } name && FileManagers.Contains(name);
+        || WaylandGestures || IsFileManager(ProcessNameAt(x, y));
+
+    /// <summary>True for a recognized Linux file manager or desktop process/WM_CLASS name.</summary>
+    public static bool IsFileManager(string? processName) =>
+        processName is not null && FileManagers.Contains(processName);
     public string? ProcessNameAt(int x, int y) => UsesGnomePointerBridge
         ? GnomePointerProcess : X11WindowSystem.ProcessNameAt(x, y);
 

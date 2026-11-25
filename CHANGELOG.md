@@ -97,6 +97,8 @@ en: Drop PDFs into Edit PDF pages, and saving keeps bookmarks, links and form fi
   "Recognize text". PDFs with visible text read as before.
 - **rustyfiles** counts as a file manager for gestures (#1714): with the default *File managers and desktop* scope, a
   Ctrl + drag out of rustyfiles opens the donut, as in Explorer (Windows).
+- **ROX-Filer** counts as a file manager for gestures: with the default *File managers and desktop* scope, a
+  Ctrl + drag out of ROX-Filer (or its pinboard) opens the donut on Linux X11.
 - **A shortcut's results are saved next to the shortcut** (#1706). Converting a desktop shortcut (`.lnk`, or a Finder
   alias on macOS) converts the file it points to, as before, but "next to the original" now means next to the
   shortcut: a program's icon taken from its desktop shortcut lands on the desktop, not in the program's folder.
