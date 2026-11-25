@@ -64,6 +64,8 @@ ko: 클립 자르기의 '이 프레임에 주석'으로 지금 보이는 프레�
 en: Mark this frame in Cut a clip opens the frame shown in Annotate
 ko: PDF 페이지 편집에 PDF를 끌어다 놓을 수 있고, 저장해도 책갈피·링크·양식이 남아요
 en: Drop PDFs into Edit PDF pages, and saving keeps bookmarks, links and form fields
+ko: JSP 파일(.jsp)을 텍스트처럼 PDF, Word 등으로 바꿀 수 있어요
+en: JavaServer Pages (.jsp) convert like text, to PDF, Word and more
 ko: 16비트 정수·부동소수점 GeoTIFF 래스터를 PNG, JPG 같은 그림으로 변환하면 값 범위에 맞춰 선명하게 나와요
 en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched across their data range
 -->
@@ -292,6 +294,9 @@ en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched acro
 
 - **Turkish** (by @YusufMntm): one word each for install, original and metadata throughout, so buttons and the
   messages that name them agree.
+
+- **JavaServer Pages (`.jsp`) convert like text** (#1789). A `.jsp` page is read as its source code, never run, so
+  it becomes a PDF, DOCX, HTML, Markdown or the other text formats, like Java and the other source files.
 
 - **16-bit and floating-point GeoTIFF rasters convert to pictures** (#155). GeoTIFF elevation and satellite rasters
   (16- and 32-bit integers, 32- and 64-bit floats, striped or tiled, uncompressed, LZW, Deflate or PackBits, with
