@@ -40,6 +40,8 @@ ko: PNG를 ICO로 바꿀 때 256 크기를 PNG로 저장해서 아이콘 파일�
 en: Icons (ICO) are much smaller: the 256 px size is stored as PNG
 ko: Excel의 시스템 긴 날짜·시간 형식과 중국어·일본어·한국어 기본 날짜 형식이 PDF 등에서 Excel처럼 나와요
 en: Excel cells in the system long date or time, or in a Chinese, Japanese or Korean built-in date format, show as in Excel
+ko: 데이터 트랙 하나짜리 BIN/CUE 디스크 이미지를 ISO로 변환하고 압축을 풀 수 있어요
+en: Single-track BIN/CUE disc images convert to ISO (and extract or repack from there)
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -101,6 +103,11 @@ en: Excel cells in the system long date or time, or in a Chinese, Japanese or Ko
   (`令和8年11月23日`), Minguo years and 上午/下午. Their locale is the system's region format when it is Chinese,
   Japanese or Korean, else the workbook's (from its fonts), else Simplified Chinese. XLSX and XLS files get both,
   in every output (PDF, HWPX, CSV, ...).
+
+- **BIN/CUE disc images to ISO** (#1680). Drop a `.cue` sheet with its `.bin` beside it to copy a single data track
+  (`MODE1/2048`, `MODE1/2352`, `MODE2/2352` or `MODE2/2336`) straight into an ISO 9660 image without re-mastering, or
+  extract and repack its files through ISO. Multi-track discs (such as PlayStation 1 images with audio tracks), Mode 2
+  Form 2 sectors and non-ISO payloads are refused with a clear reason. CHD and CSO are not supported.
 
 ## 2.5.0
 
