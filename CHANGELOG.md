@@ -44,6 +44,14 @@ ko: 데이터 트랙 하나짜리 BIN/CUE 디스크 이미지를 ISO로 변환�
 en: Single-track BIN/CUE disc images convert to ISO (and extract or repack from there)
 ko: SRTM 고도 타일(.hgt)을 GeoTIFF나 흑백 이미지로 변환할 수 있어요
 en: SRTM elevation tiles (.hgt) convert to signed 16-bit GeoTIFF and grayscale images
+ko: 색상 팔레트(PAL, GIMP GPL, Adobe ACT)를 서로 바꾸거나 HEX 코드 목록, 색 견본 그림으로 만들어요
+en: Color palettes (PAL, GIMP GPL, Adobe ACT) convert to each other, a list of HEX codes or a swatch picture
+ko: 자노메 자수 디자인(.jef)을 실 색상 그대로 PNG, JPG, PDF, SVG로 바꿔요
+en: Janome embroidery designs (.jef) turn into PNG, JPG, PDF and SVG in their thread colours
+ko: 동영상 프리셋에서 휴대폰 세로 동영상을 화질 저하 없이 똑바로 돌려 저장할 수 있어요
+en: Video presets can turn vertical phone videos upright without lowering the quality
+ko: JSP 파일(.jsp)을 텍스트처럼 PDF, Word 등으로 바꿀 수 있어요
+en: JavaServer Pages (.jsp) convert like text, to PDF, Word and more
 ko: 생물정보학 서열 정렬 형식(NEXUS, FASTA, PHYLIP)을 서로 변환할 수 있어요
 en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
 -->
@@ -118,6 +126,25 @@ en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
   elevations, `-32768` voids (`GDAL_NODATA`), and WGS 84 GeoTIFF placement tags when the file name encodes a tile
   corner such as `N37W122.hgt` or `S12E045.hgt`. Converting to PNG, JPG or other picture formats stretches the valid
   elevations to grayscale with voids in black. The format is read-only and belongs to the Maps field.
+
+- **Color palettes: PAL, GIMP GPL and Adobe ACT** (#1615). A `.pal` (a raw 256-colour palette from DOS and retro
+  games, Paint Shop Pro's JASC-PAL or Microsoft's RIFF PAL), a GIMP `.gpl` or a Photoshop `.act` turns into the
+  others (GPL, ACT), a list of HEX codes (TXT, JSON) or a swatch picture (PNG, SVG, PDF, …). VGA palettes with 6 bits
+  per channel are scaled to full colour. A `.pal` in a layout of its own, which some old programs wrote, isn't read.
+  The formats are in the Design and Games fields.
+
+- **Janome embroidery designs (`.jef`) turn into PNG, JPG, PDF and SVG** (#1716), like Tajima `.dst` designs already
+  do: the stitches drawn as lines at the design's real size, each thread in its colour from Janome's thread chart.
+  Filee reads JEF but doesn't write it, and it doesn't make Wilcom `.emb` files. JEF is in the Design field.
+
+- **Turn phone videos upright** (#1586). A video preset can now turn vertical phone videos upright without lowering
+  their quality (*Turn phone videos upright* in the video card, off by default). Videos saved with a rotation note are
+  encoded again so the picture itself stands upright on TVs and players that ignore the note: at High quality (Small
+  stays Small), and an HEVC video stays HEVC with the default codec, so an iPhone's 10-bit HDR video keeps its 10 bits
+  and colour tags. Videos without a rotation note are still copied as usual.
+
+- **JavaServer Pages (`.jsp`) convert like text** (#1789). A `.jsp` page is read as its source code, never run, so
+  it becomes a PDF, DOCX, HTML, Markdown or the other text formats, like Java and the other source files.
 
 - **NEXUS, FASTA and PHYLIP alignments** (#1798). Sequence alignments in NEXUS (`.nex`, `.nxs`, `.nexus`), FASTA
   (`.fasta`, `.fa`, `.fas`, `.fna`, `.faa`) and PHYLIP (`.phy`, `.phylip`) convert between each other in the built-in

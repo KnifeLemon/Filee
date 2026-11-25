@@ -56,6 +56,7 @@ public static class EngineRegistry
         new Translation.TranslatorConverter(loggers?.CreateLogger<Translation.TranslatorConverter>()),
         new ArchiveConverter(),
         new VectorConverter(),
+        new Palettes.PaletteConverter(),
         new IcnsConverter(),
         new FontConverter(),
         new DocxWriterConverter(),

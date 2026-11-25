@@ -3,6 +3,8 @@
 
 using Filee.Core.Formats;
 using Filee.Core.Presets;
+using Filee.Core.Profiles;
+using Filee.Core.Settings;
 
 namespace Filee.Core.Tests;
 
@@ -53,5 +55,28 @@ public class SequenceAlignmentFormatTests
         Assert.Equal("phy", presets.Single(p => p.Id == "to-phy").TargetFormat);
         Assert.Equal("nex", presets.Single(p => p.Id == "to-nex").TargetFormat);
         Assert.Equal(["FASTA", "PHYLIP", "NEXUS"], BuiltInData.SequenceAlignmentPresets().Select(p => p.Name));
+    }
+
+    [Fact]
+    public void Version_103_libraries_learn_the_alignments_once_and_keep_a_custom_claim()
+    {
+        var presets = BuiltInData.CreatePresets();
+        presets.RemoveAll(p => p.Id is "to-fasta" or "to-phy" or "to-nex");
+        var profiles = BuiltInData.CreateProfiles();
+        var data = profiles.Single(p => p.Id == "data");
+        string[] extensions = ["nex", "nxs", "nexus", "fasta", "fa", "fas", "fna", "faa", "phy", "phylip"];
+        foreach (var extension in extensions)
+            data.Extensions.Remove(extension);
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(103, presets, profiles));
+        Assert.Equal(BuiltInData.CreatePresets().Select(p => p.Id), presets.Select(p => p.Id)); // after the data presets
+        Assert.All(extensions, extension => Assert.Contains(extension, data.Extensions));
+        Assert.False(SettingsMigrations.ApplyToLibrary(103, presets, profiles));
+
+        data.Extensions.Remove("fasta");
+        profiles.Insert(0, new ToolbarProfile { Id = "my-genes", Extensions = ["FASTA"] });
+        Assert.False(SettingsMigrations.ApplyToLibrary(103, presets, profiles));
+        Assert.DoesNotContain("fasta", data.Extensions);
+        Assert.Equal("my-genes", ProfileSelector.Select(profiles, ["reads.fasta"])?.Id);
     }
 }
