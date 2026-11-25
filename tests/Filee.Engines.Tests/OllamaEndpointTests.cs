@@ -75,11 +75,14 @@ public class OllamaEndpointTests
     {
         // An Ollama that is busy loading a model can take a while to list its models. The old 250 ms limit called
         // that "not available"; the background check now waits long enough.
-        using var server = new SlowServer(TimeSpan.FromMilliseconds(600));
+        // The short limit is checked against a much slower answer: on a busy test machine its cancellation can fire
+        // late, and a 600 ms answer then sometimes got in first.
+        using var slow = new SlowServer(TimeSpan.FromMilliseconds(600));
+        using var slower = new SlowServer(TimeSpan.FromSeconds(5));
         var ct = TestContext.Current.CancellationToken;
 
-        Assert.False(await TranslatorConverter.IsOllamaAnsweringAsync(server.Base, TimeSpan.FromMilliseconds(250), ct));
-        Assert.True(await TranslatorConverter.IsOllamaAnsweringAsync(server.Base, TranslatorConverter.CheckLimit, ct));
+        Assert.False(await TranslatorConverter.IsOllamaAnsweringAsync(slower.Base, TimeSpan.FromMilliseconds(250), ct));
+        Assert.True(await TranslatorConverter.IsOllamaAnsweringAsync(slow.Base, TranslatorConverter.CheckLimit, ct));
     }
 
     [Fact]
