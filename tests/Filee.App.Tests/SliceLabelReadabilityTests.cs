@@ -98,17 +98,23 @@ public class SliceLabelReadabilityTests
         foreach (var profile in BuiltInData.CreateProfiles())
             foreach (var (faceName, ids) in new[] { ("front", profile.PresetIds), ("back", profile.BackPresetIds ?? []) })
             {
-                donut.Items = SliceLabelFitTests.Items(ids, store, loc, direction);
+                var items = SliceLabelFitTests.Items(ids, store, loc, direction);
+                var ringsOnly = SliceLabelFitTests.RingsOnly(items);
                 foreach (var (radius, hole, scale, show, ringSize, spread) in settings)
                 {
+                    // The face only moves with the ring size: it's checked once, at the default size.
+                    var atDefault = (ringSize, spread) == (1, 1);
+                    donut.Items = atDefault ? items : ringsOnly;
                     (donut.OuterRadius, donut.HoleRatio, donut.LabelScale, donut.DefaultShow) = (radius, hole, scale, show);
                     (donut.GroupRingSize, donut.GroupRingSpread) = (ringSize, spread);
                     var (face, rings) = donut.PlanLabels(bold, regular);
-                    var where = $"{language} {profile.Id} {faceName} r{radius} hole {hole} ×{scale} {show} ring {ringSize}/{spread}" +
-                                (direction is { } d ? $" {d}" : "");
-                    Check(layout, face, donut.Items, show, where, problems, groupRing: false);
+                    var setting = $"{language} {profile.Id} {faceName} r{radius} hole {hole} ×{scale} {show}";
+                    var own = direction is { } d ? $" {d}" : "";
+                    var (faceWhere, where) = (setting + own, $"{setting} ring {ringSize}/{spread}{own}");
+                    if (atDefault)
+                        Check(layout, face, items, show, faceWhere, problems, groupRing: false);
                     for (var g = 0; g < rings.Count; g++)
-                        Check(layout, rings[g], donut.Items[g].Children ?? [], show, $"{where} ring {donut.Items[g].Id}", problems, groupRing: true);
+                        Check(layout, rings[g], items[g].Children ?? [], show, $"{where} ring {items[g].Id}", problems, groupRing: true);
                 }
             }
     }
