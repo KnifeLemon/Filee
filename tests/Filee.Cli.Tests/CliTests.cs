@@ -781,6 +781,7 @@ public sealed class CliTests : IDisposable
     [InlineData(new[] { "convert", "a.png", "--preset", "rotate" }, "rotate-left, rotate-right, rotate-180")]
     [InlineData(new[] { "convert", "--to", "jpg" }, "at least one file")]
     [InlineData(new[] { "convert", "a.png", "--to", "jpg", "--quality", "300" }, "--quality")]
+    [InlineData(new[] { "convert", "a.png", "--to", "xlsx", "--merged-cells", "some" }, "--merged-cells")]
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--pages", "1-x" }, "--pages")]
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "0" }, "--split-every")]
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-parts", "1" }, "--split-parts")]
@@ -1867,4 +1868,11 @@ public sealed class CliTests : IDisposable
             string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Unexpected media join");
     }
+
+    [Theory]
+    [InlineData("smart", MergedCells.Smart)]
+    [InlineData("KEEP", MergedCells.Keep)]
+    [InlineData("fill", MergedCells.Fill)]
+    public void Merged_cells_choice_is_read(string value, MergedCells expected) =>
+        Assert.Equal(expected, CliOptions.Parse(["convert", "a.pdf", "--to", "xlsx", "--merged-cells", value]).MergedCells);
 }

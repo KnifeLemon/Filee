@@ -4,10 +4,13 @@
 // - A table that goes on at the top of the next page with the same columns joins the one before it on one sheet; a
 //   header row repeated on the new page is left out.
 // - Numbers and dates become real values (TableSheets, shared with DOCX / HTML → XLSX).
+// - Merged cells follow the preset (DocumentOptions.MergedCells, Smart by default): the header's and the
+//   across-columns ones stay merged, the header rows are frozen, and a cell spanning the body's rows is filled into each.
 // - A PDF without such a table (or a scan, which has no text) fails with a message instead of an empty workbook.
 //   Tables aligned by white space only aren't found, as in PDF → DOCX.
 
 using Filee.Core.Conversion;
+using Filee.Core.Presets;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Office;
@@ -37,7 +40,7 @@ public sealed class PdfTablesConverter : IConverter
             var document = PdfDocumentReader.Read(step.InputPath, Path.Combine(step.WorkDirectory, $"media-{Guid.NewGuid():N}"));
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(0.7);
-            var book = Build(document);
+            var book = Build(document, step.Preset.Document.MergedCells);
             if (book.Sheets.Count == 0)
                 throw new ConversionRefusedException("error.pdf_no_tables");
             // As the spreadsheet engine writes: CSV gets one file per sheet.
@@ -57,7 +60,7 @@ public sealed class PdfTablesConverter : IConverter
     }
 
     /// <summary>The document's tables as sheets: one per table, a table going on over the next page joined.</summary>
-    internal static Workbook Build(HDocument document)
+    internal static Workbook Build(HDocument document, MergedCells merged = MergedCells.Keep)
     {
         // Everything on the pages in order: tables, and null for text (empty paragraphs, such as the one carrying a page
         // break, don't count), so a table only "goes on" when nothing at all sits between it and the next page's table.
@@ -109,8 +112,11 @@ public sealed class PdfTablesConverter : IConverter
                 row = 0;
                 header = TableSheets.RowTexts(placed.Table.Rows[0]);
                 TableSheets.SetColumnWidths(sheet, placed.Table);
+                // Smart: the header stays in view while scrolling, unless the whole table is header.
+                if (merged == MergedCells.Smart && TableSheets.HeaderRows(placed.Table) is var headers && headers < placed.Table.Rows.Count)
+                    sheet.FrozenRows = headers;
             }
-            row = TableSheets.Place(sheet!, placed.Table, row, skip, drawn: true);
+            row = TableSheets.Place(sheet!, placed.Table, row, skip, drawn: true, merged, continues: goesOn);
             previous = placed;
         }
         return book;

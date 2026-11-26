@@ -21,9 +21,9 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
         $"<w:tbl><w:tblPr><w:tblStyle w:val=\"{style}\"/></w:tblPr><w:tblGrid>" +
         string.Concat(grid.Select(w => $"<w:gridCol w:w=\"{w}\"/>")) + $"</w:tblGrid>{rows}</w:tbl>";
 
-    private async Task<Workbook> ConvertAsync(string path, string target = "xlsx")
+    private async Task<Workbook> ConvertAsync(string path, string target = "xlsx", MergedCells merged = MergedCells.Smart)
     {
-        var job = await fx.ConvertAsync([path], new Preset { TargetFormat = target });
+        var job = await fx.ConvertAsync([path], new Preset { TargetFormat = target, Document = { MergedCells = merged } });
         Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
         return XlsxReader.Read(job.Outputs.Single());
     }
@@ -62,7 +62,9 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
         Assert.Equal(new DateOnly(2026, 10, 23).DayNumber - new DateOnly(1899, 12, 30).DayNumber, sales.Get(2, 2)!.Value);
         Assert.Equal(0.125, sales.Get(3, 1)!.Value!.Value, 9);
         Assert.Equal(9.99, sales.Get(4, 2)!.Value);
-        Assert.Contains(new CellRange(2, 0, 3, 0), sales.Merges); // vMerge
+        // Smart (the default): a vMerge down the body is filled into each row, a gridSpan across columns stays merged.
+        Assert.DoesNotContain(new CellRange(2, 0, 3, 0), sales.Merges);
+        Assert.Equal("Ink", sales.Get(3, 0)!.Text);
         Assert.Contains(new CellRange(4, 0, 4, 1), sales.Merges); // gridSpan
         Assert.DoesNotContain(sales.Rows.Values.SelectMany(r => r.Values), c => c.Text.Contains("Sales by quarter"));
         // Column widths follow the document's grid; the "Table Grid" lines are kept and the header row stays in view.
@@ -99,8 +101,9 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
         Assert.Equal("Fruit", prices.Get(0, 0)!.Text);
         Assert.True(prices.Get(0, 0)!.Style.Bold); // <th>
         Assert.Contains(new CellRange(0, 1, 0, 2), prices.Merges);
-        // A rowspan larger than the table ends at its last row.
-        Assert.Contains(new CellRange(1, 0, 2, 0), prices.Merges);
+        // Smart: the body's rowspan is filled into each of its rows, and no further than the table's last one.
+        Assert.DoesNotContain(new CellRange(1, 0, 2, 0), prices.Merges);
+        Assert.Equal("Apple", prices.Get(2, 0)!.Text);
         Assert.Equal(1200, prices.Get(1, 1)!.Value);
         Assert.Equal(new DateOnly(2026, 1, 5).DayNumber - new DateOnly(1899, 12, 30).DayNumber, prices.Get(1, 2)!.Value);
         Assert.Equal(990, prices.Get(2, 1)!.Value);
@@ -108,6 +111,8 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
         Assert.Null(prices.Get(3, 0));
         Assert.Equal(1, prices.FrozenRows);
         Assert.Equal("배", book.Sheets[1].Get(0, 1)!.Text);
+        // Keep: merged as the page draws it, a rowspan larger than the table ending at its last row.
+        Assert.Contains(new CellRange(1, 0, 2, 0), (await ConvertAsync(html, merged: MergedCells.Keep)).Sheets[0].Merges);
     }
 
     [Fact]

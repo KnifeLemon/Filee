@@ -11,6 +11,7 @@
 // - DOC isn't read here: it needs LibreOffice, and this edge is direct only (see Edges).
 
 using Filee.Core.Conversion;
+using Filee.Core.Presets;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Office.Sheets;
@@ -42,7 +43,7 @@ public sealed class DocumentTablesConverter : IConverter
         var document = await DocumentReaders.ReadAsync(step.InputPath, step.From, step.WorkDirectory, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         progress?.Report(0.7);
-        var book = Build(document);
+        var book = Build(document, step.Preset.Document.MergedCells);
         if (book.Sheets.Count == 0)
             throw new ConversionRefusedException("error.document_no_tables");
         // As the spreadsheet engine writes: CSV gets one file per sheet.
@@ -52,7 +53,7 @@ public sealed class DocumentTablesConverter : IConverter
     }
 
     /// <summary>The document's tables as sheets, in reading order: one per table that has any text.</summary>
-    internal static Workbook Build(HDocument document)
+    internal static Workbook Build(HDocument document, MergedCells merged = MergedCells.Keep)
     {
         var book = new Workbook();
         foreach (var table in Tables(document.Sections.SelectMany(s => s.Blocks)))
@@ -61,7 +62,7 @@ public sealed class DocumentTablesConverter : IConverter
                 continue;
             var sheet = new Worksheet($"Table {book.Sheets.Count + 1}");
             TableSheets.SetColumnWidths(sheet, table);
-            TableSheets.Place(sheet, table, 0, 0, drawn: false);
+            TableSheets.Place(sheet, table, 0, 0, drawn: false, merged);
             // Header rows stay in view, unless the whole table is header (nothing would scroll under them).
             var headers = table.Rows.TakeWhile(r => r.Header).Count();
             if (headers < table.Rows.Count)

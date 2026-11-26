@@ -1435,7 +1435,30 @@ public sealed class DocumentOptions
     /// </summary>
     public bool LeaveOutPictures { get; set; }
 
+    /// <summary>
+    /// Spreadsheets made from the tables of a PDF, a Word document or a web page: which of the table's merged cells
+    /// stay merged (<see cref="MergedCells.Smart"/> by default).
+    /// </summary>
+    public MergedCells MergedCells { get; set; }
+
     public DocumentOptions Clone() => (DocumentOptions)MemberwiseClone();
+}
+
+/// <summary>What happens to a table's merged cells when it becomes a spreadsheet (PDF, DOCX, HTML → XLSX, ODS, CSV).</summary>
+public enum MergedCells
+{
+    /// <summary>
+    /// Merged where it helps reading, filled where it would get in the way of working: header rows and cells that
+    /// span columns stay merged; a cell spanning rows below the header (a category beside its items) is unmerged and
+    /// its value written into every row, so the sheet can be sorted, filtered and summed.
+    /// </summary>
+    Smart,
+
+    /// <summary>Every merged cell stays merged, as the document draws it.</summary>
+    Keep,
+
+    /// <summary>No merged cells: each merged cell's value is written into every cell it covered.</summary>
+    Fill,
 }
 
 /// <summary>Trade-off between quality and file size for video and lossy audio.</summary>

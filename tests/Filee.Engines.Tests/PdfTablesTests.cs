@@ -185,4 +185,132 @@ public class PdfTablesTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(format, date.Value.Format);
         Assert.Null(TableSheets.Date("2026-02-30")); // not a day
     }
+
+    // ───────────────────────── Merged cells: Smart, Keep, Fill ─────────────────────────
+
+    /// <summary>A cell of <see cref="Spanned"/>: where it starts, how many rows and columns it covers, its text.</summary>
+    private sealed record Span(int Row, int Column, int Rows, int Columns, string Text);
+
+    /// <summary>
+    /// A ruled table whose cells may span rows and columns: a rule is drawn between two grid positions only where they
+    /// belong to different cells, as a PDF made from a spreadsheet or a report draws it.
+    /// </summary>
+    private static void Spanned(PdfBuilder pdf, double top, double[] xs, int rowCount, Span[] cells, int boldRows = 0)
+    {
+        const double height = 20;
+        var owner = new int[rowCount, xs.Length - 1];
+        for (var i = 0; i < cells.Length; i++)
+            for (var r = cells[i].Row; r < cells[i].Row + cells[i].Rows; r++)
+                for (var c = cells[i].Column; c < cells[i].Column + cells[i].Columns; c++)
+                    owner[r, c] = i + 1;
+        for (var r = 0; r <= rowCount; r++)
+            for (var c = 0; c < xs.Length - 1; c++)
+                if (r == 0 || r == rowCount || owner[r - 1, c] != owner[r, c])
+                    pdf.Rule(xs[c], top + r * height, xs[c + 1], top + r * height);
+        for (var r = 0; r < rowCount; r++)
+            for (var c = 0; c < xs.Length; c++)
+                if (c == 0 || c == xs.Length - 1 || owner[r, c - 1] != owner[r, c])
+                    pdf.Rule(xs[c], top + r * height, xs[c], top + (r + 1) * height);
+        foreach (var cell in cells)
+            pdf.Line(cell.Text, 9, pdf.Font(bold: cell.Row < boldRows), xs[cell.Column] + 3, top + cell.Row * height + 13);
+    }
+
+    /// <summary>
+    /// The standard case: a two-level header ("Q1 2026" over Jan, Feb, Mar beside "Category", "Item" and "Total" that
+    /// span both header rows), categories spanning their items' rows, and a "Grand total" label across two columns.
+    /// </summary>
+    private string SalesReport()
+    {
+        var pdf = new PdfBuilder().NewPage();
+        pdf.Paragraph("Branch sales, first quarter.", 11, pdf.Font(), 50, 70, 495, 14);
+        Spanned(pdf, 100, [50, 130, 250, 310, 370, 430, 510], 8,
+        [
+            new(0, 0, 2, 1, "Category"), new(0, 1, 2, 1, "Item"), new(0, 2, 1, 3, "Q1 2026"), new(0, 5, 2, 1, "Total"),
+            new(1, 2, 1, 1, "Jan"), new(1, 3, 1, 1, "Feb"), new(1, 4, 1, 1, "Mar"),
+            new(2, 0, 3, 1, "Glass"), new(2, 1, 1, 1, "Clear 6mm"), new(2, 2, 1, 1, "120"), new(2, 3, 1, 1, "140"), new(2, 4, 1, 1, "160"), new(2, 5, 1, 1, "420"),
+            new(3, 1, 1, 1, "Tinted 8mm"), new(3, 2, 1, 1, "80"), new(3, 3, 1, 1, "75"), new(3, 4, 1, 1, "90"), new(3, 5, 1, 1, "245"),
+            new(4, 1, 1, 1, "Mirror 4mm"), new(4, 2, 1, 1, "30"), new(4, 3, 1, 1, "45"), new(4, 4, 1, 1, "40"), new(4, 5, 1, 1, "115"),
+            new(5, 0, 2, 1, "Aluminium"), new(5, 1, 1, 1, "Profile A"), new(5, 2, 1, 1, "1,200"), new(5, 3, 1, 1, "1,150"), new(5, 4, 1, 1, "1,300"), new(5, 5, 1, 1, "3,650"),
+            new(6, 1, 1, 1, "Profile B"), new(6, 2, 1, 1, "600"), new(6, 3, 1, 1, "640"), new(6, 4, 1, 1, "610"), new(6, 5, 1, 1, "1,850"),
+            new(7, 0, 1, 2, "Grand total"), new(7, 2, 1, 1, "2,030"), new(7, 3, 1, 1, "2,050"), new(7, 4, 1, 1, "2,200"), new(7, 5, 1, 1, "6,280"),
+        ], boldRows: 2);
+        return pdf.Save(Path.Combine(fx.NewFolder(), "sales-report.pdf"));
+    }
+
+    private async Task<Worksheet> SheetAsync(string pdf, MergedCells? merged)
+    {
+        var preset = new Preset { TargetFormat = "xlsx" };
+        if (merged is { } m)
+            preset.Document.MergedCells = m;
+        var job = await fx.ConvertAsync([pdf], preset);
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        return Assert.Single(XlsxReader.Read(job.Outputs.Single()).Sheets);
+    }
+
+    [Fact]
+    public async Task Smart_keeps_the_header_and_across_column_merges_and_fills_the_categories_down()
+    {
+        var sheet = await SheetAsync(SalesReport(), merged: null); // Smart is the default
+
+        Assert.Equal(
+            new[] { new CellRange(0, 0, 1, 0), new CellRange(0, 1, 1, 1), new CellRange(0, 2, 0, 4), new CellRange(0, 5, 1, 5), new CellRange(7, 0, 7, 1) }
+                .OrderBy(r => r.ToString()),
+            sheet.Merges.OrderBy(r => r.ToString()));
+        // Every item row names its category, so the sheet sorts and filters by it.
+        foreach (var row in new[] { 2, 3, 4 })
+            Assert.Equal("Glass", sheet.Get(row, 0)!.Text);
+        foreach (var row in new[] { 5, 6 })
+            Assert.Equal("Aluminium", sheet.Get(row, 0)!.Text);
+        Assert.Equal("Q1 2026", sheet.Get(0, 2)!.Text);
+        Assert.Equal("", sheet.Get(0, 3)?.Text ?? "");
+        Assert.Equal("Feb", sheet.Get(1, 3)!.Text);
+        Assert.Equal(1150, sheet.Get(5, 3)!.Value);
+        Assert.Equal(6280, sheet.Get(7, 5)!.Value);
+        // The two header rows stay in view.
+        Assert.Equal(2, sheet.FrozenRows);
+    }
+
+    [Fact]
+    public async Task Keep_merges_every_cell_as_the_pdf_draws_it()
+    {
+        var sheet = await SheetAsync(SalesReport(), MergedCells.Keep);
+
+        Assert.Contains(new CellRange(2, 0, 4, 0), sheet.Merges);
+        Assert.Contains(new CellRange(5, 0, 6, 0), sheet.Merges);
+        Assert.Contains(new CellRange(0, 2, 0, 4), sheet.Merges);
+        Assert.Equal(7, sheet.Merges.Count);
+        Assert.Equal("", sheet.Get(3, 0)?.Text ?? "");
+    }
+
+    [Fact]
+    public async Task Fill_leaves_no_merged_cell_and_repeats_each_value()
+    {
+        var sheet = await SheetAsync(SalesReport(), MergedCells.Fill);
+
+        Assert.Empty(sheet.Merges);
+        Assert.Equal("Q1 2026", sheet.Get(0, 4)!.Text);
+        Assert.Equal("Total", sheet.Get(1, 5)!.Text);
+        Assert.Equal("Glass", sheet.Get(4, 0)!.Text);
+        Assert.Equal("Grand total", sheet.Get(7, 1)!.Text);
+    }
+
+    [Fact]
+    public async Task Smart_without_a_two_level_header_freezes_one_row_and_a_title_across_the_table_keeps_its_merge()
+    {
+        var pdf = new PdfBuilder().NewPage();
+        Spanned(pdf, 100, [50, 200, 350, 500], 5,
+        [
+            new(0, 0, 1, 3, "Price list, November 2026"),
+            new(1, 0, 1, 1, "Group"), new(1, 1, 1, 1, "Item"), new(1, 2, 1, 1, "Price"),
+            new(2, 0, 3, 1, "Hinges"), new(2, 1, 1, 1, "Butt hinge"), new(2, 2, 1, 1, "450.00"),
+            new(3, 1, 1, 1, "Bar hinge"), new(3, 2, 1, 1, "1,250.00"),
+            new(4, 1, 1, 1, "Pivot hinge"), new(4, 2, 1, 1, "2,100.00"),
+        ]);
+        var sheet = await SheetAsync(pdf.Save(Path.Combine(fx.NewFolder(), "price-list.pdf")), merged: null);
+
+        Assert.Equal(new[] { new CellRange(0, 0, 0, 2) }, sheet.Merges);
+        Assert.Equal(2, sheet.FrozenRows); // the title and the column headings
+        Assert.Equal("Hinges", sheet.Get(4, 0)!.Text);
+        Assert.Equal(2100, sheet.Get(4, 2)!.Value);
+    }
 }

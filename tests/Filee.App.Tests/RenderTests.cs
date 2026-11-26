@@ -1211,6 +1211,31 @@ public class RenderTests
         window.Close();
     }
 
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("ko")]
+    public void Preset_editor_shows_and_saves_merged_cells_for_spreadsheets(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        var loc = AppHost.Get<ILocalizer>();
+        var preset = new Filee.Core.Presets.Preset { Id = "tables-xlsx", Name = "Tables", TargetFormat = "xlsx" };
+        var vm = new PresetEditorViewModel(preset, loc);
+        Assert.True(vm.ShowMergedCells);
+        Assert.Equal(Filee.Core.Presets.MergedCells.Smart, vm.MergedCells.Value); // the default
+        var window = new PresetEditorWindow { DataContext = vm, Height = 900 };
+        window.Show();
+        Pump();
+        Save(window, $"preset-merged-cells-{language}.png");
+        window.Close();
+
+        vm.MergedCells = vm.MergedCellsChoices.Single(m => m.Value == Filee.Core.Presets.MergedCells.Fill);
+        Assert.True(vm.Apply());
+        Assert.Equal(Filee.Core.Presets.MergedCells.Fill, preset.Document.MergedCells);
+        Assert.Equal(Filee.Core.Presets.MergedCells.Fill, new PresetEditorViewModel(preset, loc).MergedCells.Value);
+        // Not offered where no table becomes a spreadsheet.
+        Assert.False(new PresetEditorViewModel(new Filee.Core.Presets.Preset { TargetFormat = "jpg" }, loc).ShowMergedCells);
+    }
+
     [AvaloniaFact]
     public void Preset_editor_shows_and_saves_rotation_and_flip()
     {

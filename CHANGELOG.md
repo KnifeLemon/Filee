@@ -68,7 +68,17 @@ ko: JSP 파일(.jsp)을 텍스트처럼 PDF, Word 등으로 바꿀 수 있어요
 en: JavaServer Pages (.jsp) convert like text, to PDF, Word and more
 ko: 생물정보학 서열 정렬 형식(NEXUS, FASTA, PHYLIP)을 서로 변환할 수 있어요
 en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
+ko: PDF·Word·웹 페이지의 표를 Excel로 바꿀 때 머리글의 병합은 남기고, 여러 행에 걸친 분류는 행마다 채워서 정렬과 필터가 돼요
+en: Tables from PDF, Word and web pages keep their header merges in Excel and fill categories into every row, so the sheet sorts and filters
 -->
+
+- **Merged cells in spreadsheets made from tables** (PDF, DOCX, HTML → XLSX, ODS, CSV). A new *Merged cells* choice
+  in the preset: **Smart** (the default) keeps the merges that help reading (the header rows, including two-level
+  headings, and cells across columns such as a title or a "Grand total" label) and fills the ones that get in the way
+  of working: a cell spanning rows below the header, such as a category beside its items, is unmerged and its value
+  written into every row, so the sheet sorts, filters and feeds pivot tables. The header rows of a PDF table are
+  frozen. **Keep all merged** is the earlier behaviour; **Unmerge and fill** leaves no merged cell. On the command
+  line: `--merged-cells smart|keep|fill`.
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
   rectangles, typed notes) without an appearance stream, which PDF/A requires, so the PDF/A preset's output was marked
