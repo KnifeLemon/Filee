@@ -76,9 +76,9 @@ public static class FormatFields
         (FormatGrade.Specialist,
         [
             "jp2", "psd", "psb", "ppm", "icns", "qoi", "dds", "cur", "xpm", "xbm", "pam", "pfm", "miff", "dcm",
-            "exr", "hdr", "fits", "hgt", "xcf", "kra", "pdn", "raw", "eps", "ps", "ai", "cdr", "cgm", "plt", "dst", "fodg",
+            "exr", "hdr", "fits", "hgt", "xcf", "kra", "pdn", "pal", "gpl", "act", "raw", "eps", "ps", "ai", "cdr", "cgm", "plt", "dst", "jef", "fodg",
             "fodt", "fods", "fodp", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "ipynb", "textile", "man",
-            "jsonl", "yaml", "toml", "har", "plist", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "nov", "bik",
+            "jsonl", "yaml", "toml", "har", "plist", "nex", "fasta", "phy", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "nov", "bik",
             "h265", "h264", "ac3", "caf", "mp2", "dss", "wv", "tta", "w64", "eac3", "ape", "tak", "dsf", "dff",
             "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "tzst", "gz", "bz2", "xz", "lz", "lzma", "zst", "jar", "zxp", "nupkg", "apks",
             "aab", "msix", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack", "cab", "gerber",
@@ -98,13 +98,18 @@ public static class FormatFields
     private static readonly Dictionary<string, FormatField[]> Overlaps = BuildOverlaps(
     [
         // Layout, print, photo post-production, signs and embroidery.
-        (["psd", "psb", "exr", "hdr", "xcf", "kra", "pdn", "raw", "eps", "ps", "ai", "cdr", "plt", "dst"], ["design"]),
+        (["psd", "psb", "exr", "hdr", "xcf", "kra", "pdn", "raw", "eps", "ps", "ai", "cdr", "plt", "dst", "jef"], ["design"]),
+        // Colour palettes: GIMP's and Photoshop's for design work; .pal also from retro games and their mods.
+        (["gpl", "act"], ["design"]),
+        (["pal"], ["design", "game"]),
         // Game textures and cutscenes, Minecraft packs and modpacks, emulator disc images.
         (["dds", "vtf", "usm", "bik", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack", "gma", "vpk", "bsp", "mdl", "smd", "cue"], ["game"]),
         // Medical imaging and astronomy.
         (["dcm", "fits"], ["science"]),
         // SRTM elevation tiles: read as images/GeoTIFFs, made for maps and GIS.
         (["hgt"], ["geo"]),
+        // Sequence alignments: phylogenetics and bioinformatics.
+        (["nex", "fasta", "phy"], ["science"]),
         // Software work: raw image formats of graphics tools, app icons and cursors, config and data files, flat XML
         // ODF for version control, man pages, streaming segments, packages and compressed archives.
         ([

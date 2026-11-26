@@ -7,12 +7,12 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 |---|---|---|
 | ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), **SRTM elevation tiles (`.hgt`)** (Filee's own reader; signed 16-bit GeoTIFF by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), a **GIMP XCF** (Filee's own reader and writer: layers merged as GIMP shows them, or kept between XCF, PDN and PSD/PSB), a **Valve Texture VTF** (Filee's own reader and writer, for the Source engine and Garry's Mod), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
-| Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there), **Obsidian boards (JSON Canvas `.canvas`) → SVG** (→ PDF, PNG, … from there) **and Markdown** (→ DOCX, HTML, TXT, … from there), **Gerber PCB layers → SVG** (RS-274X / X2, see [below](#gerber-pcb-layers); → PDF, PNG, DXF from there) |
+| Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST and Janome JEF embroidery → SVG** (stitches as lines; DST has no thread colours, so a palette colour per thread, JEF in its threads' Janome chart colours; → PNG, JPG, PDF from there), **Obsidian boards (JSON Canvas `.canvas`) → SVG** (→ PDF, PNG, … from there) **and Markdown** (→ DOCX, HTML, TXT, … from there), **Gerber PCB layers → SVG** (RS-274X / X2, see [below](#gerber-pcb-layers); → PDF, PNG, DXF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
 | PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, pages per sheet (N-up), spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
-| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, CXLOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
+| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, CXLOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA, INO, PDE, JSP → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
@@ -24,11 +24,12 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders and column widths kept |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
-| Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
+| Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; **NEXUS, FASTA, PHYLIP sequence alignments ↔ each other**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ → EPUB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
+| Color palettes | built in | **PAL (RIFF, JASC-PAL or a raw 768-byte palette), GIMP GPL, Adobe ACT → GPL, ACT**, a list of HEX codes (**TXT, JSON**) or a **swatch (SVG**; → PNG, JPG, PDF from there), see [below](#color-palettes-pal-gpl-act) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
@@ -1307,6 +1308,23 @@ Start (or End when no Start); offsets in other years, including past years, may 
 VTIMEZONE definition is not preserved, and only these columns are supported rather than arbitrary calendar data.
 VALARM, X-properties, VJOURNAL, VFREEBUSY, binary attachments and other unsupported properties are lost.
 
+## Color palettes (PAL, GPL, ACT)
+
+The palette engine (`Palettes/PaletteConverter.cs`, id `palette`, #1615) reads a palette into one list of colours and
+writes it again. It needs no external program.
+
+| Format | Read | Write |
+|---|---|---|
+| PAL | the three documented layouts, told apart by signature and size: **RIFF PAL** (Microsoft, `RIFF`…`PAL `, a LOGPALETTE in its `data` chunk), **JASC-PAL** (Paint Shop Pro's text) and a **raw palette** of exactly 768 bytes (256 RGB triplets, as DOS and retro games keep it; when no value is above 63 it is a VGA palette with 6 bits per channel and is scaled to 0–255) | — (which layout a program wants can't be told) |
+| GPL | GIMP palette: `Name:`, `Columns:`, `#` comments, `R G B name` lines; names are kept | GIMP palette, 16 columns, names kept (a colour without one is named by its HEX code) |
+| ACT | Adobe Color Table: 768 bytes, or 772 with the number of colours used (big-endian) and the transparent index | 772 bytes, the count stated, no transparent index; colours past 256 are left out |
+| TXT | — | one `#RRGGBB` per line |
+| JSON | — | `{"name", "colors": [{"hex", "r", "g", "b", "name"?}]}` |
+| SVG | — | the swatch: one square per colour, rows of 16 (one shorter row for a small palette); PNG, JPG, PDF, … follow from SVG |
+
+A `.pal` in any other layout (some programs wrote their own, with headers of their own) is refused as unsupported
+instead of being guessed at. Files over 1 MB are not palettes and are refused too.
+
 ## CAD drawings (DWG, DXF)
 
 Built in, no AutoCAD or ODA software (`Filee.Engines/Cad`). [ACadSharp](https://github.com/DomCR/ACadSharp) reads
@@ -2314,8 +2332,13 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   *MaxSizeMb* and *MaxSizePercent* (a size limit in MB or as 1–99% of the source file, #553, #680) cap the bitrate at
   what the video's length allows, re-encoding once more if it missed;
   *AudioBitrateKbps* overrides the audio bitrate (snapped to the MP3/MP2/AC-3 bitrate tables; the editor offers 32 to
-  320 kbit/s); *RemoveAudio* drops the sound; *AudioChannels* (0 source, 1 mono, 2 stereo) applies to every audio
-  target but AMR; *AudioSampleRate* (8 to 48 kHz) and *WavFormat* (bit depth) apply to WAV and W64.
+  320 kbit/s); *RemoveAudio* drops the sound; *TurnUpright* (*Turn phone videos upright*, #1586; off by default)
+  encodes a video saved with a rotation note again, so the picture itself stands upright on TVs and players that ignore
+  the note (videos without one are still copied). When the switch is all that forces the encode
+  (`MediaEncoding.UprightOptions`), it runs at High unless the preset asks for Small, and with the default codec an HEVC
+  video stays HEVC where the target takes it (10-bit and colour tags kept); *AudioChannels* (0 source, 1 mono, 2 stereo)
+  applies to every audio target but AMR; *AudioSampleRate* (8 to 48 kHz) and *WavFormat* (bit depth) apply to WAV and
+  W64.
 - *VideoCodec* (Default, HEVC, AV1) and *AudioCodec* (Default, ALAC) pick another codec where the target takes it
   (`MediaCodecs` in Filee.Core: HEVC for MP4/M4V/MKV/MOV, AV1 for MP4/M4V/MKV/WEBM, ALAC for M4A/M4B); for any other
   target the usual codec is written. The presets "MP4 HEVC" (on the video donut), "MP4 AV1" and "ALAC" use them. With

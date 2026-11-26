@@ -70,6 +70,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             var transforms = normalizer is null ? null : new Dictionary<PdfObjectID, PdfMergePaperFitter.Transform>();
             var occurrences = normalizer is null ? null : new List<(PdfPage Source, PdfPage Imported, PdfMergePaperFitter.Transform Transform)>();
             PdfPage? firstPage = null;
+            var index = 0;
             foreach (var page in source.Pages)
             {
                 PdfMergePaperFitter.Transform? transform = null;
@@ -81,6 +82,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
                     transforms![page.Reference!.ObjectID] = transform;
                 }
                 var imported = output.AddPage(page);
+                structure.Label(source, index++, ct);
                 firstPage ??= imported;
                 pages[page.Reference!.ObjectID] = imported;
                 if (transform is not null)

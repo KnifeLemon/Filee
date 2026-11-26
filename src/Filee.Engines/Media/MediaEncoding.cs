@@ -280,6 +280,9 @@ internal static partial class MediaEncoding
         SeekPoint? clipSeek = null)
     {
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
+        // A clip, a crop or a raw stream is encoded anyway, at the preset's quality.
+        if (clip is null && crop is null && !info.RawStream)
+            options = UprightOptions(target, video, options);
         // An input without sound is fine: the output simply has no audio track. Every track is kept (languages,
         // commentary, issue #396), except in containers that hold one and in a clip, which keeps the first one as a
         // copied or edited clip does. MediaInfo has already left out tracks FFmpeg cannot decode.
@@ -622,15 +625,39 @@ internal static partial class MediaEncoding
     private static readonly HashSet<string> PlayablePixelFormats = ["yuv420p", "yuvj420p", "yuv420p10le"];
 
     /// <summary>
+    /// The options a rotated video is encoded with when <see cref="MediaOptions.TurnUpright"/> is all that keeps it
+    /// from being copied (#1586), so turning it upright doesn't lower its quality: High (Small re-encodes anyway and
+    /// keeps its own quality), and with the default codec an HEVC video stays HEVC where the target takes it, which
+    /// keeps a phone's 10-bit HDR video in 10 bits with its colour tags (<see cref="HighBitDepthArguments"/>). In every
+    /// other case the preset's options come back as they are.
+    /// </summary>
+    internal static MediaOptions UprightOptions(string target, VideoStreamInfo video, MediaOptions options)
+    {
+        if (!options.TurnUpright || video.Rotation % 360 == 0)
+            return options;
+        var asIs = options.Clone();
+        asIs.TurnUpright = false;
+        if (!CanCopyVideo(target, video, asIs))
+            return options;
+        var upright = options.Clone();
+        upright.Quality = MediaQuality.High;
+        if (options.VideoCodec == VideoCodec.Default && video.Codec == "hevc" && MediaCodecs.Effective(target, VideoCodec.Hevc) == VideoCodec.Hevc)
+            upright.VideoCodec = VideoCodec.Hevc;
+        return upright;
+    }
+
+    /// <summary>
     /// True when the video stream can be copied: the target container takes its codec in a pixel format players
     /// decode, it needs no scaling down, and the preset does not ask for a small file (Small always re-encodes; High
-    /// and Balanced only describe how a video that has to be encoded anyway is encoded). A preset that asks for HEVC
-    /// or AV1 copies only a video in that codec (an AV1 video goes into MP4 then too).
+    /// and Balanced only describe how a video that has to be encoded anyway is encoded) or to turn a rotated video
+    /// upright (<see cref="MediaOptions.TurnUpright"/>). A preset that asks for HEVC or AV1 copies only a video in
+    /// that codec (an AV1 video goes into MP4 then too).
     /// </summary>
     internal static bool CanCopyVideo(string target, VideoStreamInfo video, MediaOptions options)
     {
         // A size limit encodes the video, so its bitrate can be capped (ForSizeLimit).
         if (options.Quality == MediaQuality.Small || options.MaxSizeMb > 0 || options.MaxSizePercent > 0 || options.MaxHeight > 0 && video.DisplayHeight > Math.Max(16, options.MaxHeight)
+            || options.TurnUpright && video.Rotation % 360 != 0
             || video.Codec is not { } codec || !Remuxable.TryGetValue(target, out var codecs))
             return false;
         var takes = MediaCodecs.Effective(target, options.VideoCodec) switch

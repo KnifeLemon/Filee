@@ -96,6 +96,8 @@ public static class FormatRegistry
         new("vsd", "VSD", FormatCategory.Vector, ["vsd", "vsdx"], Writable: false),
         // Tajima embroidery designs: the stitches drawn as lines (issue #397).
         new("dst", "DST", FormatCategory.Vector, ["dst"], Writable: false),
+        // Janome embroidery designs, drawn the same way in their thread colours (issue #1716).
+        new("jef", "JEF (Janome embroidery)", FormatCategory.Vector, ["jef"], Writable: false),
         new("odg", "ODG", FormatCategory.Vector, ["odg"]),
         // Obsidian's visual boards (JSON Canvas 1.0): cards, groups and the lines between them, read by Filee itself and
         // drawn as SVG (then PDF and pictures), or their text as Markdown. A .canvas that isn't one is refused.
@@ -169,12 +171,13 @@ public static class FormatRegistry
         new("sda", "SDA", FormatCategory.Presentation, ["sda", "sdd"], Writable: false),
 
         // Plain text / markup
-        // Text logs (CrossOver's .cxlog too), source code (Arduino and Processing sketches too), database schemas (DBML), proxy
-        // scripts, style sheets and settings files are read as plain text, never executed, compiled or translated (issues
-        // #273, #284, #254, #388, #368, #607, #536, #630, #661, #660, #864, #828, #980, #997, #854, #1176, #1383).
+        // Text logs (CrossOver's .cxlog too), source code (Arduino and Processing sketches, JavaServer Pages templates),
+        // database schemas (DBML), proxy scripts, style sheets and settings files are read as plain text, never executed,
+        // compiled or translated (issues #273, #284, #254, #388, #368, #607, #536, #630, #661, #660, #864, #828, #980,
+        // #997, #854, #1176, #1383, #1789).
         new("txt", "TXT", FormatCategory.Text,
             ["txt", "log", "cxlog", "py", "pac", "bat", "cmd", "command", "lua", "css", "ps1", "sql", "ahk", "ini", "rsc",
-             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql", "dbml", "java", "ino", "pde"]),
+             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql", "dbml", "java", "ino", "pde", "jsp"]),
         new("md", "Markdown", FormatCategory.Text, ["md", "markdown"]),
         new("html", "HTML", FormatCategory.Text, ["html", "htm", "xhtml"]),
         // A web page saved with its pictures in one MIME file (Chrome, Edge, Word); read as the page it holds.
@@ -200,6 +203,12 @@ public static class FormatRegistry
         new("jsonl", "JSON Lines", FormatCategory.Data, ["jsonl", "ndjson"]),
         new("yaml", "YAML", FormatCategory.Data, ["yaml", "yml"]),
         new("toml", "TOML", FormatCategory.Data, ["toml"]),
+        // Colour palettes (#1615), see PaletteConverter: lists of colours, not pictures (a swatch is drawn as SVG). A
+        // .pal is read in its documented layouts (raw 768 bytes, JASC-PAL, RIFF PAL) but never written, since which of
+        // them a program wants is anyone's guess.
+        new("pal", "PAL (color palette)", FormatCategory.Data, ["pal"], Writable: false),
+        new("gpl", "GPL (GIMP palette)", FormatCategory.Data, ["gpl"]),
+        new("act", "ACT (Adobe Color Table)", FormatCategory.Data, ["act"]),
         new("xml", "XML", FormatCategory.Data, ["xml"]),
         new("vcf", "vCard", FormatCategory.Data, ["vcf", "vcard"]),
         // A browser's recorded network requests (HTTP Archive): JSON, read as one table row per request (issue #328).
@@ -207,6 +216,10 @@ public static class FormatRegistry
         new("ics", "iCalendar", FormatCategory.Data, ["ics", "ical"]),
         // The settings and data files of macOS and iOS apps, XML or binary, read into the data tree (issue #1256).
         new("plist", "Property list", FormatCategory.Data, ["plist"], Writable: false),
+        // Sequence alignments for phylogenetics and bioinformatics (issue #1798).
+        new("nex", "NEXUS", FormatCategory.Data, ["nex", "nxs", "nexus"]),
+        new("fasta", "FASTA", FormatCategory.Data, ["fasta", "fa", "fas", "fna", "faa"]),
+        new("phy", "PHYLIP", FormatCategory.Data, ["phy", "phylip"]),
 
         // E-books
         new("epub", "EPUB", FormatCategory.Ebook, ["epub"]),

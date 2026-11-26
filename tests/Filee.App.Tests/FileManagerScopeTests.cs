@@ -1,6 +1,7 @@
 // Gestures set to "File managers and desktop" also start over file managers other than Explorer (issue #124).
 
 using System.Runtime.Versioning;
+using Filee.Platform.Linux;
 using Filee.Platform.Windows;
 
 namespace Filee.App.Tests;
@@ -29,4 +30,31 @@ public class FileManagerScopeTests
     [InlineData(null, null)]
     public void Other_programs_dont(string? windowClass, string? process) =>
         Assert.False(WindowsPlatformServices.IsFileManager(windowClass, process));
+}
+
+// Plain string checks: they run on every OS, the class is only marked for the Linux-only type.
+[SupportedOSPlatform("linux")]
+public class LinuxFileManagerScopeTests
+{
+    [Theory]
+    [InlineData("thunar")]
+    [InlineData("nautilus")]
+    [InlineData("dolphin")]
+    [InlineData("xfdesktop")]
+    [InlineData("flea")]
+    [InlineData("ROX-Filer")]
+    [InlineData("rox-filer")]
+    [InlineData("rox")]
+    [InlineData("ROX-Pinboard")]
+    public void Recognized_Linux_file_managers_and_desktops_count(string process) =>
+        Assert.True(LinuxPlatformServices.IsFileManager(process));
+
+    [Theory]
+    [InlineData("firefox")]
+    [InlineData("vivaldi-bin")]
+    [InlineData("ROX-FilerBackup")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void Other_Linux_programs_dont(string? process) =>
+        Assert.False(LinuxPlatformServices.IsFileManager(process));
 }
