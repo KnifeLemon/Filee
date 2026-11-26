@@ -396,84 +396,84 @@
       </StackPanel>
 
       <StackPanel Grid.Row="1" Grid.Column="2" Spacing="16" VerticalAlignment="Top">
-      <!-- Live preview -->
-      <Border Classes="card">
-        <StackPanel Spacing="14">
-          <TextBlock Classes="label" Text="{DynamicResource theme.preview}" />
-          <!-- The donut over a stand-in for the desktop, so its opacity shows. -->
-          <Border Background="{Binding PreviewBackdrop}" CornerRadius="{DynamicResource SoftRadiusLarge}" Padding="0,10" ClipToBounds="True">
-            <c:DonutMenu x:Name="PreviewDonut" Items="{Binding PreviewItems}" OuterRadius="120" CenterTitle="JPG × 3" HorizontalAlignment="Center"
-                         SliceOpacity="{Binding DonutOpacity, Converter={x:Static vm:ToolbarConverters.Percent}}"
-                         ShowCaptions="{Binding DonutCaptions}" />
-          </Border>
-          <!-- Sample buttons react to hover and press like the real ones, but nothing is saved; Save shows the same tick as the
-               Save buttons elsewhere, and the switch below is an isolated interactive demo too. -->
+        <!-- Live preview -->
+        <Border Classes="card">
           <StackPanel Spacing="14">
-            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center"
-                        Focusable="False">
-              <Button x:Name="PreviewPrimaryButton" Classes="accent" Click="OnPreviewSaveClick"
-                      AutomationProperties.Name="{DynamicResource common.save}"
-                      Focusable="False" IsTabStop="False">
-                <c:SaveFeedback x:Name="PreviewSaveFeedback" Text="{DynamicResource common.save}" />
-              </Button>
-              <Button x:Name="PreviewSecondaryButton" Content="{DynamicResource common.cancel}"
-                      Focusable="False" IsTabStop="False" />
+            <TextBlock Classes="label" Text="{DynamicResource theme.preview}" />
+            <!-- The donut over a stand-in for the desktop, so its opacity shows. -->
+            <Border Background="{Binding PreviewBackdrop}" CornerRadius="{DynamicResource SoftRadiusLarge}" Padding="0,10" ClipToBounds="True">
+              <c:DonutMenu x:Name="PreviewDonut" Items="{Binding PreviewItems}" OuterRadius="120" CenterTitle="JPG × 3" HorizontalAlignment="Center"
+                           SliceOpacity="{Binding DonutOpacity, Converter={x:Static vm:ToolbarConverters.Percent}}"
+                           ShowCaptions="{Binding DonutCaptions}" />
+            </Border>
+            <!-- Sample buttons react to hover and press like the real ones, but nothing is saved; Save shows the same tick as the
+                 Save buttons elsewhere, and the switch below is an isolated interactive demo too. -->
+            <StackPanel Spacing="14">
+              <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center"
+                          Focusable="False">
+                <Button x:Name="PreviewPrimaryButton" Classes="accent" Click="OnPreviewSaveClick"
+                        AutomationProperties.Name="{DynamicResource common.save}"
+                        Focusable="False" IsTabStop="False">
+                  <c:SaveFeedback x:Name="PreviewSaveFeedback" Text="{DynamicResource common.save}" />
+                </Button>
+                <Button x:Name="PreviewSecondaryButton" Content="{DynamicResource common.cancel}"
+                        Focusable="False" IsTabStop="False" />
+              </StackPanel>
+              <!-- On / Off come from the ToggleSwitch style, in the user's language. -->
+              <ToggleSwitch x:Name="PreviewToggle"
+                            IsChecked="False"
+                            HorizontalAlignment="Center"
+                            AutomationProperties.Name="{DynamicResource theme.preview_toggle}"
+                            AutomationProperties.HelpText="{DynamicResource theme.preview_toggle_hint}" />
             </StackPanel>
-            <!-- On / Off come from the ToggleSwitch style, in the user's language. -->
-            <ToggleSwitch x:Name="PreviewToggle"
-                          IsChecked="False"
-                          HorizontalAlignment="Center"
-                          AutomationProperties.Name="{DynamicResource theme.preview_toggle}"
-                          AutomationProperties.HelpText="{DynamicResource theme.preview_toggle_hint}" />
           </StackPanel>
-        </StackPanel>
-      </Border>
+        </Border>
 
-      <!-- Display: the system font (#1065), reduced motion and the window size (UiZoom, saved by itself; Ctrl + wheel and the keys change it too). -->
-      <Border Classes="card">
-        <StackPanel Spacing="14">
-          <TextBlock Classes="label" Text="{DynamicResource theme.display}" />
-          <Grid ColumnDefinitions="*,Auto">
-            <StackPanel Spacing="2" VerticalAlignment="Center">
-              <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="{DynamicResource theme.system_font}" />
-              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.system_font_hint}" />
-            </StackPanel>
-            <ToggleSwitch Grid.Column="1" IsChecked="{Binding UseSystemFont}" VerticalAlignment="Center"
-                          AutomationProperties.Name="{DynamicResource theme.system_font}" />
-          </Grid>
-          <Grid ColumnDefinitions="*,Auto">
-            <StackPanel Spacing="2" VerticalAlignment="Center">
-              <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="{DynamicResource theme.reduce_motion}" />
-              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.reduce_motion_hint}" />
-            </StackPanel>
-            <ToggleSwitch Grid.Column="1" IsChecked="{Binding ReduceMotion}" VerticalAlignment="Center"
-                          AutomationProperties.Name="{DynamicResource theme.reduce_motion}" />
-          </Grid>
-          <Border Height="1" Background="{DynamicResource SubtleBorderBrush}" />
-          <StackPanel Spacing="8">
-            <TextBlock FontWeight="SemiBold" Text="{DynamicResource theme.window_size}" />
+        <!-- Display: the system font (#1065), reduced motion and the window size (UiZoom, saved by itself; Ctrl + wheel and the keys change it too). -->
+        <Border Classes="card">
+          <StackPanel Spacing="14">
+            <TextBlock Classes="label" Text="{DynamicResource theme.display}" />
             <Grid ColumnDefinitions="*,Auto">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <Button x:Name="ZoomOutButton" Classes="icon" Command="{Binding ZoomOutCommand}"
-                      ToolTip.Tip="{DynamicResource theme.window_size_smaller}"
-                      AutomationProperties.Name="{DynamicResource theme.window_size_smaller}">
-                <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Minus}" />
-              </Button>
-              <TextBlock x:Name="WindowSizeText" MinWidth="52" TextAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
-                         FlowDirection="LeftToRight" Text="{Binding WindowSize, StringFormat={}{0:0}%}" />
-              <Button x:Name="ZoomInButton" Classes="icon" Command="{Binding ZoomInCommand}"
-                      ToolTip.Tip="{DynamicResource theme.window_size_larger}"
-                      AutomationProperties.Name="{DynamicResource theme.window_size_larger}">
-                <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Plus}" />
-              </Button>
-            </StackPanel>
-            <Button x:Name="ResetZoomButton" Grid.Column="1" Command="{Binding ResetZoomCommand}"
-                    Content="{DynamicResource theme.window_size_reset}" />
+              <StackPanel Spacing="2" Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="{DynamicResource theme.system_font}" />
+                <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.system_font_hint}" />
+              </StackPanel>
+              <ToggleSwitch Grid.Column="1" IsChecked="{Binding UseSystemFont}" VerticalAlignment="Center"
+                            AutomationProperties.Name="{DynamicResource theme.system_font}" />
             </Grid>
-            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.window_size_hint}" />
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="2" Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="{DynamicResource theme.reduce_motion}" />
+                <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.reduce_motion_hint}" />
+              </StackPanel>
+              <ToggleSwitch Grid.Column="1" IsChecked="{Binding ReduceMotion}" VerticalAlignment="Center"
+                            AutomationProperties.Name="{DynamicResource theme.reduce_motion}" />
+            </Grid>
+            <Border Height="1" Background="{DynamicResource SubtleBorderBrush}" />
+            <StackPanel Spacing="8">
+              <TextBlock FontWeight="SemiBold" Text="{DynamicResource theme.window_size}" />
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Button x:Name="ZoomOutButton" Classes="icon" Command="{Binding ZoomOutCommand}"
+                          ToolTip.Tip="{DynamicResource theme.window_size_smaller}"
+                          AutomationProperties.Name="{DynamicResource theme.window_size_smaller}">
+                    <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Minus}" />
+                  </Button>
+                  <TextBlock x:Name="WindowSizeText" MinWidth="52" TextAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
+                             FlowDirection="LeftToRight" Text="{Binding WindowSize, StringFormat={}{0:0}%}" />
+                  <Button x:Name="ZoomInButton" Classes="icon" Command="{Binding ZoomInCommand}"
+                          ToolTip.Tip="{DynamicResource theme.window_size_larger}"
+                          AutomationProperties.Name="{DynamicResource theme.window_size_larger}">
+                    <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Plus}" />
+                  </Button>
+                </StackPanel>
+                <Button x:Name="ResetZoomButton" Grid.Column="1" Command="{Binding ResetZoomCommand}"
+                        Content="{DynamicResource theme.window_size_reset}" />
+              </Grid>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding WindowSizeHint}" />
+            </StackPanel>
           </StackPanel>
-        </StackPanel>
-      </Border>
+        </Border>
       </StackPanel>
     </Grid>
   </ScrollViewer>
