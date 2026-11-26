@@ -105,6 +105,12 @@ public sealed partial class UpdateService : ObservableObject
     /// <summary>GitHub's "new issue" page (bug report or feature request template).</summary>
     public static string NewIssueUrl => RepositoryUrl.TrimEnd('/') + "/issues/new/choose";
 
+    /// <summary>GitHub's "new issue" page with the bug report form already chosen.</summary>
+    public static string BugReportUrl => RepositoryUrl.TrimEnd('/') + "/issues/new?template=bug_report.yml";
+
+    /// <summary>GitHub's "new issue" page with the feature request form already chosen.</summary>
+    public static string FeatureRequestUrl => RepositoryUrl.TrimEnd('/') + "/issues/new?template=feature_request.yml";
+
     /// <summary>Release page with every file, including the portable zip.</summary>
     public static string LatestReleaseUrl => RepositoryUrl.TrimEnd('/') + "/releases/latest";
 

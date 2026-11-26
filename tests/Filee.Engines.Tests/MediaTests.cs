@@ -1343,6 +1343,81 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Turn_upright_encodes_rotated_videos_and_copies_upright_ones()
+    {
+        var turnUpright = new MediaOptions { TurnUpright = true };
+        var defaults = new MediaOptions();
+
+        foreach (var rotation in new[] { 90, -90, 180, 270, -270 })
+        {
+            var rotated = new VideoStreamInfo(1920, 1080, 1, rotation, 30, "h264", "yuv420p", HeaderHash: "MD5:1");
+            Assert.False(MediaEncoding.CanCopyVideo("mp4", rotated, turnUpright));
+            Assert.True(MediaEncoding.CanCopyVideo("mp4", rotated, defaults));
+
+            var info = new MediaInfo(TimeSpan.FromSeconds(10), rotated, new AudioStreamInfo(2, 48000, "aac"), null);
+            Assert.Equal("libx264", After(Args("mp4", turnUpright, info), "-c:v"));
+            Assert.Equal("copy", After(Args("mp4", defaults, info), "-c:v"));
+            Assert.False(MediaJoining.CanCopyVideos([info, info], turnUpright));
+            Assert.True(MediaJoining.CanCopyVideos([info, info], defaults));
+        }
+
+        foreach (var rotation in new[] { 0, 360, -360 })
+        {
+            var upright = new VideoStreamInfo(1920, 1080, 1, rotation, 30, "h264", "yuv420p", HeaderHash: "MD5:1");
+            Assert.True(MediaEncoding.CanCopyVideo("mp4", upright, turnUpright));
+
+            var info = new MediaInfo(TimeSpan.FromSeconds(10), upright, new AudioStreamInfo(2, 48000, "aac"), null);
+            Assert.Equal("copy", After(Args("mp4", turnUpright, info), "-c:v"));
+            Assert.True(MediaJoining.CanCopyVideos([info, info], turnUpright));
+        }
+    }
+
+    [Fact]
+    public void Turning_a_video_upright_keeps_its_quality_and_an_hevc_video_in_hevc()
+    {
+        var sound = new AudioStreamInfo(2, 48000, "aac");
+        MediaInfo Phone(string codec, string pixelFormat) =>
+            new(TimeSpan.FromSeconds(10), new VideoStreamInfo(1920, 1080, 1, 90, 30, codec, pixelFormat, HeaderHash: "MD5:1"), sound, null);
+        var h264 = Phone("h264", "yuv420p");
+        var hevc10 = Phone("hevc", "yuv420p10le");
+
+        // Balanced (the built-in MP4 preset) is raised to High when only the switch forces the encode.
+        var balanced = Args("mp4", new MediaOptions { TurnUpright = true }, h264);
+        Assert.Equal(("libx264", "18"), (After(balanced, "-c:v"), After(balanced, "-crf")));
+
+        // An iPhone's 10-bit HEVC stays HEVC in 10 bits with the default codec.
+        var iphone = Args("mp4", new MediaOptions { TurnUpright = true }, hevc10);
+        Assert.Equal(("libx265", "22", "yuv420p10le", "hvc1"), (After(iphone, "-c:v"), After(iphone, "-crf"), After(iphone, "-pix_fmt"), After(iphone, "-tag:v")));
+        Assert.Equal("libx265", After(Args("mov", new MediaOptions { TurnUpright = true }, hevc10), "-c:v"));
+
+        // A WebM that could have been copied is encoded at High in its own codec; HEVC can't go into WebM, so that one
+        // is encoded anyway, at the preset's quality.
+        var vp9 = Args("webm", new MediaOptions { TurnUpright = true }, Phone("vp9", "yuv420p"));
+        Assert.Equal(("libvpx-vp9", "24"), (After(vp9, "-c:v"), After(vp9, "-crf")));
+        var webm = Args("webm", new MediaOptions { TurnUpright = true }, hevc10);
+        Assert.Equal(("libvpx-vp9", "32"), (After(webm, "-c:v"), After(webm, "-crf")));
+
+        // A codec the preset chose is kept: at High for a video in that codec, at the preset's quality for one that
+        // has to change codec anyway.
+        var av1 = Args("mp4", new MediaOptions { TurnUpright = true, VideoCodec = VideoCodec.Av1 }, Phone("av1", "yuv420p10le"));
+        Assert.Equal(("libsvtav1", "26"), (After(av1, "-c:v"), After(av1, "-crf")));
+        var toAv1 = Args("mp4", new MediaOptions { TurnUpright = true, VideoCodec = VideoCodec.Av1 }, hevc10);
+        Assert.Equal(("libsvtav1", "32"), (After(toAv1, "-c:v"), After(toAv1, "-crf")));
+
+        // Small keeps Small and the default codec: the preset asks for a small file anyway.
+        var small = Args("mp4", new MediaOptions { TurnUpright = true, Quality = MediaQuality.Small }, hevc10);
+        Assert.Equal(("libx264", "28"), (After(small, "-c:v"), After(small, "-crf")));
+
+        // A size limit encodes the video by itself, so the preset's quality and codec apply.
+        var smaller = MediaEncoding.UprightOptions("mp4", hevc10.Video!, new MediaOptions { TurnUpright = true, MaxHeight = 720 });
+        Assert.Equal((MediaQuality.Balanced, VideoCodec.Default), (smaller.Quality, smaller.VideoCodec));
+
+        // Off, nothing changes.
+        var off = new MediaOptions();
+        Assert.Same(off, MediaEncoding.UprightOptions("mp4", hevc10.Video!, off));
+    }
+
+    [Fact]
     public void Hevc_and_av1_presets_encode_with_x265_and_svt_av1()
     {
         var hevc = Args("mp4", new MediaOptions { VideoCodec = VideoCodec.Hevc });
@@ -2602,5 +2677,34 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var job = await fx.ConvertAsync([input], new Preset { TargetFormat = "mp4" });
         Assert.Equal(JobState.Failed, job.State);
         Assert.Empty(job.Outputs);
+    }
+
+    [Fact]
+    public async Task Turn_upright_rotates_the_picture_and_clears_the_display_matrix()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var landscape = await MakeClipAsync(folder, "landscape.mp4", seconds: 1, size: "64x48", audio: false,
+            extra: ["-c:v", "libx264", "-pix_fmt", "yuv420p"]);
+        var rotated = Path.Combine(folder, "rotated.mp4");
+        await RunAsync(Tools!.Value.Ffmpeg,
+            ["-hide_banner", "-nostdin", "-v", "error", "-y", "-display_rotation:v:0", "90", "-i", landscape, "-c", "copy", rotated]);
+
+        var sourceInfo = await MediaInfo.ProbeAsync(Tools.Value.Ffprobe, rotated, TestContext.Current.CancellationToken);
+        Assert.NotNull(sourceInfo.Video);
+        Assert.Equal((64, 48), (sourceInfo.Video.Width, sourceInfo.Video.Height));
+        Assert.NotEqual(0, sourceInfo.Video.Rotation % 360);
+
+        var uprightOutput = await ConvertAsync(rotated, "mp4", new MediaOptions { TurnUpright = true });
+        var uprightInfo = await MediaInfo.ProbeAsync(Tools.Value.Ffprobe, uprightOutput, TestContext.Current.CancellationToken);
+        Assert.NotNull(uprightInfo.Video);
+        Assert.Equal(0, uprightInfo.Video.Rotation);
+        Assert.Equal((48, 64), (uprightInfo.Video.Width, uprightInfo.Video.Height));
+
+        var copiedOutput = await ConvertAsync(rotated, "mp4", new MediaOptions { TurnUpright = false });
+        var copiedInfo = await MediaInfo.ProbeAsync(Tools.Value.Ffprobe, copiedOutput, TestContext.Current.CancellationToken);
+        Assert.NotNull(copiedInfo.Video);
+        Assert.NotEqual(0, copiedInfo.Video.Rotation % 360);
+        Assert.Equal((64, 48), (copiedInfo.Video.Width, copiedInfo.Video.Height));
     }
 }

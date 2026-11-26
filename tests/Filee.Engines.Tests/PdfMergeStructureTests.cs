@@ -2551,6 +2551,10 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
     [InlineData("shared-title")]
     [InlineData("long-name")]
     [InlineData("shared-kids")]
+    [InlineData("label-shared-kids")]
+    [InlineData("label-shared-nums")]
+    [InlineData("label-shared-prefix")]
+    [InlineData("label-shared-raw-prefix")]
     [InlineData("shared-page-resource")]
     [InlineData("shared-field-resources")]
     [InlineData("shared-dest")]
@@ -2616,6 +2620,65 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
                         top.Elements.Add(node.Reference!);
                     }
                     NameTree(document).Elements["/Kids"] = top;
+                    break;
+                case "label-shared-prefix":
+                case "label-shared-raw-prefix":
+                    // Reading every range must not decode the same long string once per key,
+                    // even when a rebuild keeps only one of the source's pages.
+                    while (document.PageCount < 512)
+                        document.AddPage();
+                    var sharedPrefix = new PdfStringObject(document, new string('p', 256 * 1024))
+                    {
+                        Encoding = kind == "label-shared-prefix" ? PdfStringEncoding.Unicode : PdfStringEncoding.RawEncoding,
+                    };
+                    document.Internals.AddObject(sharedPrefix);
+                    var sharedSection = Object(document);
+                    sharedSection.Elements["/S"] = new PdfName("/D");
+                    sharedSection.Elements["/P"] = sharedPrefix.Reference;
+                    sharedSection.Elements["/St"] = new PdfInteger(7);
+                    var prefixNums = new PdfArray(document);
+                    for (var i = 0; i < document.PageCount; i++)
+                    {
+                        prefixNums.Elements.Add(new PdfInteger(i));
+                        prefixNums.Elements.Add(sharedSection.Reference!);
+                    }
+                    var prefixTree = new PdfDictionary(document);
+                    prefixTree.Elements["/Nums"] = prefixNums;
+                    document.Internals.Catalog.Elements["/PageLabels"] = prefixTree;
+                    break;
+                case "label-shared-kids":
+                case "label-shared-nums":
+                    // Shared label arrays must not multiply 50,000 nodes by 50,000 entries.
+                    var label = new PdfDictionary(document);
+                    label.Elements["/S"] = new PdfName("/r");
+                    var labelArray = new PdfArray(document);
+                    document.Internals.AddObject(labelArray);
+                    if (kind == "label-shared-kids")
+                    {
+                        var labelLeaf = Object(document);
+                        labelLeaf.Elements["/Nums"] = Items(document, new PdfInteger(0), label);
+                        for (var i = 0; i < 50_000; i++)
+                            labelArray.Elements.Add(labelLeaf.Reference!);
+                    }
+                    else
+                    {
+                        document.Internals.AddObject(label);
+                        for (var i = 0; i < 50_000; i++)
+                        {
+                            labelArray.Elements.Add(new PdfInteger(i == 0 ? 0 : 2));
+                            labelArray.Elements.Add(label.Reference!);
+                        }
+                    }
+                    var labelKids = new PdfArray(document);
+                    for (var i = 0; i < 50_000; i++)
+                    {
+                        var node = Object(document);
+                        node.Elements[kind == "label-shared-kids" ? "/Kids" : "/Nums"] = labelArray.Reference;
+                        labelKids.Elements.Add(node.Reference!);
+                    }
+                    var labelTree = new PdfDictionary(document);
+                    labelTree.Elements["/Kids"] = labelKids;
+                    document.Internals.Catalog.Elements["/PageLabels"] = labelTree;
                     break;
                 case "shared-page-resource":
                     // 50,000 fonts lead into one chain of 9,000 dictionaries that ends at a page.
@@ -2745,18 +2808,41 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         pagesOnly = GC.GetAllocatedBytesForCurrentThread() - pagesOnly;
         var allocated = GC.GetAllocatedBytesForCurrentThread();
         var timer = Stopwatch.StartNew();
-        MergeFiles([source], output, TestContext.Current.CancellationToken);
+        if (kind is "label-shared-prefix" or "label-shared-raw-prefix")
+            PdfPageTools.Save([new(source, 511)], output, TestContext.Current.CancellationToken);
+        else
+            MergeFiles([source], output, TestContext.Current.CancellationToken);
         timer.Stop();
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
         TestContext.Current.TestOutputHelper?.WriteLine($"{kind}: {timer.Elapsed.TotalSeconds:F3} s, {allocated:N0} bytes, pages only {pagesOnly:N0} bytes");
         using var result = PdfReader.Open(output, PdfDocumentOpenMode.Import);
-        Assert.Equal(2, result.PageCount);
+        Assert.Equal(kind is "label-shared-prefix" or "label-shared-raw-prefix" ? 1 : 2, result.PageCount);
         switch (kind)
         {
             case "outline-items": Assert.Equal(100_000, OutlineItems(result).Count); break;
             case "outline-depth": Assert.Equal(64, OutlineItems(result).Count); break;
             case "name-nodes": Assert.Equal(100_000, Destinations(result).Count); break;
             case "shared-kids": Assert.Equal(new[] { "leaf" }, Destinations(result).Keys); break;
+            case "label-shared-prefix":
+            case "label-shared-raw-prefix":
+                var prefixPairs = A(D(result.Internals.Catalog.Elements["/PageLabels"]).Elements["/Nums"]);
+                Assert.Equal(2, prefixPairs.Elements.Count);
+                Assert.Equal(0, Assert.IsType<PdfInteger>(prefixPairs.Elements[0]).Value);
+                var prefixSection = D(prefixPairs.Elements[1]);
+                Assert.Equal("/D", S(prefixSection.Elements["/S"]));
+                Assert.Equal(7, Assert.IsType<PdfInteger>(prefixSection.Elements["/St"]).Value);
+                Assert.Equal(new string('p', 256 * 1024), S(prefixSection.Elements["/P"]));
+                Assert.Equal(kind == "label-shared-prefix" ? PdfStringEncoding.Unicode : PdfStringEncoding.RawEncoding,
+                    Assert.IsType<PdfString>(prefixSection.Elements["/P"]).Encoding);
+                break;
+            case "label-shared-kids":
+            case "label-shared-nums":
+                var labelNums = A(D(result.Internals.Catalog.Elements["/PageLabels"]).Elements["/Nums"]);
+                Assert.Equal(2, labelNums.Elements.Count);
+                Assert.Equal(0, Assert.IsType<PdfInteger>(labelNums.Elements[0]).Value);
+                Assert.Equal("/r", S(D(labelNums.Elements[1]).Elements["/S"]));
+                Assert.Equal(new[] { "/S" }, D(labelNums.Elements[1]).Elements.Keys);
+                break;
             case "shared-page-resource":
                 Assert.False(D(D(result.Internals.Catalog.Elements["/AcroForm"])).Elements.ContainsKey("/DR"));
                 Assert.Single(Fields(result));
