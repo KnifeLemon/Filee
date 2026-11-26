@@ -63,31 +63,41 @@ internal static class PortableUpdateHelper
 
         try
         {
-            // 2. Move existing files into backupDir on the same volume (atomic rename), skipping user 'data'
+            // 2. Move aside only top-level files and folders that the new payload also has,
+            //    leaving user files (e.g. when unpacked in Downloads/Desktop) and 'data' untouched.
             if (Directory.Exists(backupDir))
             {
                 Directory.Delete(backupDir, recursive: true);
             }
             Directory.CreateDirectory(backupDir);
 
-            var dirInfo = new DirectoryInfo(targetDir);
-            foreach (var file in dirInfo.EnumerateFiles())
+            var stagingInfo = new DirectoryInfo(stagingDir);
+            foreach (var payloadFile in stagingInfo.EnumerateFiles())
             {
-                var backupPath = Path.Combine(backupDir, file.Name);
-                File.Move(file.FullName, backupPath, overwrite: true);
-                movedFiles.Add((file.FullName, backupPath));
+                var targetFile = Path.Combine(targetDir, payloadFile.Name);
+                if (File.Exists(targetFile))
+                {
+                    var backupPath = Path.Combine(backupDir, payloadFile.Name);
+                    File.Move(targetFile, backupPath, overwrite: true);
+                    movedFiles.Add((targetFile, backupPath));
+                }
             }
-            foreach (var subDir in dirInfo.EnumerateDirectories())
+            foreach (var payloadDir in stagingInfo.EnumerateDirectories())
             {
-                if (subDir.Name.Equals("data", StringComparison.OrdinalIgnoreCase)
-                    || subDir.Name.Equals(Path.GetFileName(backupDir), StringComparison.OrdinalIgnoreCase)
-                    || subDir.Name.StartsWith(".update-", StringComparison.OrdinalIgnoreCase))
+                if (payloadDir.Name.Equals("data", StringComparison.OrdinalIgnoreCase)
+                    || payloadDir.Name.Equals(Path.GetFileName(backupDir), StringComparison.OrdinalIgnoreCase)
+                    || payloadDir.Name.StartsWith(".update-", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
-                var backupPath = Path.Combine(backupDir, subDir.Name);
-                Directory.Move(subDir.FullName, backupPath);
-                movedDirs.Add((subDir.FullName, backupPath));
+
+                var targetSubDir = Path.Combine(targetDir, payloadDir.Name);
+                if (Directory.Exists(targetSubDir))
+                {
+                    var backupPath = Path.Combine(backupDir, payloadDir.Name);
+                    Directory.Move(targetSubDir, backupPath);
+                    movedDirs.Add((targetSubDir, backupPath));
+                }
             }
 
             // 3. Copy new files from stagingDir to targetDir
@@ -97,7 +107,7 @@ internal static class PortableUpdateHelper
             var launchPsi = new ProcessStartInfo(targetExe)
             {
                 UseShellExecute = true,
-                Arguments = "--background --whats-new"
+                ArgumentList = { "--background", "--whats-new" }
             };
             if (processStarter is not null)
             {
@@ -136,19 +146,36 @@ internal static class PortableUpdateHelper
                     catch { }
                 }
 
+                var allRestored = true;
                 foreach (var (originalPath, backupPath) in movedFiles)
                 {
-                    if (File.Exists(backupPath))
-                        File.Move(backupPath, originalPath, overwrite: true);
+                    try
+                    {
+                        if (File.Exists(backupPath))
+                            File.Move(backupPath, originalPath, overwrite: true);
+                    }
+                    catch (Exception restoreEx)
+                    {
+                        allRestored = false;
+                        AppendLog(logFile, $"Rollback failed to restore file '{originalPath}': {restoreEx.Message}");
+                    }
                 }
 
                 foreach (var (originalPath, backupPath) in movedDirs)
                 {
-                    if (Directory.Exists(backupPath))
-                        Directory.Move(backupPath, originalPath);
+                    try
+                    {
+                        if (Directory.Exists(backupPath))
+                            Directory.Move(backupPath, originalPath);
+                    }
+                    catch (Exception restoreEx)
+                    {
+                        allRestored = false;
+                        AppendLog(logFile, $"Rollback failed to restore directory '{originalPath}': {restoreEx.Message}");
+                    }
                 }
 
-                if (Directory.Exists(backupDir))
+                if (allRestored && Directory.Exists(backupDir))
                 {
                     try { Directory.Delete(backupDir, recursive: true); } catch { }
                 }
@@ -162,7 +189,7 @@ internal static class PortableUpdateHelper
                     var rollbackPsi = new ProcessStartInfo(targetExe)
                     {
                         UseShellExecute = true,
-                        Arguments = "--background"
+                        ArgumentList = { "--background" }
                     };
                     if (processStarter is not null)
                     {

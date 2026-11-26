@@ -1061,6 +1061,10 @@ public class UpdateServiceTests
 
         File.WriteAllText(Path.Combine(targetDir, "Filee.exe"), "old_exe");
         File.WriteAllText(Path.Combine(targetDir, "old_obsolete.dll"), "obsolete");
+        File.WriteAllText(Path.Combine(targetDir, "user_notes.txt"), "keep_user_file");
+        var userSubDir = Path.Combine(targetDir, "user_folder");
+        Directory.CreateDirectory(userSubDir);
+        File.WriteAllText(Path.Combine(userSubDir, "photo.jpg"), "keep_user_photo");
         File.WriteAllText(Path.Combine(targetDir, "filee.portable"), "");
         var dataDir = Path.Combine(targetDir, "data");
         Directory.CreateDirectory(dataDir);
@@ -1085,14 +1089,20 @@ public class UpdateServiceTests
             },
             processPath: Path.Combine(stagingDir, "Filee.exe"));
 
+        var backupDir = Path.Combine(targetDir, ".backup-9999999");
         Assert.Equal(0, exitCode);
         Assert.Equal("new_exe", File.ReadAllText(Path.Combine(targetDir, "Filee.exe")));
         Assert.Equal("feature", File.ReadAllText(Path.Combine(targetDir, "new_feature.dll")));
-        Assert.False(File.Exists(Path.Combine(targetDir, "old_obsolete.dll")), "Obsolete files must be cleaned up in transactional swap");
+        Assert.Equal("obsolete", File.ReadAllText(Path.Combine(targetDir, "old_obsolete.dll")));
+        Assert.Equal("keep_user_file", File.ReadAllText(Path.Combine(targetDir, "user_notes.txt")));
+        Assert.Equal("keep_user_photo", File.ReadAllText(Path.Combine(userSubDir, "photo.jpg")));
         Assert.True(File.Exists(Path.Combine(targetDir, "filee.portable")));
         Assert.True(File.Exists(Path.Combine(dataDir, "settings.json")), "User data directory must be untouched");
         Assert.Equal("{\"keep\": true}", File.ReadAllText(Path.Combine(dataDir, "settings.json")));
-        Assert.True(Directory.Exists(Path.Combine(targetDir, ".backup-9999999")), "Backup must be kept until the new version starts");
+        Assert.True(Directory.Exists(backupDir), "Backup must be kept until the new version starts");
+        Assert.Equal("old_exe", File.ReadAllText(Path.Combine(backupDir, "Filee.exe")));
+        Assert.False(File.Exists(Path.Combine(backupDir, "user_notes.txt")));
+        Assert.False(Directory.Exists(Path.Combine(backupDir, "user_folder")));
         Assert.False(File.Exists(markerFile));
         Assert.NotNull(startedPsi);
         Assert.Equal(Path.Combine(targetDir, "Filee.exe"), startedPsi.FileName);
@@ -1230,6 +1240,10 @@ public class UpdateServiceTests
         File.WriteAllText(Path.Combine(unmovedSubDir, "inside.txt"), "still_here");
 
         File.WriteAllText(Path.Combine(stagingDir, "Filee.exe"), "new_exe");
+        File.WriteAllText(Path.Combine(stagingDir, "z_locked.dll"), "new_locked");
+        var stagingSubDir = Path.Combine(stagingDir, "z_subdir");
+        Directory.CreateDirectory(stagingSubDir);
+        File.WriteAllText(Path.Combine(stagingSubDir, "inside.txt"), "new_inside");
 
         using (new FileStream(lockedPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
         {
@@ -1294,6 +1308,71 @@ public class UpdateServiceTests
         Assert.False(Directory.Exists(Path.Combine(targetDir, "new_sub")));
         Assert.False(File.Exists(Path.Combine(targetDir, "z_locked_source.dll")));
         Assert.Empty(Directory.GetDirectories(targetDir, ".backup-*"));
+    }
+
+    [Fact]
+    public void PortableUpdateHelper_Run_rollback_continues_when_one_restore_fails()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var targetDir = TempFolder();
+        var stagingDir = TempFolder();
+        var logFile = Path.Combine(TempFolder(), "update.log");
+        var markerFile = Path.Combine(TempFolder(), ".update-failed");
+
+        File.WriteAllText(Path.Combine(targetDir, "Filee.exe"), "original_exe");
+        File.WriteAllText(Path.Combine(targetDir, "filee.portable"), "");
+        File.WriteAllText(Path.Combine(targetDir, "a_locked_restore.dll"), "orig_a");
+        File.WriteAllText(Path.Combine(targetDir, "b_ok_restore.dll"), "orig_b");
+
+        File.WriteAllText(Path.Combine(stagingDir, "Filee.exe"), "new_exe");
+        File.WriteAllText(Path.Combine(stagingDir, "a_locked_restore.dll"), "new_a");
+        File.WriteAllText(Path.Combine(stagingDir, "b_ok_restore.dll"), "new_b");
+
+        FileStream? lockedStream = null;
+        ProcessStartInfo? restartedPsi = null;
+        var launchAttempt = 0;
+        int exitCode;
+        try
+        {
+            exitCode = PortableUpdateHelper.Run(
+                new UpdateSwapOptions(
+                    TargetPid: 9999999,
+                    TargetDir: targetDir,
+                    LogFile: logFile,
+                    MarkerFile: markerFile,
+                    StagingDir: stagingDir),
+                psi =>
+                {
+                    launchAttempt++;
+                    if (launchAttempt == 1)
+                    {
+                        lockedStream = new FileStream(
+                            Path.Combine(targetDir, "a_locked_restore.dll"),
+                            FileMode.Open,
+                            FileAccess.ReadWrite,
+                            FileShare.None);
+                        throw new InvalidOperationException("Failed to start new version");
+                    }
+
+                    restartedPsi = psi;
+                    return true;
+                },
+                processPath: Path.Combine(stagingDir, "Filee.exe"));
+        }
+        finally
+        {
+            lockedStream?.Dispose();
+        }
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("original_exe", File.ReadAllText(Path.Combine(targetDir, "Filee.exe")));
+        Assert.Equal("orig_b", File.ReadAllText(Path.Combine(targetDir, "b_ok_restore.dll")));
+        Assert.True(File.Exists(markerFile));
+        Assert.Contains("Rollback failed to restore file", File.ReadAllText(logFile));
+        Assert.NotNull(restartedPsi);
+        Assert.Equal(["--background"], restartedPsi.ArgumentList);
     }
 
     [Fact]
@@ -1726,6 +1805,68 @@ public class UpdateServiceTests
             LinkName = target,
         };
         writer.WriteEntry(entry);
+    }
+
+    private static byte[] CreateZip(Action<ZipArchive> populate)
+    {
+        using var mem = new MemoryStream();
+        using (var archive = new ZipArchive(mem, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            populate(archive);
+        }
+        return mem.ToArray();
+    }
+
+    private static void AddZipEntry(ZipArchive archive, string name, string content)
+    {
+        var entry = archive.CreateEntry(name);
+        using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
+        writer.Write(content);
+    }
+
+    private sealed class FakeArchiveRelease(
+        byte[] archive,
+        string hash,
+        string assetName,
+        string sumsFileName,
+        string version = "9.9.9") : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var url = request.RequestUri!.ToString();
+            if (url.EndsWith("/releases/latest", StringComparison.Ordinal))
+            {
+                var json = $$"""
+                    {"tag_name":"v{{version}}","assets":[
+                      {"name":"{{assetName}}","browser_download_url":"{{Base}}{{assetName}}","size":{{archive.Length}}},
+                      {"name":"{{sumsFileName}}","browser_download_url":"{{Base}}{{sumsFileName}}","size":100}]}
+                    """;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json"),
+                });
+            }
+            if (url.Contains("/releases?per_page=", StringComparison.Ordinal) || url.EndsWith("/releases", StringComparison.Ordinal))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("[]", Encoding.UTF8, "application/json"),
+                });
+            }
+            if (url.EndsWith(sumsFileName, StringComparison.Ordinal))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent($"{hash}  {assetName}\n", Encoding.ASCII),
+                });
+            }
+            if (url.EndsWith(assetName, StringComparison.Ordinal))
+            {
+                Assert.Contains("application/octet-stream", request.Headers.Accept.ToString());
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(archive) });
+            }
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+        }
     }
 
     private sealed class FakeLinuxRelease(byte[] archive, string hash, string sumsArtifact = "Filee-9.9.9-linux-x64.tar.gz", string version = "9.9.9") : HttpMessageHandler

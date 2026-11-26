@@ -40,7 +40,10 @@ ko: PNG를 ICO로 바꿀 때 256 크기를 PNG로 저장해서 아이콘 파일�
 en: Icons (ICO) are much smaller: the 256 px size is stored as PNG
 -->
 
-- **In-app updates now install in-place on Windows Portable**: Previously, portable Windows copies directed users to manual browser download pages. Filee now downloads and installs updates in-place automatically: verified release archives are safely extracted with path traversal defenses, existing files are transactionally swapped and obsolete files cleaned up via a helper executable with automatic backup and rollback on failure, while keeping user data and engine configurations untouched.
+- **Portable copies on Windows update themselves** (#1605). **Update** in Settings → About now downloads the new
+  portable zip, checks it against the signed checksum list like the Setup update, and replaces the app files in
+  place. The `data` folder and `filee.portable` stay as they are, and the old files are kept in `.backup-<pid>`
+  until the new version has started.
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
   rectangles, typed notes) without an appearance stream, which PDF/A requires, so the PDF/A preset's output was marked
