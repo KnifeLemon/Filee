@@ -70,6 +70,8 @@ ko: 생물정보학 서열 정렬 형식(NEXUS, FASTA, PHYLIP)을 서로 변환�
 en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
 ko: 16비트 정수·부동소수점 GeoTIFF 래스터를 PNG, JPG 같은 그림으로 변환하면 값 범위에 맞춰 선명하게 나와요
 en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched across their data range
+ko: 단일 밴드 GeoTIFF와 SRTM 고도 타일(.hgt)을 고도·값 색상표 PNG로 미리 볼 수 있어요
+en: Single-band GeoTIFF and SRTM .hgt rasters convert to colour-mapped PNG previews with transparent no-data cells
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -312,6 +314,12 @@ en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched acro
   horizontal or floating-point predictors) are now read directly and stretched linearly per band to grayscale (1–2
   bands) or RGB (3+ bands), with `GDAL_NODATA` and NaN cells drawn black instead of coming out nearly black or clipped
   white. Ordinary 8-bit TIFFs and non-GeoTIFFs stay on ImageMagick unchanged.
+
+- **Colour previews of elevation and index rasters** (#155). Drop a single-band GeoTIFF (including 8-bit classified or
+  index rasters) or an SRTM `.hgt` elevation tile onto **Elevation colours** or **Value colours** to get a colour-mapped
+  PNG stretched across its valid data range, with `GDAL_NODATA`, NaN and SRTM void cells left transparent. Both presets
+  belong to the Maps field (off by default in Settings → Fields), and any PNG preset can pick the colour ramp in its
+  editor while Maps is on.
 
 ## 2.5.0
 

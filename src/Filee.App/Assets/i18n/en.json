@@ -2013,5 +2013,12 @@
   "gallery.export_none": "Tick at least one preset or choose a donut.",
   "gallery.export_warnings": "The gallery will show these warnings:",
   "gallery.only_my_language": "Only in my language",
-  "gallery.written_in": "Written in {0}"
+  "gallery.written_in": "Written in {0}",
+  "preset.geo_colours_terrain": "Elevation colours",
+  "preset.geo_colours_viridis": "Value colours",
+  "presets.raster_colours": "Colours",
+  "presets.raster_colours.Off": "Off",
+  "presets.raster_colours.Terrain": "Elevation",
+  "presets.raster_colours.Viridis": "Value",
+  "presets.raster_colours_hint": "Colours single-band GeoTIFF and SRTM .hgt rasters across their data range, with no-data cells transparent."
 }

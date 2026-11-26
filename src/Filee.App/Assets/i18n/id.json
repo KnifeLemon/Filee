@@ -1991,5 +1991,12 @@
   "gallery.export_none": "Centang setidaknya satu preset atau pilih toolbar donut.",
   "gallery.export_warnings": "Galeri akan menampilkan peringatan berikut:",
   "gallery.only_my_language": "Hanya dalam bahasa saya",
-  "gallery.written_in": "Ditulis dalam {0}"
+  "gallery.written_in": "Ditulis dalam {0}",
+  "preset.geo_colours_terrain": "Warna elevasi",
+  "preset.geo_colours_viridis": "Warna nilai",
+  "presets.raster_colours": "Warna",
+  "presets.raster_colours.Off": "Mati",
+  "presets.raster_colours.Terrain": "Elevasi",
+  "presets.raster_colours.Viridis": "Nilai",
+  "presets.raster_colours_hint": "Mewarnai raster GeoTIFF satu pita dan SRTM .hgt sesuai rentang datanya, dengan sel tanpa data dibuat transparan."
 }

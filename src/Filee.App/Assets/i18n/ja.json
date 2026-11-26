@@ -1993,5 +1993,12 @@
   "gallery.export_none": "プリセットを 1 つ以上選ぶか、ドーナツメニューを選んでください。",
   "gallery.export_warnings": "ギャラリーには次の注意が表示されます:",
   "gallery.only_my_language": "自分の言語のみ",
-  "gallery.written_in": "{0}で書かれています"
+  "gallery.written_in": "{0}で書かれています",
+  "preset.geo_colours_terrain": "標高カラー",
+  "preset.geo_colours_viridis": "値カラー",
+  "presets.raster_colours": "カラー",
+  "presets.raster_colours.Off": "オフ",
+  "presets.raster_colours.Terrain": "標高",
+  "presets.raster_colours.Viridis": "値",
+  "presets.raster_colours_hint": "単一バンドの GeoTIFF や SRTM .hgt ラスターをデータ範囲に合わせて着色し、データ欠損セルを透明にします。"
 }

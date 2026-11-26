@@ -2013,5 +2013,12 @@
   "gallery.export_none": "Zaznacz co najmniej jedno ustawienie lub wybierz pasek-pierścień.",
   "gallery.export_warnings": "Galeria pokaże te ostrzeżenia:",
   "gallery.only_my_language": "Tylko w moim języku",
-  "gallery.written_in": "Język: {0}"
+  "gallery.written_in": "Język: {0}",
+  "preset.geo_colours_terrain": "Kolory wysokości",
+  "preset.geo_colours_viridis": "Kolory wartości",
+  "presets.raster_colours": "Kolory",
+  "presets.raster_colours.Off": "Wyłączone",
+  "presets.raster_colours.Terrain": "Wysokość",
+  "presets.raster_colours.Viridis": "Wartości",
+  "presets.raster_colours_hint": "Koloruje jednopasmowe rastry GeoTIFF i SRTM .hgt w całym zakresie danych, pozostawiając komórki bez danych przezroczyste."
 }

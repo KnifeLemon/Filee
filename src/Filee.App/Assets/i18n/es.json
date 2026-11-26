@@ -1993,5 +1993,12 @@
   "gallery.export_none": "Marca al menos un ajuste o elige un menú circular.",
   "gallery.export_warnings": "La galería mostrará estas advertencias:",
   "gallery.only_my_language": "Solo en mi idioma",
-  "gallery.written_in": "Escrito en {0}"
+  "gallery.written_in": "Escrito en {0}",
+  "preset.geo_colours_terrain": "Colores de elevación",
+  "preset.geo_colours_viridis": "Colores de valores",
+  "presets.raster_colours": "Colores",
+  "presets.raster_colours.Off": "Desactivado",
+  "presets.raster_colours.Terrain": "Elevación",
+  "presets.raster_colours.Viridis": "Valores",
+  "presets.raster_colours_hint": "Colorea rásteres GeoTIFF de una banda y SRTM .hgt según su rango de datos, dejando transparentes las celdas sin datos."
 }

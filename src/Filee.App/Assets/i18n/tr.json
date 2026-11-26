@@ -1991,5 +1991,12 @@
   "gallery.export_none": "En az bir ön ayar işaretleyin veya bir halka araç çubuğu seçin.",
   "gallery.export_warnings": "Galeri şu uyarıları gösterecek:",
   "gallery.only_my_language": "Yalnızca benim dilimde",
-  "gallery.written_in": "Dil: {0}"
+  "gallery.written_in": "Dil: {0}",
+  "preset.geo_colours_terrain": "Yükseklik renkleri",
+  "preset.geo_colours_viridis": "Değer renkleri",
+  "presets.raster_colours": "Renkler",
+  "presets.raster_colours.Off": "Kapalı",
+  "presets.raster_colours.Terrain": "Yükseklik",
+  "presets.raster_colours.Viridis": "Değer",
+  "presets.raster_colours_hint": "Tek bantlı GeoTIFF ve SRTM .hgt rasterlarını veri aralığına göre renklendirir; verisiz hücreler saydam olur."
 }

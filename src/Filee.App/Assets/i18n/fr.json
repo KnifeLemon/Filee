@@ -2013,5 +2013,12 @@
   "gallery.export_none": "Cochez au moins un préréglage ou choisissez un menu circulaire.",
   "gallery.export_warnings": "La galerie affichera ces avertissements :",
   "gallery.only_my_language": "Seulement dans ma langue",
-  "gallery.written_in": "Rédigé en {0}"
+  "gallery.written_in": "Rédigé en {0}",
+  "preset.geo_colours_terrain": "Couleurs d'altitude",
+  "preset.geo_colours_viridis": "Couleurs de valeurs",
+  "presets.raster_colours": "Couleurs",
+  "presets.raster_colours.Off": "Désactivé",
+  "presets.raster_colours.Terrain": "Altitude",
+  "presets.raster_colours.Viridis": "Valeurs",
+  "presets.raster_colours_hint": "Colore les rasters GeoTIFF monobande et SRTM .hgt sur leur plage de valeurs, avec les cellules sans données transparentes."
 }

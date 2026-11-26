@@ -1990,5 +1990,12 @@
   "gallery.export_none": "Spunta almeno un preset o scegli una barra donut.",
   "gallery.export_warnings": "La galleria mostrerà questi avvisi:",
   "gallery.only_my_language": "Solo nella mia lingua",
-  "gallery.written_in": "Scritto in {0}"
+  "gallery.written_in": "Scritto in {0}",
+  "preset.geo_colours_terrain": "Colori di elevazione",
+  "preset.geo_colours_viridis": "Colori dei valori",
+  "presets.raster_colours": "Colori",
+  "presets.raster_colours.Off": "Disattivato",
+  "presets.raster_colours.Terrain": "Elevazione",
+  "presets.raster_colours.Viridis": "Valori",
+  "presets.raster_colours_hint": "Colora i raster GeoTIFF a banda singola e SRTM .hgt lungo il loro intervallo di dati, rendendo trasparenti le celle senza dati."
 }

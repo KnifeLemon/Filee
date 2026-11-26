@@ -2013,5 +2013,12 @@
   "gallery.export_none": "请至少勾选一个预设或选择一个环形工具栏。",
   "gallery.export_warnings": "预设广场将显示以下提醒：",
   "gallery.only_my_language": "只看我的语言",
-  "gallery.written_in": "使用{0}撰写"
+  "gallery.written_in": "使用{0}撰写",
+  "preset.geo_colours_terrain": "高程配色",
+  "preset.geo_colours_viridis": "数值配色",
+  "presets.raster_colours": "配色",
+  "presets.raster_colours.Off": "关闭",
+  "presets.raster_colours.Terrain": "高程",
+  "presets.raster_colours.Viridis": "数值",
+  "presets.raster_colours_hint": "按数据范围为单波段 GeoTIFF 和 SRTM .hgt 栅格着色，无数据像元设为透明。"
 }

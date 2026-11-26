@@ -2013,5 +2013,12 @@
   "gallery.export_none": "Hãy đánh dấu ít nhất một cấu hình sẵn hoặc chọn một thanh công cụ vòng tròn.",
   "gallery.export_warnings": "Thư viện sẽ hiện các cảnh báo này:",
   "gallery.only_my_language": "Chỉ bằng ngôn ngữ của tôi",
-  "gallery.written_in": "Viết bằng {0}"
+  "gallery.written_in": "Viết bằng {0}",
+  "preset.geo_colours_terrain": "Màu độ cao",
+  "preset.geo_colours_viridis": "Màu giá trị",
+  "presets.raster_colours": "Màu sắc",
+  "presets.raster_colours.Off": "Tắt",
+  "presets.raster_colours.Terrain": "Độ cao",
+  "presets.raster_colours.Viridis": "Giá trị",
+  "presets.raster_colours_hint": "Tô màu raster GeoTIFF đơn kênh và SRTM .hgt theo khoảng dữ liệu, ô không có dữ liệu sẽ trong suốt."
 }

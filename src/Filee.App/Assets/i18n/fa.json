@@ -1989,5 +1989,12 @@
   "gallery.export_none": "دست‌کم یک پیش‌تنظیم را علامت بزنید یا یک نوار ابزار دونات انتخاب کنید.",
   "gallery.export_warnings": "گالری این هشدارها را نشان می‌دهد:",
   "gallery.only_my_language": "فقط به زبان من",
-  "gallery.written_in": "نوشته‌شده به {0}"
+  "gallery.written_in": "نوشته‌شده به {0}",
+  "preset.geo_colours_terrain": "رنگ‌های ارتفاع",
+  "preset.geo_colours_viridis": "رنگ‌های مقدار",
+  "presets.raster_colours": "رنگ‌ها",
+  "presets.raster_colours.Off": "خاموش",
+  "presets.raster_colours.Terrain": "ارتفاع",
+  "presets.raster_colours.Viridis": "مقدار",
+  "presets.raster_colours_hint": "فایل‌های رستر تک‌باند GeoTIFF و SRTM .hgt را بر اساس بازه داده‌ها رنگ‌آمیزی می‌کند و سلول‌های بدون داده را شفاف می‌گذارد."
 }

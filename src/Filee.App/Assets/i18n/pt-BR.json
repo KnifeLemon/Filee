@@ -2013,5 +2013,12 @@
   "gallery.export_none": "Marque pelo menos uma predefinição ou escolha um menu circular.",
   "gallery.export_warnings": "A galeria vai mostrar estes avisos:",
   "gallery.only_my_language": "Só no meu idioma",
-  "gallery.written_in": "Escrito em {0}"
+  "gallery.written_in": "Escrito em {0}",
+  "preset.geo_colours_terrain": "Cores de elevação",
+  "preset.geo_colours_viridis": "Cores de valores",
+  "presets.raster_colours": "Cores",
+  "presets.raster_colours.Off": "Desativado",
+  "presets.raster_colours.Terrain": "Elevação",
+  "presets.raster_colours.Viridis": "Valores",
+  "presets.raster_colours_hint": "Colore rasters GeoTIFF de banda única e SRTM .hgt conforme a faixa de dados, deixando células sem dados transparentes."
 }

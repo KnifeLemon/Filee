@@ -1993,5 +1993,12 @@
   "gallery.export_none": "เลือกพรีเซ็ตอย่างน้อยหนึ่งรายการหรือเลือกแถบโดนัท",
   "gallery.export_warnings": "แกลเลอรีจะแสดงคำเตือนต่อไปนี้:",
   "gallery.only_my_language": "เฉพาะภาษาของฉัน",
-  "gallery.written_in": "เขียนเป็นภาษา {0}"
+  "gallery.written_in": "เขียนเป็นภาษา {0}",
+  "preset.geo_colours_terrain": "สีระดับความสูง",
+  "preset.geo_colours_viridis": "สีตามค่าข้อมูล",
+  "presets.raster_colours": "สี",
+  "presets.raster_colours.Off": "ปิด",
+  "presets.raster_colours.Terrain": "ความสูง",
+  "presets.raster_colours.Viridis": "ค่าข้อมูล",
+  "presets.raster_colours_hint": "ระบายสีแรสเตอร์ GeoTIFF แบนด์เดียวและ SRTM .hgt ตามช่วงข้อมูล โดยช่องที่ไม่มีข้อมูลจะโปร่งใส"
 }

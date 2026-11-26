@@ -2013,5 +2013,12 @@
   "gallery.export_none": "프리셋을 하나 이상 고르거나 원형 툴바를 골라 주세요.",
   "gallery.export_warnings": "갤러리에 이런 경고가 표시돼요:",
   "gallery.only_my_language": "내 언어로 된 것만",
-  "gallery.written_in": "{0}(으)로 작성됨"
+  "gallery.written_in": "{0}(으)로 작성됨",
+  "preset.geo_colours_terrain": "고도 색상",
+  "preset.geo_colours_viridis": "값 색상",
+  "presets.raster_colours": "색상",
+  "presets.raster_colours.Off": "끄기",
+  "presets.raster_colours.Terrain": "고도",
+  "presets.raster_colours.Viridis": "값",
+  "presets.raster_colours_hint": "단일 밴드 GeoTIFF와 SRTM .hgt 래스터를 값 범위에 맞춰 색으로 칠해요. 빈 값은 투명하게 나와요."
 }

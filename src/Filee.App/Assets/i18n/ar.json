@@ -1992,5 +1992,12 @@
   "gallery.export_none": "حدّد إعدادًا مسبقًا واحدًا على الأقل أو اختر شريطًا دائريًا.",
   "gallery.export_warnings": "سيعرض المعرض هذه التحذيرات:",
   "gallery.only_my_language": "بلغتي فقط",
-  "gallery.written_in": "مكتوب بـ {0}"
+  "gallery.written_in": "مكتوب بـ {0}",
+  "preset.geo_colours_terrain": "ألوان الارتفاع",
+  "preset.geo_colours_viridis": "ألوان القيم",
+  "presets.raster_colours": "الألوان",
+  "presets.raster_colours.Off": "إيقاف",
+  "presets.raster_colours.Terrain": "الارتفاع",
+  "presets.raster_colours.Viridis": "القيم",
+  "presets.raster_colours_hint": "يلوّن ملفات GeoTIFF أحادية النطاق وملفات SRTM .hgt وفق نطاق بياناتها، مع جعل خلايا البيانات المفقودة شفافة."
 }

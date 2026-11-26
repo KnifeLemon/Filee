@@ -175,6 +175,7 @@ public static class BuiltInData
         .. ModelPresets(),
         .. SourceModelPresets(),
         .. GeoPresets(),
+        .. GeoRasterPresets(),
         .. TracePresets(),
     ];
 
@@ -630,6 +631,24 @@ public static class BuiltInData
         new() { Id = "to-kml", Name = "KML", TargetFormat = "kml" },
         new() { Id = "to-gpx", Name = "GPX", TargetFormat = "gpx" },
         new() { Id = "to-kmz", Name = "KMZ", TargetFormat = "kmz" },
+    ];
+
+    /// <summary>
+    /// Colour-mapped PNG previews of single-band rasters (#155, added in settings schema 105): in the palette only,
+    /// after the geospatial vector presets, in the Maps field (off in a new install).
+    /// </summary>
+    public static List<Preset> GeoRasterPresets() =>
+    [
+        new()
+        {
+            Id = "geo-colours-terrain", NameKey = "preset.geo_colours_terrain", TargetFormat = "png",
+            Image = { RasterColours = RasterColours.Terrain }, Output = { FileNamePattern = "{name}_colours" },
+        },
+        new()
+        {
+            Id = "geo-colours-viridis", NameKey = "preset.geo_colours_viridis", TargetFormat = "png",
+            Image = { RasterColours = RasterColours.Viridis }, Output = { FileNamePattern = "{name}_colours" },
+        },
     ];
 
     /// <summary>

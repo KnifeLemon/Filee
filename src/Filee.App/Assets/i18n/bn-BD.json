@@ -1989,5 +1989,12 @@
   "gallery.export_none": "অন্তত একটি প্রিসেটে টিক দিন বা একটি ডোনাট টুলবার বেছে নিন।",
   "gallery.export_warnings": "গ্যালারি এই সতর্কবার্তাগুলো দেখাবে:",
   "gallery.only_my_language": "শুধু আমার ভাষায়",
-  "gallery.written_in": "{0}-এ লেখা"
+  "gallery.written_in": "{0}-এ লেখা",
+  "preset.geo_colours_terrain": "উচ্চতার রঙ",
+  "preset.geo_colours_viridis": "মানের রঙ",
+  "presets.raster_colours": "রঙ",
+  "presets.raster_colours.Off": "বন্ধ",
+  "presets.raster_colours.Terrain": "উচ্চতা",
+  "presets.raster_colours.Viridis": "মান",
+  "presets.raster_colours_hint": "একক-ব্যান্ড GeoTIFF এবং SRTM .hgt রাস্টারের মানের পরিসর অনুযায়ী রঙ করে; ডেটা-বিহীন ঘর স্বচ্ছ থাকে।"
 }

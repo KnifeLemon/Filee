@@ -1237,6 +1237,14 @@ internal static class SettingsMigrations
                     changed |= AddLikeNewLibrary(presets, id);
             changed |= LearnExtensions(profiles, out _, ["nex", "nxs", "nexus", "fasta", "fa", "fas", "fna", "faa", "phy", "phylip"]);
         }
+        // v105: Colour-mapped PNG previews of single-band rasters (#155) join the palette after the geospatial presets,
+        //       not a donut.
+        if (from < 105)
+        {
+            foreach (var id in new[] { "geo-colours-terrain", "geo-colours-viridis" })
+                if (presets.All(p => p.Id != id))
+                    changed |= AddLikeNewLibrary(presets, id);
+        }
         return changed;
     }
 

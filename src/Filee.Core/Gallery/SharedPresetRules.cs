@@ -197,6 +197,7 @@ internal static class SharedPresetRules
             ("joinBackground", new StringRule(16, SharedText.JoinBackground)),
             ("fitsTiff", Enum<FitsTiffMode>()),
             ("fitsDebayer", Flag),
+            ("rasterColours", Enum<RasterColours>()),
             ("icoSizes", new ListRule(new IntRule(16, 256, IcoSizes), IcoSizes.Length)),
             ("hideStyle", Enum<HideStyle>()),
             ("hideStrength", new IntRule(HideTool.MinStrength, HideTool.MaxStrength)),

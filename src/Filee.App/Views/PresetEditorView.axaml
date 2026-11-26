@@ -262,6 +262,13 @@
         </Grid>
         <CheckBox Content="{DynamicResource presets.fits_debayer}" IsChecked="{Binding FitsDebayer}" IsVisible="{Binding ShowFitsDebayer}"
                   ToolTip.Tip="{DynamicResource presets.fits_debayer_hint}" />
+        <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowRasterColours}">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.raster_colours}" />
+            <ComboBox ItemsSource="{Binding RasterColourModes}" SelectedItem="{Binding RasterColours}" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="{DynamicResource presets.raster_colours_hint}" AutomationProperties.Name="{DynamicResource presets.raster_colours}" />
+          </StackPanel>
+        </Grid>
         <StackPanel Spacing="6" IsVisible="{Binding ShowSaveEveryFrame}">
           <CheckBox Content="{DynamicResource presets.save_every_frame}" IsChecked="{Binding SaveEveryFrame}"
                     ToolTip.Tip="{DynamicResource presets.save_every_frame_hint}" />

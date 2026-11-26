@@ -1993,5 +1993,12 @@
   "gallery.export_none": "कम से कम एक प्रीसेट चुनें या एक डोनट टूलबार चुनें।",
   "gallery.export_warnings": "गैलरी ये चेतावनियाँ दिखाएगी:",
   "gallery.only_my_language": "सिर्फ़ मेरी भाषा में",
-  "gallery.written_in": "{0} में लिखा गया"
+  "gallery.written_in": "{0} में लिखा गया",
+  "preset.geo_colours_terrain": "ऊँचाई के रंग",
+  "preset.geo_colours_viridis": "मान के रंग",
+  "presets.raster_colours": "रंग",
+  "presets.raster_colours.Off": "बंद",
+  "presets.raster_colours.Terrain": "ऊँचाई",
+  "presets.raster_colours.Viridis": "मान",
+  "presets.raster_colours_hint": "सिंगल-बैंड GeoTIFF और SRTM .hgt रास्टर को उनके डेटा रेंज के अनुसार रंगता है, और बिना डेटा वाले सेल पारदर्शी रहते हैं।"
 }

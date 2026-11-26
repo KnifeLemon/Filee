@@ -1993,5 +1993,12 @@
   "gallery.export_none": "कम्तीमा एउटा प्रिसेट छान्नुहोस् वा डोनट टुलबार छान्नुहोस्।",
   "gallery.export_warnings": "ग्यालरीले यी चेतावनीहरू देखाउनेछ:",
   "gallery.only_my_language": "मेरो भाषामा मात्र",
-  "gallery.written_in": "{0} मा लेखिएको"
+  "gallery.written_in": "{0} मा लेखिएको",
+  "preset.geo_colours_terrain": "उचाइ रङ",
+  "preset.geo_colours_viridis": "मान रङ",
+  "presets.raster_colours": "रङ",
+  "presets.raster_colours.Off": "बन्द",
+  "presets.raster_colours.Terrain": "उचाइ",
+  "presets.raster_colours.Viridis": "मान",
+  "presets.raster_colours_hint": "एकल-ब्यान्ड GeoTIFF र SRTM .hgt रास्टरलाई तिनको डेटा दायराअनुसार रङ भर्छ, र डेटा नभएका कोषहरू पारदर्शी राख्छ।"
 }

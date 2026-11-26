@@ -2013,5 +2013,12 @@
   "gallery.export_none": "Отметьте хотя бы один пресет или выберите круговое меню.",
   "gallery.export_warnings": "В галерее будут показаны такие предупреждения:",
   "gallery.only_my_language": "Только на моём языке",
-  "gallery.written_in": "Язык: {0}"
+  "gallery.written_in": "Язык: {0}",
+  "preset.geo_colours_terrain": "Цвета высот",
+  "preset.geo_colours_viridis": "Цвета значений",
+  "presets.raster_colours": "Цвета",
+  "presets.raster_colours.Off": "Выкл.",
+  "presets.raster_colours.Terrain": "Высота",
+  "presets.raster_colours.Viridis": "Значения",
+  "presets.raster_colours_hint": "Окрашивает одноканальные растры GeoTIFF и SRTM .hgt по диапазону значений, делая ячейки без данных прозрачными."
 }

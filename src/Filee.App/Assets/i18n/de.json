@@ -1991,5 +1991,12 @@
   "gallery.export_none": "Hake mindestens eine Vorlage an oder wähle ein Ringmenü.",
   "gallery.export_warnings": "Die Galerie zeigt diese Warnungen:",
   "gallery.only_my_language": "Nur in meiner Sprache",
-  "gallery.written_in": "Auf {0} geschrieben"
+  "gallery.written_in": "Auf {0} geschrieben",
+  "preset.geo_colours_terrain": "Höhenfarben",
+  "preset.geo_colours_viridis": "Wertefarben",
+  "presets.raster_colours": "Farben",
+  "presets.raster_colours.Off": "Aus",
+  "presets.raster_colours.Terrain": "Höhe",
+  "presets.raster_colours.Viridis": "Werte",
+  "presets.raster_colours_hint": "Färbt Einkanal-GeoTIFF- und SRTM-.hgt-Raster über ihren Wertebereich ein; No-Data-Zellen werden transparent."
 }

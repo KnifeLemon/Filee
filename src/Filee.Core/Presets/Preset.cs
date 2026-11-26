@@ -213,6 +213,14 @@ public sealed class Preset
     [JsonIgnore]
     public bool IsGroup => Kind == PresetKind.Group;
 
+    /// <summary>
+    /// Extra field (<see cref="Formats.FormatFields"/>) a preset's options tie it to beyond its target format, or
+    /// <c>null</c>. Presets with <see cref="ImageOptions.RasterColours"/> follow the Maps (<c>geo</c>) field even
+    /// though their target is PNG.
+    /// </summary>
+    [JsonIgnore]
+    public string? FieldId => Image.RasterColours != RasterColours.Off ? "geo" : null;
+
     /// <summary>True for "Compress into one archive": files and folders go into one archive as they are.</summary>
     [JsonIgnore]
     public bool PacksIntoOneArchive =>
@@ -558,6 +566,17 @@ public enum FitsTiffMode
     Linear,
     /// <summary>Automatically stretched like a capture program's preview, at the file's own bit depth.</summary>
     Stretched,
+}
+
+/// <summary>Colour ramp applied to single-band elevation or index rasters as PNG (<see cref="ImageOptions.RasterColours"/>).</summary>
+public enum RasterColours
+{
+    /// <summary>Off: convert as a normal picture.</summary>
+    Off,
+    /// <summary>Hypsometric elevation colours: dark green, green, sand, brown, white.</summary>
+    Terrain,
+    /// <summary>Perceptually uniform viridis ramp for general scalar/index values.</summary>
+    Viridis,
 }
 
 /// <summary>How "Pixelate / blur" covers the parts of a picture it hides (<see cref="ImageOptions.HideStyle"/>).</summary>
@@ -1026,6 +1045,13 @@ public sealed class ImageOptions
     /// pattern in its header. Off keeps it mono. Mono cameras and three-plane colour files are not affected.
     /// </summary>
     public bool FitsDebayer { get; set; } = true;
+
+    /// <summary>
+    /// PNG target on a single-band GeoTIFF or SRTM <c>.hgt</c>: stretches valid values onto a colour ramp with
+    /// no-data/NaN pixels transparent. Off leaves conversions unchanged.
+    /// </summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<RasterColours>))]
+    public RasterColours RasterColours { get; set; }
 
     /// <summary>Icon sizes embedded in an ICO file.</summary>
     public List<int> IcoSizes { get; set; } = [256, 128, 64, 48, 32, 16];

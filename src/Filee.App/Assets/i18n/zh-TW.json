@@ -2013,5 +2013,12 @@
   "gallery.export_none": "請至少勾選一個預設或選擇一個環形工具列。",
   "gallery.export_warnings": "預設廣場將顯示以下提醒：",
   "gallery.only_my_language": "只看我的語言",
-  "gallery.written_in": "以{0}撰寫"
+  "gallery.written_in": "以{0}撰寫",
+  "preset.geo_colours_terrain": "高程配色",
+  "preset.geo_colours_viridis": "數值配色",
+  "presets.raster_colours": "配色",
+  "presets.raster_colours.Off": "關閉",
+  "presets.raster_colours.Terrain": "高程",
+  "presets.raster_colours.Viridis": "數值",
+  "presets.raster_colours_hint": "依資料範圍為單波段 GeoTIFF 與 SRTM .hgt 網格著色，無資料像素設為透明。"
 }
