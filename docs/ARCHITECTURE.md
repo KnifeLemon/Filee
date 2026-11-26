@@ -879,8 +879,9 @@ macOS packages contain a signed `Filee.app` in both the disk image and the archi
 the app in `/Applications/Filee.app` without the command. Both locations are managed by the in-app updater.
 
 - **In-app updates** (`UpdateService`): Selects the matching `osx-x64` or `osx-arm64` archive and its
-  `<rid>-SHA256SUMS.txt`, validates every archive entry, then uses the system tar extractor so code-signature extended
-  attributes are retained. It waits for Filee to exit and runs `install.sh --upgrade` through a detached helper. The
+  `<rid>-SHA256SUMS.txt`, then uses the system tar extractor so code-signature extended attributes are retained. The
+  extracted tree is checked for symlinks that escape the staging directory and for a `Filee.app` bundle with the
+  `com.filee.app` identifier. It waits for Filee to exit and runs `install.sh --upgrade` through a detached helper. The
   script verifies the staged app with `codesign --verify --deep --strict` before replacement, rolls back if activation
   fails, and restarts Filee with `--background --whats-new`.
 - **Permissions**: Updating `~/Applications` needs no elevation. Replacing an app in `/Applications` uses macOS's
