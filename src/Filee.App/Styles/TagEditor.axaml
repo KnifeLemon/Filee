@@ -7,16 +7,6 @@
         xmlns:c="using:Filee.App.Controls">
 
   <Styles.Resources>
-    <ResourceDictionary>
-      <!-- The chip fill: the accent colour at a low opacity, a touch lower in dark mode where the same tint looks brighter. -->
-      <ResourceDictionary.ThemeDictionaries>
-        <ResourceDictionary x:Key="Light">
-          <SolidColorBrush x:Key="TagChipBrush" Color="{DynamicResource AccentColor}" Opacity="0.15" />
-        </ResourceDictionary>
-        <ResourceDictionary x:Key="Dark">
-          <SolidColorBrush x:Key="TagChipBrush" Color="{DynamicResource AccentColor}" Opacity="0.10" />
-        </ResourceDictionary>
-      </ResourceDictionary.ThemeDictionaries>
     <ControlTheme x:Key="{x:Type c:TagEditor}" TargetType="c:TagEditor">
       <Setter Property="Background" Value="{DynamicResource TextControlBackground}" />
       <Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrush}" />
@@ -97,7 +87,6 @@
         <Setter Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThicknessFocused}" />
       </Style>
     </ControlTheme>
-    </ResourceDictionary>
   </Styles.Resources>
 
   <!-- Material You draws every input with the SurfaceAlt fill, a faint outline and the Softness radius (Window.material-you
@@ -124,16 +113,20 @@
   </Style>
 
   <!-- Chips -->
-  <!-- The chip box takes the SurfaceAlt fill in Material You (above), so a SurfaceAlt chip blended into it. The accent colour at a low
-       opacity (TagChipBrush above, light and dark) stays visible on it and follows the accent. -->
   <Style Selector="Border.tagchip">
-    <Setter Property="Background" Value="{DynamicResource TagChipBrush}" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
     <Setter Property="BorderBrush" Value="Transparent" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="999" />
     <Setter Property="Padding" Value="9,1,2,1" />
     <Setter Property="Margin" Value="2" />
     <Setter Property="MinHeight" Value="26" />
+  </Style>
+  <!-- Material You gives the chip box the SurfaceAlt fill (above), the same as the chips, so the chips vanished into it. They take
+       TagChipBrush instead (MaterialYouPalette: the accent at a low opacity). Soft keeps its SurfaceAlt chips. The focused,
+       warning and muted chips below come later and keep their own fills. -->
+  <Style Selector="Window.material-you Border.tagchip">
+    <Setter Property="Background" Value="{DynamicResource TagChipBrush}" />
   </Style>
   <Style Selector="Border.tagchip:focus">
     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
