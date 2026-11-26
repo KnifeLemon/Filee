@@ -50,6 +50,7 @@
                  SliceOpacity="{Binding SliceOpacity}"
                  ShowCaptions="{Binding ShowCaptions}"
                  TickProgress="{Binding TickProgress}"
+                 ProgressCaption="{Binding ProgressCaption}"
                  LabelScale="{Binding LabelScale}"
                  DefaultShow="{Binding DefaultShow}"
                  GroupRingSize="{Binding GroupRingSize}"
