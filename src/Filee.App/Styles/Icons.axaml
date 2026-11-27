@@ -45,4 +45,10 @@
   <StreamGeometry x:Key="Icon.Cut">M9.64,7.64C9.87,7.14 10,6.59 10,6A4,4 0 0,0 6,2A4,4 0 0,0 2,6A4,4 0 0,0 6,10C6.59,10 7.14,9.87 7.64,9.64L10,12L7.64,14.36C7.14,14.13 6.59,14 6,14A4,4 0 0,0 2,18A4,4 0 0,0 6,22A4,4 0 0,0 10,18C10,17.41 9.87,16.86 9.64,16.36L12,14L19,21H22V20L9.64,7.64M6,8A2,2 0 0,1 4,6A2,2 0 0,1 6,4A2,2 0 0,1 8,6A2,2 0 0,1 6,8M6,20A2,2 0 0,1 4,18A2,2 0 0,1 6,16A2,2 0 0,1 8,18A2,2 0 0,1 6,20M19,3L13,9L15,11L22,4V3H19Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.File">M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.OpenWith">M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z</StreamGeometry>
+  <!-- Theme page, Appearance: System / Light / Dark. Lucide icons (ISC licence, listed in THIRD-PARTY-NOTICES.md), 24x24.
+       They are shown with a Path, not a PathIcon: its Fill and its 2px round-capped Stroke use the same colour, so the
+       monitor, sun and moon appear filled. -->
+  <StreamGeometry x:Key="Icon.ThemeSystem">M4,3H20A2,2 0 0,1 22,5V15A2,2 0 0,1 20,17H4A2,2 0 0,1 2,15V5A2,2 0 0,1 4,3Z M8,21H16 M12,17V21</StreamGeometry>
+  <StreamGeometry x:Key="Icon.ThemeLight">M16,12A4,4 0 1,1 8,12A4,4 0 1,1 16,12Z M12,2 V4 M12,20 V22 M4.93,4.93 L6.34,6.34 M17.66,17.66 L19.07,19.07 M2,12 H4 M20,12 H22 M6.34,17.66 L4.93,19.07 M19.07,4.93 L17.66,6.34</StreamGeometry>
+  <StreamGeometry x:Key="Icon.ThemeDark">M20.985,12.486 A9,9 0 1,1 11.512,3.014 C11.917,2.992 12.129,3.474 11.914,3.817 A6,6 0 0,0 20.182,12.085 C20.526,11.87 21.007,12.081 20.985,12.486</StreamGeometry>
 </ResourceDictionary>

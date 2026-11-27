@@ -67,18 +67,48 @@ internal sealed record CliOptions
             return options;
         }
 
+        var onlyInputs = false;
         for (var i = 1; i < args.Count; i++)
         {
             var arg = args[i];
+            if (onlyInputs)
+            {
+                options.Inputs.Add(arg);
+                continue;
+            }
+            if (arg == "--")
+            {
+                onlyInputs = true;
+                continue;
+            }
+
+            var name = arg;
+            string? attached = null;
+            var equals = arg.StartsWith("--", StringComparison.Ordinal) ? arg.IndexOf('=') : -1;
+            if (equals > 2)
+            {
+                name = arg[..equals];
+                attached = arg[(equals + 1)..];
+            }
+            var attachedUsed = false;
+
             string? Value()
             {
-                if (i + 1 < args.Count)
+                if (attached is not null)
+                {
+                    attachedUsed = true;
+                    if (attached.Length > 0)
+                        return attached;
+                    options.Error ??= $"{name} needs a value.";
+                    return null;
+                }
+                if (i + 1 < args.Count && !args[i + 1].StartsWith('-'))
                     return args[++i];
                 options.Error ??= $"{arg} needs a value.";
                 return null;
             }
 
-            switch (arg.ToLowerInvariant())
+            switch (name.ToLowerInvariant())
             {
                 case "--iso-label":
                     options.IsoLabel = Value();
@@ -201,6 +231,8 @@ internal sealed record CliOptions
                     }
                     break;
                 case "-h" or "--help":
+                    if (attached is not null)
+                        break;
                     options.Inputs.Insert(0, options.Command);
                     return options with { Command = "help" };
                 default:
@@ -210,6 +242,8 @@ internal sealed record CliOptions
                         options.Inputs.Add(arg);
                     break;
             }
+            if (attached is not null && !attachedUsed)
+                options.Error ??= $"Unknown option '{arg}'.";
         }
 
         options.Error ??= options.Command switch

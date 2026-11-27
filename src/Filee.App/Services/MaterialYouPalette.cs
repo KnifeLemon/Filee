@@ -80,6 +80,11 @@ public sealed class MaterialYouPalette
 
         SoftPalette.ApplyAccentStates(resources, Accent, OnAccent, hover: -0.08, pressed: -0.16);
 
+        // The chips in a chip box (TagEditor). The box takes SurfaceAlt, the same as the chips used to, so the chips are the
+        // accent at a low opacity over it: a touch lower in dark mode, where the same tint looks brighter.
+        var chipAlpha = Luminance(Surface) < 0.5 ? (byte)26 : (byte)38;
+        resources["TagChipBrush"] = new SolidColorBrush(Color.FromArgb(chipAlpha, Accent.R, Accent.G, Accent.B));
+
         // Dark mode: Fluent's hover and focus fills for inputs and dropdowns are near-black, a sudden dark box. Keep them a
         // faint step lighter than the resting fill (SurfaceAlt, which the Material You styles already give inputs and
         // dropdowns) instead, so hovering only hints at the change. The resting fills themselves are not set here.

@@ -31,19 +31,19 @@ public class BlpFormatTests
     }
 
     [Fact]
-    public void Version_102_libraries_learn_blp_without_taking_custom_claims()
+    public void Version_104_libraries_learn_blp_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var images = profiles.Single(p => p.Id == "images");
         images.Extensions.Remove("blp");
-        Assert.True(SettingsMigrations.ApplyToLibrary(102, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(104, presets, profiles));
         Assert.Contains("blp", images.Extensions);
-        Assert.False(SettingsMigrations.ApplyToLibrary(102, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(104, presets, profiles));
 
         images.Extensions.Remove("blp");
         profiles.Insert(0, new ToolbarProfile { Id = "my-blp", Extensions = ["BLP"] });
-        Assert.False(SettingsMigrations.ApplyToLibrary(102, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(104, presets, profiles));
         Assert.DoesNotContain("blp", images.Extensions); // the user's own donut has it
         Assert.Equal("my-blp", ProfileSelector.Select(profiles, ["hero.blp"])?.Id);
     }

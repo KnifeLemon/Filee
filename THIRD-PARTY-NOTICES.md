@@ -124,6 +124,12 @@ Windows headers, without a C runtime. Pieces of these projects that can end up i
 the x86 branch filter of the LZMA SDK (public domain, Igor Pavlov, https://www.7-zip.org/sdk.html), and the published
 app as its payload. Filee 1.x's installer was built with Inno Setup, which is no longer used.
 
+## Data from other projects
+
+| Component | License | Project |
+|---|---|---|
+| Janome thread chart (the 78 thread colours in `Filee.Engines/Vector/JefEmbroidery.cs`, from `EmbThreadJef.py`), from pyembroidery | MIT | https://github.com/EmbroidePy/pyembroidery |
+
 ## Fonts and icons
 
 | Component | License | Project |
@@ -131,6 +137,7 @@ app as its payload. Filee 1.x's installer was built with Inno Setup, which is no
 | Noto Sans, Noto Sans Arabic, Noto Sans JP, Noto Sans KR, Noto Sans SC, Noto Sans Devanagari, Noto Sans Thai, Noto Sans Bengali | SIL Open Font License 1.1 | https://github.com/notofonts |
 | Test fonts in `tests/Filee.Engines.Tests/Fonts` (subsets of Noto Sans and Noto Sans KR; not shipped) | SIL Open Font License 1.1 | see `OFL.txt` in that folder |
 | Material Design Icons (Pictogrammers) | Apache-2.0 | https://pictogrammers.com |
+| Lucide (the System, Light and Dark icons on the Theme page) | ISC | https://lucide.dev |
 | Simple Icons 16.35.0 (GitHub Sponsors, Patreon, Ko-fi and PayPal logos in the Sponsor window) | CC0-1.0 | https://simpleicons.org |
 
 The GitHub Sponsors, Patreon, Ko-fi and PayPal names and logos are trademarks of their owners and are used only to link

@@ -1224,9 +1224,21 @@ internal static class SettingsMigrations
         // v102: SRTM elevation tiles (.hgt, #1793) learn the images donut; custom claims stay put.
         if (from < 102)
             changed |= LearnExtensions(profiles, out _, ["hgt"]);
-        // v103: Blizzard textures (.blp, #644) learn the images donut; custom claims stay put. (Schema 103 may be
-        //       renumbered if another change takes it first.)
+        // v103: JavaServer Pages (.jsp, #1789) learn the text donut; custom claims stay put. (Schema 103 may be renumbered if
+        //       another change takes it first.)
         if (from < 103)
+            changed |= LearnExtensions(profiles, out _, ["jsp"]);
+        // v104: Sequence alignments (NEXUS, FASTA, PHYLIP, #1798) learn the data donut and their "FASTA", "PHYLIP" and
+        //       "NEXUS" presets join the palette after the data presets, not a donut; custom claims stay put.
+        if (from < 104)
+        {
+            foreach (var id in new[] { "to-fasta", "to-phy", "to-nex" })
+                if (presets.All(p => p.Id != id))
+                    changed |= AddLikeNewLibrary(presets, id);
+            changed |= LearnExtensions(profiles, out _, ["nex", "nxs", "nexus", "fasta", "fa", "fas", "fna", "faa", "phy", "phylip"]);
+        }
+        // v105: Blizzard textures (.blp, #644) learn the images donut; custom claims stay put.
+        if (from < 105)
             changed |= LearnExtensions(profiles, out _, ["blp"]);
         return changed;
     }

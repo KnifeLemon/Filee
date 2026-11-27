@@ -20,7 +20,7 @@
    Pictures and drawings that must not mirror (the donut, the crop canvas, animated images, logos) set
    `FlowDirection="LeftToRight"` on themselves; custom-drawn text is shaped in the UI culture's direction, as
    `DonutMenu` does.
-6. Run `dotnet test` and look at the screenshots in `tests/Filee.App.Tests/bin/.../screenshots`
+6. Run `dotnet test` and look at the screenshots in `tests/Filee.App.Tests/bin/.../screenshots/<your language code>`
    (add your language to `RenderTests.Pages` to render a few pages).
 
 Missing keys fall back to English at runtime, but the test suite requires every language to be complete.

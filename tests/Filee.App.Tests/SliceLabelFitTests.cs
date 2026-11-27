@@ -56,24 +56,32 @@ public class SliceLabelFitTests
                 foreach (var profile in BuiltInData.CreateProfiles())
                     foreach (var (faceName, ids) in new[] { ("front", profile.PresetIds), ("back", profile.BackPresetIds ?? []) })
                     {
-                        donut.Items = Items(ids, store, loc);
+                        var items = Items(ids, store, loc);
+                        var ringsOnly = RingsOnly(items);
                         foreach (var (radius, scale, show, ring) in Settings)
                             foreach (var captions in new[] { true, false })
                             {
+                                // The face only moves with the ring size: it's checked once, at the default size.
+                                var atDefault = ring == (1, 1);
+                                donut.Items = atDefault ? items : ringsOnly;
                                 donut.ShowCaptions = captions;
                                 donut.OuterRadius = radius;
                                 donut.LabelScale = scale;
                                 donut.DefaultShow = show;
                                 (donut.GroupRingSize, donut.GroupRingSpread) = ring;
                                 var (face, rings) = donut.PlanLabels(bold, regular);
-                                var where = $"{language} {profile.Id} {faceName} r{radius} ×{scale} {show}{(captions ? "" : " off")} ring {ring.Size}/{ring.Spread}";
-                                Check(face, donut.Items, where, problems, show);
-                                var floor = Math.Min(SliceLabelLayout.NameSizeFor(scale, donut.DonutScale),
-                                    Math.Max(SliceLabelLayout.MinNameSize, SliceLabelLayout.MinStepNameSize * donut.DonutScale));
-                                if (face.Select(l => l.Text?.Size).OfType<double>().Any(size => size < floor - 1e-9))
-                                    problems.Add($"{where}: names under {floor:0.#} px");
+                                var faceWhere = $"{language} {profile.Id} {faceName} r{radius} ×{scale} {show}{(captions ? "" : " off")}";
+                                var where = $"{faceWhere} ring {ring.Size}/{ring.Spread}";
+                                if (atDefault)
+                                {
+                                    Check(face, items, faceWhere, problems, show);
+                                    var floor = Math.Min(SliceLabelLayout.NameSizeFor(scale, donut.DonutScale),
+                                        Math.Max(SliceLabelLayout.MinNameSize, SliceLabelLayout.MinStepNameSize * donut.DonutScale));
+                                    if (face.Select(l => l.Text?.Size).OfType<double>().Any(size => size < floor - 1e-9))
+                                        problems.Add($"{faceWhere}: names under {floor:0.#} px");
+                                }
                                 for (var g = 0; g < rings.Count; g++)
-                                    Check(rings[g], donut.Items[g].Children ?? [], $"{where} ring {donut.Items[g].Id}", problems, show);
+                                    Check(rings[g], items[g].Children ?? [], $"{where} ring {items[g].Id}", problems, show);
                             }
                     }
             }
@@ -186,6 +194,11 @@ public class SliceLabelFitTests
             };
         }).ToList();
     }
+
+    // The face's slices with only what their rings are laid out from: their order and their children. With nothing to
+    // show on the face, PlanLabels lays out the rings alone, as they are with the real slices.
+    internal static List<DonutItem> RingsOnly(IEnumerable<DonutItem> items) =>
+        [.. items.Select(i => new DonutItem { Id = i.Id, Label = "", Children = i.Children })];
 
     private static void Check(IReadOnlyList<SliceLabel> ring, IReadOnlyList<DonutItem> items, string where, List<string> problems,
         LabelShow show)

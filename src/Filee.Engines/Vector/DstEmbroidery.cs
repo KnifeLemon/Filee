@@ -3,19 +3,13 @@
 // stitch records. Each record moves the needle by up to ±121 in X and Y (0.1 mm units): byte 0 holds the ±1 and ±9
 // bits of both axes, byte 1 the ±3 and ±27 bits, byte 2 the ±81 bits and, in its top two bits, what the record is (a
 // stitch, a jump, a colour change or a sequin-mode switch; 0xF3 there ends the design). Threads have no colours in DST,
-// so the colour changes cycle through a fixed palette.
-
-using System.Globalization;
-using System.Text;
+// so the colour changes cycle through a fixed palette (EmbroiderySvg).
 
 namespace Filee.Engines.Vector;
 
 internal static class DstEmbroidery
 {
     private const int HeaderSize = 512;
-
-    private static readonly string[] Palette =
-        ["#1D3557", "#E63946", "#2A9D8F", "#F4A261", "#6A4C93", "#264653", "#E9C46A", "#8D99AE"];
 
     /// <summary>The stitched runs of each thread, in file order, as (x, y) in 0.1 mm with Y up.</summary>
     /// <exception cref="InvalidDataException">The file isn't a DST embroidery design (AutoCAD sheet sets use .dst too).</exception>
@@ -66,30 +60,8 @@ internal static class DstEmbroidery
         + ((b1 & p3) != 0 ? 3 : 0) - ((b1 & m3) != 0 ? 3 : 0) + ((b1 & p27) != 0 ? 27 : 0) - ((b1 & m27) != 0 ? 27 : 0)
         + ((b2 & p81) != 0 ? 81 : 0) - ((b2 & m81) != 0 ? 81 : 0);
 
-    /// <summary>The design as SVG at its real size (millimetres), each thread a colour of <see cref="Palette"/>.</summary>
-    public static string ToSvg(byte[] data)
-    {
-        var threads = Read(data);
-        var points = threads.SelectMany(t => t).SelectMany(r => r).ToList();
-        if (points.Count == 0)
-            throw new InvalidDataException("The DST file has no stitches.");
-        const int margin = 20; // 2 mm around the design
-        int minX = points.Min(p => p.X) - margin, maxX = points.Max(p => p.X) + margin;
-        int minY = points.Min(p => p.Y) - margin, maxY = points.Max(p => p.Y) + margin;
-        int width = maxX - minX, height = maxY - minY;
-        string Mm(int tenths) => (tenths / 10.0).ToString("0.#", CultureInfo.InvariantCulture);
-
-        var svg = new StringBuilder();
-        svg.Append($"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{Mm(width)}mm\" height=\"{Mm(height)}mm\" viewBox=\"0 0 {width} {height}\">");
-        svg.Append($"<rect width=\"{width}\" height=\"{height}\" fill=\"#FFFFFF\"/>");
-        for (var t = 0; t < threads.Count; t++)
-        {
-            // A thread about 0.4 mm thick; Y flipped, DST counts it upwards.
-            svg.Append($"<g fill=\"none\" stroke=\"{Palette[t % Palette.Length]}\" stroke-width=\"4\" stroke-linecap=\"round\" stroke-linejoin=\"round\">");
-            foreach (var run in threads[t])
-                svg.Append("<polyline points=\"").AppendJoin(' ', run.Select(p => $"{p.X - minX},{maxY - p.Y}")).Append("\"/>");
-            svg.Append("</g>");
-        }
-        return svg.Append("</svg>").ToString();
-    }
+    /// <summary>
+    /// The design as SVG at its real size (millimetres), the threads in <see cref="EmbroiderySvg"/>'s colours in turn.
+    /// </summary>
+    public static string ToSvg(byte[] data) => EmbroiderySvg.Write(Read(data), EmbroiderySvg.Fallback, "DST");
 }

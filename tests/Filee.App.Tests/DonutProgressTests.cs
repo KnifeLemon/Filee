@@ -151,7 +151,7 @@ public class DonutProgressTests
         Dispatcher.UIThread.RunJobs();
         AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         using var frame = window.CaptureRenderedFrame()!;
-        using var stream = File.Create(Path.Combine(TestServices.ScreenshotDirectory, name));
+        using var stream = File.Create(TestServices.ScreenshotPath(name));
         frame.Save(stream, new PngBitmapEncoderOptions());
     }
 }
