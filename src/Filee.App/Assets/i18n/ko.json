@@ -1375,7 +1375,7 @@
   "theme.corner_radius": "말랑함",
   "theme.donut_opacity": "원형 툴바 불투명도",
   "theme.progress_ring": "진행 링",
-  "theme.progress_ring.Arc": "호",
+  "theme.progress_ring.Arc": "원호",
   "theme.progress_ring.Ticks": "눈금",
   "theme.progress_ring_hint": "파일을 바꾸는 동안 나오는 링이에요. 눈금은 퍼센트 둘레에서 하나씩 켜져요.",
   "theme.system_font": "시스템 글꼴 사용",
