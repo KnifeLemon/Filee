@@ -301,7 +301,8 @@ internal static class SharedPresetRules
             ("slideSeconds", new NumberRule(0, 600)),
             ("crossfade", Flag),
             ("copyAudioWhenPossible", Flag),
-            ("removeMetadata", Flag))),
+            ("removeMetadata", Flag),
+            ("dvd", new LeftOutRule("the title and tracks of one disc, chosen when it was dropped")))),
         ("archive", Obj(
             ("isoFileSystem", Enum<IsoFileSystem>()),
             ("isoVolumeLabel", new StringRule(30)),
