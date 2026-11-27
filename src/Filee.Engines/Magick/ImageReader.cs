@@ -50,6 +50,8 @@ internal static class ImageReader
             return [FitsRendering.ToMagick(Fits.Read(path), preset.Image.FitsDebayer)];
         if (formatId == "hgt")
             return [Hgt.ToMagick(path, cancellationToken)];
+        if (formatId == "tiff" && GeoTiff.TryRead(path, cancellationToken) is { } geoTiff)
+            return [geoTiff];
 
         var images = new MagickImageCollection();
         var settings = Settings(formatId, preset);
