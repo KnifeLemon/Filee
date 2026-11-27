@@ -11,6 +11,7 @@
 using System.Buffers.Binary;
 using System.Text;
 using Filee.Core.Conversion;
+using Filee.Core.Presets;
 
 namespace Filee.Engines.Media;
 
@@ -40,8 +41,17 @@ internal static class DvdVideoIso
     /// <summary>A file of the disc's VIDEO_TS folder: its name and where its data lies in the image (bytes).</summary>
     internal sealed record DiscFile(string Name, long Start, long Length);
 
-    /// <summary>A title of the disc (1-based, as FFmpeg's <c>-title</c> counts them), its title set and length.</summary>
-    internal sealed record Title(int Number, int TitleSet, TimeSpan Length);
+    /// <summary>
+    /// A title of the disc (1-based, as FFmpeg's <c>-title</c> counts them), its title set, length and chapter count.
+    /// </summary>
+    internal sealed record Title(int Number, int TitleSet, TimeSpan Length, int Chapters = 0);
+
+    /// <summary>An audio or subtitle track of a title, as the "Choose the DVD title" window lists it.</summary>
+    /// <param name="Id">The audio track's number among the title's audio tracks, or the subtitle track's stream index.</param>
+    internal sealed record Track(int Id, string? Language, string? Codec, int Channels = 0);
+
+    /// <summary>The audio and subtitle tracks of a title, in the order FFmpeg reads them.</summary>
+    internal sealed record Tracks(IReadOnlyList<Track> Audio, IReadOnlyList<Track> Subtitles);
 
     /// <summary>
     /// The input to give FFmpeg for the DVD-Video image at <paramref name="path"/> (see <see cref="MediaInput"/>): its
@@ -49,7 +59,9 @@ internal static class DvdVideoIso
     /// CSS-scrambled; a damaged image throws <see cref="InvalidDataException"/>. When the disc holds other titles of
     /// some length (bonus features, other cuts), <paramref name="notice"/> hears that they are left out.
     /// </summary>
-    public static string InputFor(string path, Action<string>? notice = null)
+    /// <param name="title">The title chosen in the "Choose the DVD title" window; null for the longest. Nothing is said
+    /// about the titles left out then: the user saw them.</param>
+    public static string InputFor(string path, Action<string>? notice = null, int? title = null)
     {
         Title main;
         bool others;
@@ -59,9 +71,10 @@ internal static class DvdVideoIso
             var titles = Titles(file, files);
             if (titles.Count == 0)
                 throw new ConversionRefusedException("error.iso_no_dvd_video");
-            // The longest; on a tie the first, as a player's "play" would.
-            main = titles.OrderByDescending(t => t.Length).ThenBy(t => t.Number).First();
-            others = titles.Any(t => t != main && t.Length >= NoticeableTitle);
+            main = title is { } chosen
+                ? titles.FirstOrDefault(t => t.Number == chosen) ?? throw new InvalidDataException($"This disc has no title {chosen}.")
+                : Longest(titles);
+            others = title is null && titles.Any(t => t != main && t.Length >= NoticeableTitle);
             var firstVob = files.FirstOrDefault(f => f.Name.Equals($"VTS_{main.TitleSet:00}_1.VOB", StringComparison.OrdinalIgnoreCase));
             if (firstVob is not null && IsScrambled(file, firstVob))
                 throw new ConversionRefusedException("error.dvd_scrambled");
@@ -69,6 +82,50 @@ internal static class DvdVideoIso
         if (others)
             notice?.Invoke("notice.dvd_titles_left_out");
         return MediaInput.DvdVideo(path, main.Number);
+    }
+
+    /// <summary>The title converted when none is chosen: the longest, on a tie the first, as a player's "play" would.</summary>
+    internal static Title Longest(IReadOnlyList<Title> titles) => titles.OrderByDescending(t => t.Length).ThenBy(t => t.Number).First();
+
+    /// <summary>
+    /// The titles of the DVD-Video image at <paramref name="path"/>, for the "Choose the DVD title" window: none for an
+    /// image without a DVD-Video title or one that can't be read.
+    /// </summary>
+    public static IReadOnlyList<Title> TitlesOf(string path)
+    {
+        try
+        {
+            using var file = File.OpenRead(path);
+            return Titles(file, Read(file));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>The audio and subtitle tracks of title <paramref name="title"/>, as ffprobe reads them with the dvdvideo demuxer.</summary>
+    public static async Task<Tracks> TracksAsync(string path, int title, CancellationToken cancellationToken)
+    {
+        var (_, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
+        var info = await MediaInfo.ProbeAsync(ffprobe, MediaInput.DvdVideo(path, title), cancellationToken).ConfigureAwait(false);
+        return new Tracks(
+            [.. info.AudioTracks.Select(a => new Track(a.Ordinal, a.Language, a.Codec, a.Channels))],
+            [.. info.Subtitles.Select(s => new Track(s.Index, s.Language, s.Codec))]);
+    }
+
+    /// <summary><paramref name="info"/> of a DVD title with only the audio and subtitle tracks of <paramref name="choice"/>.</summary>
+    internal static MediaInfo Keep(MediaInfo info, DvdChoice choice)
+    {
+        var audio = info.AudioTracks.Where(a => choice.AudioTracks.Contains(a.Ordinal)).ToList();
+        var subtitles = info.Subtitles.Where(s => choice.SubtitleTracks.Contains(s.Index)).ToList();
+        return info with
+        {
+            Audio = audio.FirstOrDefault(),
+            AudioStreams = audio.Count > 1 ? audio : null,
+            CopyAudio = audio.FirstOrDefault(),
+            SubtitleStreams = subtitles.Count > 0 ? subtitles : null,
+        };
     }
 
     /// <summary>
@@ -117,13 +174,13 @@ internal static class DvdVideoIso
         for (var i = 0; i < count && 8 + (i + 1) * 12 <= table.Length; i++)
         {
             var entry = table.Slice(8 + i * 12, 12);
-            int set = entry[6], titleInSet = entry[7];
+            int set = entry[6], titleInSet = entry[7], chapters = BinaryPrimitives.ReadUInt16BigEndian(entry[2..]);
             if (set is < 1 or > 99 || titleInSet < 1)
                 continue;
             if (!titleSets.TryGetValue(set, out var vts))
                 titleSets[set] = vts = Load(file, files, $"VTS_{set:00}_0.IFO");
             if (vts is not null && LengthOf(vts, titleInSet) is { } length)
-                titles.Add(new Title(i + 1, set, length));
+                titles.Add(new Title(i + 1, set, length, chapters));
         }
         return titles;
     }

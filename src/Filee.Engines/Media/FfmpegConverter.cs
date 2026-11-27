@@ -144,8 +144,11 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 progress, cancellationToken);
         if (step.To == "heic")
             return await HeicWriter.ConvertAsync(ffmpeg, step, progress, cancellationToken);
-        var input = MediaInput.For(step.InputPath, step.From, step.WorkDirectory, step.Notice);
+        var input = MediaInput.For(step.InputPath, step.From, step.WorkDirectory, step.Notice, step.Preset.Media.Dvd?.Title);
         var info = await MediaInfo.ProbeAsync(ffprobe, input, cancellationToken);
+        // The tracks chosen in the "Choose the DVD title" window; without a choice every track is kept.
+        if (step.Preset.Media.Dvd is { } dvd && MediaInput.IsDvdVideo(input))
+            info = DvdVideoIso.Keep(info, dvd);
         progress?.Report(0.02);
 
         if (step.FrameSequence)

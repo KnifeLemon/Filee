@@ -2270,7 +2270,11 @@ a warning or a trailer, so `Media/DvdVideoIso.cs` picks the longest title from t
 of `VIDEO_TS.IFO`, the program chain of each title in `VTS_nn_0.IFO`), read from the image's ISO 9660 file system
 (every DVD-Video disc has one beside its UDF one). `MediaInput.For` gives it as a `dvdvideo:<title>:<path>` marker that
 `MediaInput.Arguments` turns into `-f dvdvideo -title N -i <path>` wherever FFmpeg and ffprobe run. Other titles of a
-minute or more are left out and the user is told (`notice.dvd_titles_left_out`). Refused: an image without
+minute or more are left out and the user is told (`notice.dvd_titles_left_out`). Dropped on a video or audio slot in
+the app, a disc first opens "Choose the DVD title" (`AskDvdWindow`, `AskedDvd`): the titles from the IFO files (a
+number typed picks one), the longest chosen, and the title's tracks read by ffprobe, all ticked (subtitles only for
+MKV, the one target that holds DVD subtitles). The choice travels with the preset copy as `MediaOptions.Dvd`: the
+title goes to `-title`, `DvdVideoIso.Keep` drops the unticked tracks from what is mapped. Refused: an image without
 `VIDEO_TS` (`error.iso_no_dvd_video`, it still extracts), a disc whose video packs carry the PES scrambling bits, a
 straight copy of a CSS-protected disc (`error.dvd_scrambled`: Filee doesn't break copy protection, even where the
 FFmpeg build could), and an FFmpeg without the demuxer (`error.dvd_needs_dvdvideo`): gyan.dev's full build (Windows)

@@ -28,14 +28,16 @@ internal static class MediaInput
     /// recording (<see cref="Filee.Core.Conversion.ConversionRefusedException"/>), and throws
     /// <see cref="InvalidDataException"/> for a damaged one.
     /// </summary>
-    public static string For(string path, string? format = null, string? workDirectory = null, Action<string>? notice = null)
+    /// <param name="dvdTitle">For a DVD-Video disc image, the title chosen (<see cref="Filee.Core.Presets.DvdChoice"/>); null for the longest.</param>
+    public static string For(string path, string? format = null, string? workDirectory = null, Action<string>? notice = null,
+        int? dvdTitle = null)
     {
         var full = Path.GetFullPath(path);
         format ??= FormatRegistry.Detect(full)?.Id;
         if (format == "nov")
             return NovExport.InputFor(full, notice);
         if (format == DvdVideoIso.Format)
-            return DvdVideoIso.InputFor(full, notice);
+            return DvdVideoIso.InputFor(full, notice, dvdTitle);
         // Only a video can be a Hikvision recording: sound files and pictures aren't looked into.
         if (format is not null && FormatRegistry.FindById(format) is { Category: not FormatCategory.Video })
             return full;

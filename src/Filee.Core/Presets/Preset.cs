@@ -1725,6 +1725,14 @@ public sealed class MediaOptions
     /// </summary>
     public bool RemoveMetadata { get; set; }
 
+    /// <summary>
+    /// A DVD-Video disc image's title and tracks, chosen in the "Choose the DVD title" window for one drop; null converts
+    /// the longest title with every audio and subtitle track. Set on a copy for that drop only, never on a saved preset; a
+    /// retry from history converts the same title and tracks.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DvdChoice? Dvd { get; set; }
+
     /// <summary><see cref="SlideSeconds"/> within its limits (a hand-edited preset file may hold anything).</summary>
     [JsonIgnore]
     public double SlideDuration => double.IsFinite(SlideSeconds) ? Math.Clamp(SlideSeconds, MinSlideSeconds, MaxSlideSeconds) : 3;
@@ -1740,6 +1748,12 @@ public sealed class MediaOptions
         return copy;
     }
 }
+
+/// <summary>The title of a DVD-Video disc image to convert and the tracks it keeps (<see cref="MediaOptions.Dvd"/>).</summary>
+/// <param name="Title">The title, numbered from 1 as the disc's title table (and FFmpeg's <c>-title</c>) counts them.</param>
+/// <param name="AudioTracks">The audio tracks kept, by their number among the title's audio tracks (from 0).</param>
+/// <param name="SubtitleTracks">The subtitle tracks kept, by their stream index in the title.</param>
+public sealed record DvdChoice(int Title, IReadOnlyList<int> AudioTracks, IReadOnlyList<int> SubtitleTracks);
 
 /// <summary>The kind of moving photo a video becomes (<see cref="MediaOptions.LivePhoto"/>).</summary>
 public enum LivePhotoKind
