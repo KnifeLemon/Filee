@@ -231,7 +231,8 @@ public static class FormatRegistry
         new("prc", "PRC", FormatCategory.Ebook, ["prc"], Writable: false),
         new("fb2", "FB2", FormatCategory.Ebook, ["fb2"]),
         new("cbz", "CBZ", FormatCategory.Ebook, ["cbz"]),
-        new("cbr", "CBR", FormatCategory.Ebook, ["cbr"], Writable: false),
+        // Filee never writes RAR: a CBR comes only from a RAR of pictures, copied as it is under the comic name (#1482).
+        new("cbr", "CBR", FormatCategory.Ebook, ["cbr"]),
         new("cb7", "CB7", FormatCategory.Ebook, ["cb7"], Writable: false),
         new("cbt", "CBT", FormatCategory.Ebook, ["cbt"], Writable: false),
         new("cbc", "CBC", FormatCategory.Ebook, ["cbc"], Writable: false),

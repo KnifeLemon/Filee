@@ -70,6 +70,8 @@ ko: 생물정보학 서열 정렬 형식(NEXUS, FASTA, PHYLIP)을 서로 변환�
 en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
 ko: 16비트 정수·부동소수점 GeoTIFF 래스터를 PNG, JPG 같은 그림으로 변환하면 값 범위에 맞춰 선명하게 나와요
 en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched across their data range
+ko: 그림이 든 ZIP은 CBZ로, RAR은 CBR로 다시 압축하지 않고 이름만 바꿔 저장할 수 있어요
+en: A ZIP of pictures becomes a CBZ and a RAR a CBR as it is, without packing it again
 -->
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
@@ -312,6 +314,13 @@ en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched acro
   horizontal or floating-point predictors) are now read directly and stretched linearly per band to grayscale (1–2
   bands) or RGB (3+ bands), with `GDAL_NODATA` and NaN cells drawn black instead of coming out nearly black or clipped
   white. Ordinary 8-bit TIFFs and non-GeoTIFFs stay on ImageMagick unchanged.
+
+- **A ZIP of pictures becomes a CBZ, a RAR a CBR, as it is** (#1482). A comic in a ZIP or RAR is the same file as a CBZ
+  or CBR under another name, so the **CBZ** preset now takes a ZIP and the new **CBR** preset (in the palette) takes a
+  RAR, and both copy the file byte for byte with the comic extension: nothing is unpacked or packed again, and the
+  original stays. An archive with no pictures in it, or one protected with a password, is refused with a reason. Other
+  files next to the pictures (`ComicInfo.xml`, a readme) are kept. Filee still doesn't write RAR: a CBR comes only from
+  your own RAR. CB7 and CBT become CBZ as before.
 
 ## 2.5.0
 

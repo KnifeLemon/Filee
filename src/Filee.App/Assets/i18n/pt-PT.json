@@ -193,6 +193,8 @@
   "error.nov_no_video": "Esta exportação não contém nenhuma gravação de câmara",
   "error.exe_unreadable": "Não é um programa ou biblioteca do Windows que o Filee consiga ler, ou o ficheiro está danificado",
   "error.exe_no_icon": "Este ficheiro não tem ícone próprio (o Windows mostra-lhe um ícone predefinido)",
+  "error.comic_no_pictures": "Este ficheiro comprimido não contém imagens, por isso não pode tornar-se uma banda desenhada (CBZ ou CBR)",
+  "error.comic_password": "Este ficheiro comprimido está protegido por palavra-passe, por isso os leitores de banda desenhada não o conseguem abrir",
   "notice.pdf_not_smaller": "Não foi possível reduzir o tamanho, pelo que o ficheiro foi copiado sem alterações",
   "notice.nov_recordings_left_out": "Esta exportação contém várias gravações (outras câmaras ou partes separadas por interrupções): só a maior foi convertida",
   "notice.under_min_size": "Guardado, mas mais pequeno do que o tamanho mínimo do ficheiro",

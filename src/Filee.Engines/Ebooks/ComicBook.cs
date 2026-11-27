@@ -1,7 +1,8 @@
 // Comic book archives: CBZ (ZIP), CBR (RAR), CB7 (7-Zip), CBT (TAR) and CBC (a ZIP of CBZ files) are pictures in
 // an archive, read with SharpCompress (MIT). Pages are sorted by name the way people number them ("page2" before
 // "page10"). Comics become PDF (one page per picture, sized like the picture, JPEGs embedded as they are), EPUB
-// (fixed layout) or CBZ; PDF becomes CBZ by rendering its pages with PDFium.
+// (fixed layout) or CBZ; PDF becomes CBZ by rendering its pages with PDFium. A ZIP or RAR with pictures in it is
+// already a CBZ or CBR: it is copied as it is, only its name changes (#1482).
 
 using System.IO.Compression;
 using Filee.Core.Conversion;
@@ -47,20 +48,56 @@ internal static class ComicBook
         return pages;
     }
 
-    /// <summary>Extracts the matching entries (skipping macOS metadata) and returns them sorted naturally by path.</summary>
-    private static List<string> ExtractArchive(string path, string folder, Func<string, bool> wanted, CancellationToken cancellationToken)
+    /// <summary>
+    /// Copies a ZIP or RAR byte for byte to a CBZ or CBR (<see cref="ConversionStep.To"/>). Its entries are only listed:
+    /// an archive with no pictures is no comic, and comic readers can't open a password-protected one. Other files next
+    /// to the pictures (ComicInfo.xml, a readme) are copied with them, as readers skip what isn't a page.
+    /// </summary>
+    public static IReadOnlyList<string> CopyAsComic(ConversionStep step, IProgress<double>? progress)
     {
-        var files = new List<(string Key, string File)>();
-        IArchive archive;
+        using (var archive = Open(step.InputPath))
+        {
+            var entries = archive.Entries.Where(e => !e.IsDirectory).ToList();
+            if (entries.Any(e => e.IsEncrypted))
+                throw new ConversionRefusedException("error.comic_password");
+            if (!entries.Any(e => IsPage(e.Key)))
+                throw new ConversionRefusedException("error.comic_no_pictures");
+        }
+        var output = step.Output.Allocate(step.To);
+        if (output is null)
+            return [];
+        File.Copy(step.InputPath, output, overwrite: true);
+        progress?.Report(1);
+        return [output];
+    }
+
+    /// <summary>Whether an archive entry is a picture page, not a folder's macOS metadata or a hidden file.</summary>
+    private static bool IsPage(string? key)
+    {
+        var name = Path.GetFileName((key ?? "").Replace('\\', '/'));
+        return !Skipped(key, name) && PictureExtensions.Contains(Path.GetExtension(name).ToLowerInvariant());
+    }
+
+    private static bool Skipped(string? key, string name) =>
+        (key ?? "").Contains("__MACOSX", StringComparison.OrdinalIgnoreCase) || name.StartsWith('.');
+
+    private static IArchive Open(string path)
+    {
         try
         {
-            archive = ArchiveFactory.Open(path, null);
+            return ArchiveFactory.Open(path, null);
         }
         catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException or ArgumentException or NotSupportedException or SharpCompress.Common.ArchiveException)
         {
             throw new InvalidDataException("The comic archive cannot be opened (damaged, or not the format its extension says).", ex);
         }
-        using (archive)
+    }
+
+    /// <summary>Extracts the matching entries (skipping macOS metadata) and returns them sorted naturally by path.</summary>
+    private static List<string> ExtractArchive(string path, string folder, Func<string, bool> wanted, CancellationToken cancellationToken)
+    {
+        var files = new List<(string Key, string File)>();
+        using (var archive = Open(path))
         {
             if (archive.Entries.Any(e => e.IsEncrypted))
                 throw new InvalidOperationException("The comic archive is password-protected.");
@@ -97,7 +134,7 @@ internal static class ComicBook
             cancellationToken.ThrowIfCancellationRequested();
             var key = entry.Key ?? "";
             var name = Path.GetFileName(key.Replace('\\', '/'));
-            if (entry.IsDirectory || key.Contains("__MACOSX", StringComparison.OrdinalIgnoreCase) || name.StartsWith('.') || !wanted(name))
+            if (entry.IsDirectory || Skipped(key, name) || !wanted(name))
                 return null;
             if (entry.IsEncrypted)
                 throw new InvalidOperationException("The comic archive is password-protected.");

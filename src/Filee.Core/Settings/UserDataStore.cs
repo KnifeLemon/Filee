@@ -1237,6 +1237,10 @@ internal static class SettingsMigrations
                     changed |= AddLikeNewLibrary(presets, id);
             changed |= LearnExtensions(profiles, out _, ["nex", "nxs", "nexus", "fasta", "fa", "fas", "fna", "faa", "phy", "phylip"]);
         }
+        // v106: "CBR" (a RAR of pictures copied as a comic, #1482) joins the palette after "CBZ", not a donut. (Schema 106
+        //       may be renumbered: 105 is taken by an open change.)
+        if (from < 106 && presets.All(p => p.Id != "to-cbr"))
+            changed |= AddLikeNewLibrary(presets, "to-cbr");
         return changed;
     }
 

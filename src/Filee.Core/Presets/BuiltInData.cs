@@ -658,6 +658,8 @@ public static class BuiltInData
         new() { Id = "to-kepub", Name = "KEPUB", TargetFormat = "kepub" },
         new() { Id = "to-fb2", Name = "FB2", TargetFormat = "fb2" },
         new() { Id = "to-cbz", Name = "CBZ", TargetFormat = "cbz" },
+        // A RAR of pictures copied as a CBR (#1482, added to the library in settings schema 106); in the palette only.
+        new() { Id = "to-cbr", Name = "CBR", TargetFormat = "cbr" },
 
         // Video
         new() { Id = "to-mp4", Name = "MP4", TargetFormat = "mp4" },

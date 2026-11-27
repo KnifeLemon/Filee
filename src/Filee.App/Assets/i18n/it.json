@@ -186,6 +186,8 @@
 "error.nov_no_video": "Questa esportazione non contiene registrazioni di telecamere",
 "error.exe_unreadable": "Non è un programma o una libreria di Windows che Filee può leggere, oppure il file è danneggiato",
 "error.exe_no_icon": "Questo file non ha un'icona propria (Windows gli mostra un'icona standard)",
+"error.comic_no_pictures": "Questo archivio non contiene immagini, quindi non può diventare un fumetto (CBZ o CBR)",
+"error.comic_password": "Questo archivio è protetto da password, quindi i lettori di fumetti non possono aprirlo",
 "notice.pdf_not_smaller": "Impossibile ridurlo, quindi è stato copiato così com'è",
 "notice.nov_recordings_left_out": "Questa esportazione contiene più registrazioni (altre telecamere o parti separate da interruzioni): è stata convertita solo la più grande",
 "notice.under_min_size": "Salvato, ma più piccolo della dimensione minima del file",

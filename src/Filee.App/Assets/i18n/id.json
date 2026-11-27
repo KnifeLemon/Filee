@@ -187,6 +187,8 @@
   "error.nov_no_video": "Ekspor ini tidak berisi rekaman kamera",
   "error.exe_unreadable": "Ini bukan program atau pustaka Windows yang dapat dibaca Filee, atau file rusak",
   "error.exe_no_icon": "File ini tidak punya ikon sendiri (Windows menampilkan ikon standar untuknya)",
+  "error.comic_no_pictures": "Arsip ini tidak berisi gambar, jadi tidak bisa menjadi komik (CBZ atau CBR)",
+  "error.comic_password": "Arsip ini dilindungi kata sandi, jadi pembaca komik tidak bisa membukanya",
   "notice.pdf_not_smaller": "Ukuran tidak dapat diperkecil lagi, sehingga disalin apa adanya",
   "notice.nov_recordings_left_out": "Ekspor ini berisi beberapa rekaman (kamera lain atau potongan yang terputus): hanya yang terbesar yang dikonversi",
   "notice.under_min_size": "Disimpan, tetapi lebih kecil dari ukuran file minimum",
