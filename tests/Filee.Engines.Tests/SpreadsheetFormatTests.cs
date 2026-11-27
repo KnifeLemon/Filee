@@ -507,6 +507,56 @@ public class SpreadsheetFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
         Assert.StartsWith("이름,금액,메모\r\n김민지,\"1,200\",", (await File.ReadAllTextAsync(csv, TestContext.Current.CancellationToken)).TrimStart('﻿'));
     }
 
+    [Theory]
+    [InlineData("12", true)]
+    [InlineData("-3.5", true)]
+    [InlineData("0", true)]
+    [InlineData("-0", true)]
+    [InlineData("0.5", true)]
+    [InlineData("-0.5", true)]
+    [InlineData("1e3", true)]
+    [InlineData("+5", true)]
+    [InlineData("NaN", false)]
+    [InlineData("Nan", false)]
+    [InlineData("Infinity", false)]
+    [InlineData("-Infinity", false)]
+    [InlineData("+Infinity", false)]
+    [InlineData("1e309", false)]
+    [InlineData("007", false)]
+    [InlineData("-007", false)]
+    [InlineData("+007", false)]
+    [InlineData(" 007", false)]
+    [InlineData(" 42", false)]
+    [InlineData("42 ", false)]
+    [InlineData("1,234", false)]
+    public void Csv_is_number_rejects_non_finite_whitespace_padded_and_leading_zero_tokens(string value, bool expected)
+    {
+        Assert.Equal(expected, CsvFormat.IsNumber(value));
+    }
+
+    [Fact]
+    public async Task Csv_to_xlsx_preserves_nan_infinity_plus_zero_and_padded_tokens_as_text()
+    {
+        var dir = fx.NewFolder();
+        var csv = Path.Combine(dir, "tokens.csv");
+        await File.WriteAllTextAsync(csv,
+            "Tag,Amount\r\nNan,12\r\nInfinity,-3.5\r\n+007,1e3\r\n\" 007\",0.5\r\n",
+            TestContext.Current.CancellationToken);
+
+        var xlsx = Assert.Single(await ConvertAsync(csv, "xlsx"));
+        var sheet = Assert.Single(XlsxReader.Read(xlsx).Sheets);
+
+        Assert.Equal(("Nan", false), (sheet.Get(1, 0)!.Text, sheet.Get(1, 0)!.IsNumber));
+        Assert.Equal(("Infinity", false), (sheet.Get(2, 0)!.Text, sheet.Get(2, 0)!.IsNumber));
+        Assert.Equal(("+007", false), (sheet.Get(3, 0)!.Text, sheet.Get(3, 0)!.IsNumber));
+        Assert.Equal((" 007", false), (sheet.Get(4, 0)!.Text, sheet.Get(4, 0)!.IsNumber));
+
+        Assert.Equal((true, 12.0), (sheet.Get(1, 1)!.IsNumber, sheet.Get(1, 1)!.Value));
+        Assert.Equal((true, -3.5), (sheet.Get(2, 1)!.IsNumber, sheet.Get(2, 1)!.Value));
+        Assert.Equal((true, 1000.0), (sheet.Get(3, 1)!.IsNumber, sheet.Get(3, 1)!.Value));
+        Assert.Equal((true, 0.5), (sheet.Get(4, 1)!.IsNumber, sheet.Get(4, 1)!.Value));
+    }
+
     [Fact]
     public async Task Workbook_to_tsv_writes_one_file_per_sheet()
     {

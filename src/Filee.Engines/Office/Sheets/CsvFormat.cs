@@ -33,8 +33,8 @@ internal static class CsvFormat
                 var value = rows[r][c];
                 if (value.Length == 0)
                     continue;
-                sheet.Set(r, c, IsNumber(value)
-                    ? new SheetCell(value, CellStyle.Default, IsNumber: true) { Value = double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture) }
+                sheet.Set(r, c, TryParseNumber(value, out var number)
+                    ? new SheetCell(value, CellStyle.Default, IsNumber: true) { Value = number }
                     : new SheetCell(value, CellStyle.Default));
                 widths[c] = Math.Max(widths.GetValueOrDefault(c), DisplayWidth(value));
             }
@@ -183,12 +183,20 @@ internal static class CsvFormat
             ? "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\""
             : value;
 
-    /// <summary>A plain number Excel would store as a number: "12", "-3.5", "1e3" (not "007" or "1,234").</summary>
-    internal static bool IsNumber(string value) =>
-        value.Length is > 0 and < 20
-        && !(value.Length > 1 && value[0] == '0' && value[1] != '.')
-        && !(value.Length > 2 && value[0] == '-' && value[1] == '0' && value[2] != '.')
-        && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
+    /// <summary>A plain number Excel would store as a number: "12", "-3.5", "1e3" (not "007", "+007", "NaN" or "1,234").</summary>
+    internal static bool IsNumber(string value) => TryParseNumber(value, out _);
+
+    private static bool TryParseNumber(string value, out double parsed)
+    {
+        parsed = 0;
+        return value.Length is > 0 and < 20
+            && !char.IsWhiteSpace(value[0])
+            && !char.IsWhiteSpace(value[^1])
+            && !(value.Length > 1 && value[0] == '0' && value[1] != '.')
+            && !(value.Length > 2 && value[0] is '-' or '+' && value[1] == '0' && value[2] != '.')
+            && double.TryParse(value, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent, CultureInfo.InvariantCulture, out parsed)
+            && double.IsFinite(parsed);
+    }
 
     /// <summary>Width in "characters" as Excel counts them: wide (CJK) glyphs count twice.</summary>
     internal static double DisplayWidth(string text)

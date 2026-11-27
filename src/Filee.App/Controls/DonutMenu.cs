@@ -109,6 +109,8 @@ public sealed partial class DonutMenu : Control
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(ShowCaptions), true);
     public static readonly StyledProperty<bool> TickProgressProperty =
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(TickProgress));
+    public static readonly StyledProperty<string?> ProgressCaptionProperty =
+        AvaloniaProperty.Register<DonutMenu, string?>(nameof(ProgressCaption));
     public static readonly StyledProperty<double> GroupRingSizeProperty =
         AvaloniaProperty.Register<DonutMenu, double>(nameof(GroupRingSize), 1);
     public static readonly StyledProperty<double> GroupRingSpreadProperty =
@@ -184,7 +186,7 @@ public sealed partial class DonutMenu : Control
             IsEditModeProperty, SliceBrushProperty, SliceBorderBrushProperty, CenterBrushProperty, AccentBrushProperty,
             OnAccentBrushProperty, ForegroundProperty, SecondaryForegroundProperty, SuccessBrushProperty, CornerRadiusProperty,
             CenterHintProperty, CenterHintWheelProperty, ShowCaptionsProperty, LabelScaleProperty, DefaultShowProperty,
-            GroupRingSizeProperty, GroupRingSpreadProperty, TickProgressProperty);
+            GroupRingSizeProperty, GroupRingSpreadProperty, TickProgressProperty, ProgressCaptionProperty);
         ItemsProperty.Changed.AddClassHandler<DonutMenu>((d, _) => d.OnItemsChanged());
         HeldGroupIdProperty.Changed.AddClassHandler<DonutMenu>((d, _) => d.OnHeldGroupChanged());
     }
@@ -236,6 +238,12 @@ public sealed partial class DonutMenu : Control
     /// drawing changes: the percentage, the ✓ / ! badge, the cancel button and the timing are the same.
     /// </summary>
     public bool TickProgress { get => GetValue(TickProgressProperty); set => SetValue(TickProgressProperty, value); }
+
+    /// <summary>
+    /// A small label under the percentage in the middle of the tick dial, "MP4 → WEBP": the source format and the preset
+    /// that converts it. Only the tick dial shows it; null or empty leaves the percentage alone, as before.
+    /// </summary>
+    public string? ProgressCaption { get => GetValue(ProgressCaptionProperty); set => SetValue(ProgressCaptionProperty, value); }
 
     /// <summary>
     /// How large the slices' names and icons are (the donut's Label scale, 0.8 to 1.6); they also follow the donut's

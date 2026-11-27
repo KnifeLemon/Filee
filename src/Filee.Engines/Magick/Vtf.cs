@@ -353,7 +353,7 @@ internal static class Vtf
     }
 
     /// <summary>Decodes DXT1, DXT3 and DXT5 (BC1 to BC3) blocks of 4 × 4 pixels.</summary>
-    private static void DecodeBlocks(ReadOnlySpan<byte> source, Format format, int width, int height, byte[] rgba)
+    internal static void DecodeBlocks(ReadOnlySpan<byte> source, Format format, int width, int height, byte[] rgba)
     {
         var blockSize = format is Format.Dxt3 or Format.Dxt5 ? 16 : 8;
         Span<byte> colours = stackalloc byte[16];

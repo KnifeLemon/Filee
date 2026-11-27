@@ -1,5 +1,5 @@
 // Colour-mapped raster preview presets (#155): RasterColours option serialization/cloning, Maps (geo) preset-level
-// field gating via FormatFields.IsShown(Preset, ...), built-in placement, and schema 105 migration.
+// field gating via FormatFields.IsShown(Preset, ...), built-in placement, and schema 106 migration.
 
 using System.Text.Json;
 using Filee.Core.Formats;
@@ -38,19 +38,19 @@ public class RasterColoursPresetTests
     }
 
     [Fact]
-    public void Migration_from_104_adds_both_presets_once_without_changing_any_donut()
+    public void Migration_from_105_adds_both_presets_once_without_changing_any_donut()
     {
         var presets = BuiltInData.CreatePresets();
         presets.RemoveAll(p => p.Id is "geo-colours-terrain" or "geo-colours-viridis");
         var profiles = BuiltInData.CreateProfiles();
         var beforeSlots = Slots(profiles);
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(104, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(105, presets, profiles));
         Assert.Equal(BuiltInData.CreatePresets().Select(p => p.Id), presets.Select(p => p.Id));
         Assert.Equal(beforeSlots, Slots(profiles));
 
         // Idempotent on a second run.
-        Assert.False(SettingsMigrations.ApplyToLibrary(104, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(105, presets, profiles));
     }
 
     [Fact]

@@ -759,6 +759,8 @@
   "triggers.clear": "Borrar",
   "triggers.clipboard": "Convertir lo que hay en el portapapeles",
   "triggers.clipboard_note": "Primero los archivos copiados; si no, una imagen copiada (una captura hecha con Control pulsado). El resultado la sustituye en el portapapeles, listo para pegar; el de una imagen se guarda donde van los archivos del navegador. Sin ninguno de los dos, no ocurre nada.",
+  "triggers.late_modifier": "Abrir también si las teclas se pulsan durante el arrastre",
+  "triggers.late_modifier_note": "Desactivado: las teclas solo cuentan si ya están pulsadas antes de pulsar el botón del ratón. Las que se pulsen durante el arrastre quedan para el gestor de archivos, por ejemplo para copiar en lugar de mover.",
   "triggers.recording_key": "Pulsa una tecla…",
   "triggers.flip_title": "Dar la vuelta al menú circular",
   "triggers.flip_description": "Con el menú circular abierto, esta tecla o un giro de la rueda del ratón muestra su reverso. El reverso de cada menú se elige en Menú circular.",

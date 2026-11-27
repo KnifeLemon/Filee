@@ -20,6 +20,7 @@ public sealed class ProgressRingPreview : TemplatedControl
     // The plate (RingRadius + stroke + 2) and its soft shadow around it.
     private const double Plate = DonutMenu.RingRadius + 8;
     private const double Side = (Plate + 10) * 2;
+    private const string SampleCaption = "MP4 → WEBP";
 
     static ProgressRingPreview()
     {
@@ -61,6 +62,13 @@ public sealed class ProgressRingPreview : TemplatedControl
         }
 
         var bold = new Typeface(FontFamily, FontStyle.Normal, FontWeight.Bold);
+        if (Tick)
+        {
+            // The dial shows what it will show in the donut: the source format and the preset (a sample here).
+            DonutMenu.DrawPercentWithCaption(context, center, bold, Math.Round(value * 100), SampleCaption, Foreground, SecondaryForeground);
+            return;
+        }
+
         var percent = DonutMenu.MakeText($"{Math.Round(value * 100):0}%", bold, 15, Foreground, DonutMenu.RingRadius * 1.6);
         DonutMenu.DrawCentered(context, percent, center.X, center.Y - percent.Height / 2);
     }

@@ -9,6 +9,7 @@
 // The ring stays visible for at least MinRingSeconds so very fast conversions still show their ✓ instead of
 // flashing. With Motion.Enabled == false everything snaps; only the hold time remains.
 
+using System.Globalization;
 using Avalonia;
 using Avalonia.Input;
 using Avalonia.Media;
@@ -355,8 +356,15 @@ public sealed partial class DonutMenu
         {
             using (context.PushOpacity(1 - Math.Clamp(badge, 0, 1)))
             {
-                var percent = MakeText($"{Math.Round(_shownProgress * 100):0}%", bold, 15, Foreground, RingRadius * 1.6);
-                DrawCentered(context, percent, center.X, center.Y - percent.Height / 2);
+                if (TickProgress && !string.IsNullOrEmpty(ProgressCaption))
+                {
+                    DrawPercentWithCaption(context, center, bold, Math.Round(_shownProgress * 100), ProgressCaption!, Foreground, SecondaryForeground);
+                }
+                else
+                {
+                    var percent = MakeText($"{Math.Round(_shownProgress * 100):0}%", bold, 15, Foreground, RingRadius * 1.6);
+                    DrawCentered(context, percent, center.X, center.Y - percent.Height / 2);
+                }
             }
         }
 
@@ -400,6 +408,33 @@ public sealed partial class DonutMenu
         byte Channel(byte x, byte y) => (byte)Math.Round(x + (y - x) * t);
         return new ImmutableSolidColorBrush(Color.FromRgb(Channel(a.Color.R, b.Color.R), Channel(a.Color.G, b.Color.G), Channel(a.Color.B, b.Color.B)));
     }
+
+    /// <summary>
+    /// The middle of the tick dial with a label: the number large with a small %, and the label (source format → preset)
+    /// under it. The label is trimmed with … to fit inside the ticks. All of it is drawn left to right, like the ticks.
+    /// </summary>
+    internal static void DrawPercentWithCaption(DrawingContext context, Point center, Typeface bold, double percent, string captionText, IBrush? foreground, IBrush? secondary)
+    {
+        var number = FlatText($"{percent:0}", bold, 17, foreground, 40);
+        var sign = FlatText("%", bold, 9, secondary, 14);
+        var caption = FlatText(captionText, bold, 7, secondary, RingRadius * 1.7);
+
+        const double Gap = 2;
+        var top = center.Y - (number.Height + Gap + caption.Height) / 2;
+        var left = center.X - (number.Width + 1 + sign.Width) / 2;
+        context.DrawText(number, new Point(left, top));
+        context.DrawText(sign, new Point(left + number.Width + 1, top + number.Baseline - sign.Baseline));
+        context.DrawText(caption, new Point(center.X - caption.Width / 2, top + number.Height + Gap));
+    }
+
+    private static FormattedText FlatText(string text, Typeface typeface, double size, IBrush? brush, double maxWidth) =>
+        new(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, typeface, size, brush)
+        {
+            MaxTextWidth = Math.Max(1, maxWidth),
+            MaxLineCount = 1,
+            Trimming = TextTrimming.CharacterEllipsis,
+            TextAlignment = TextAlignment.Left,
+        };
 
     /// <summary>✓ (success) or ! (failure) popping in the centre of the ring.</summary>
     private void DrawOutcomeBadge(DrawingContext context, Point center, DonutProgressOutcome outcome, double scale, Typeface bold)
