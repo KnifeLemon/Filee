@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
 
@@ -23,6 +24,47 @@ public sealed class AppLocalRuntimeTests : IDisposable
     }
 
     [Theory]
+    [InlineData(unchecked((int)0xC0E90002))] // 0xC0E90002 STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION: Smart App Control, as reported in #1847
+    [InlineData(unchecked((int)0xC0000428))] // 0xC0000428 STATUS_INVALID_IMAGE_HASH
+    [InlineData(unchecked((int)0xC0E9000A))] // 0xC0E9000A STATUS_SYSTEM_INTEGRITY_REPUTATION_OFFLINE
+    public void A_program_Windows_blocked_is_refused_with_the_blocked_message(int exitCode)
+    {
+        var ffmpeg = Path.Combine(_root, "engines", "ffmpeg", "bin", "ffmpeg.exe");
+        var refused = Assert.Throws<ConversionRefusedException>(() => AppLocalRuntime.ThrowIfMissing(ffmpeg, exitCode));
+
+        Assert.Equal("error.blocked_by_windows", refused.ErrorKey);
+        Assert.Equal(AppLocalRuntime.BlockedErrorKey, refused.ErrorKey);
+        // "Smart App Control" follows when it is on on the PC running the test.
+        Assert.StartsWith($"ffmpeg.exe, 0x{unchecked((uint)exitCode):X8}", refused.Detail);
+        Assert.True(AppLocalRuntime.IsBlockedByWindows(exitCode));
+        Assert.False(AppLocalRuntime.IsMissingDll(exitCode));
+    }
+
+    [Theory]
+    [InlineData(unchecked((int)0xC0E90007))] // 0xC0E90007 STATUS_SYSTEM_INTEGRITY_REPUTATION_MALICIOUS: known bad, not a signing problem
+    [InlineData(unchecked((int)0xC0E90008))] // 0xC0E90008 STATUS_SYSTEM_INTEGRITY_REPUTATION_PUA
+    [InlineData(unchecked((int)0xC0E90003))] // 0xC0E90003 STATUS_SYSTEM_INTEGRITY_INVALID_POLICY: the policy is broken, not the program
+    public void Other_code_integrity_codes_are_left_to_the_engine(int exitCode)
+    {
+        AppLocalRuntime.ThrowIfMissing("ffmpeg.exe", exitCode);
+        Assert.False(AppLocalRuntime.IsBlockedByWindows(exitCode));
+    }
+
+    [Theory]
+    [InlineData(1260, true)] // ERROR_ACCESS_DISABLED_BY_POLICY (group policy, AppLocker)
+    [InlineData(4551, true)] // ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION
+    [InlineData(4559, true)] // ERROR_SYSTEM_INTEGRITY_REPUTATION_OFFLINE
+    [InlineData(4580, true)] // ERROR_SYSTEM_INTEGRITY_REPUTATION_UNFRIENDLY_FILE
+    [InlineData(4581, true)] // ERROR_SYSTEM_INTEGRITY_REPUTATION_UNATTAINABLE
+    [InlineData(4582, true)] // ERROR_SYSTEM_INTEGRITY_REPUTATION_EXPLICIT_DENY_FILE
+    [InlineData(225, false)] // ERROR_VIRUS_INFECTED: antivirus, not Smart App Control
+    [InlineData(4552, false)] // ERROR_SYSTEM_INTEGRITY_INVALID_POLICY
+    [InlineData(4556, false)] // ERROR_SYSTEM_INTEGRITY_REPUTATION_MALICIOUS
+    [InlineData(2, false)] // ERROR_FILE_NOT_FOUND
+    public void A_program_Windows_would_not_start_is_told_from_the_error_code(int nativeError, bool blocked) =>
+        Assert.Equal(blocked, AppLocalRuntime.IsBlockedByWindows(new Win32Exception(nativeError)));
+
+    [Theory]
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(-1)]
@@ -46,6 +88,19 @@ public sealed class AppLocalRuntimeTests : IDisposable
         Assert.Equal("cmd.exe, 0xC0000135", refused.Detail);
         var ordinary = await ProcessRunner.RunAsync(cmd, ["/c", "exit 3"], TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken);
         Assert.Equal(3, ordinary.ExitCode);
+    }
+
+    [Fact]
+    public async Task ProcessRunner_gives_a_program_that_reads_input_an_empty_input()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "cmd.exe.");
+        var cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+
+        // "set /p" waits for a line; with Filee's own input passed on it would wait until the timeout.
+        var result = await ProcessRunner.RunAsync(cmd, ["/c", "set /p answer=Password? & exit 4"], TimeSpan.FromSeconds(30),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(4, result.ExitCode);
     }
 
     [Fact]
