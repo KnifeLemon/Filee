@@ -7,7 +7,10 @@
 // When a DLL is still missing, Windows does not start the program at all and reports STATUS_DLL_NOT_FOUND as its
 // exit code; ThrowIfMissing turns that into a message the user can act on.
 
+using System.ComponentModel;
+using System.Security;
 using Filee.Core.Conversion;
+using Microsoft.Win32;
 
 namespace Filee.Engines.Infrastructure;
 
@@ -26,6 +29,58 @@ public static class AppLocalRuntime
     public static bool IsMissingDll(int exitCode) => exitCode is DllNotFound or EntryPointNotFound;
 
     /// <summary>
+    /// Exit code of a program whose DLL Windows' code integrity refused to load (0xC0E90002): Smart App Control or
+    /// App Control for Business blocking a file it cannot verify. Windows shows it as "Bad Image" (#1847).
+    /// </summary>
+    public const int BlockedByCodeIntegrity = unchecked((int)0xC0E90002);
+
+    /// <summary>Exit code of a program whose file failed the image hash / signature check (0xC0000428).</summary>
+    public const int InvalidImageHash = unchecked((int)0xC0000428);
+
+    /// <summary>Localization key of the message for a program Windows blocked (see <see cref="IsBlockedByWindows(int)"/>).</summary>
+    public const string BlockedErrorKey = "error.blocked_by_windows";
+
+    /// <summary>Localization key of the engine status for a program Windows blocked.</summary>
+    public const string BlockedReasonKey = "engine.reason.blocked_by_windows";
+
+    /// <summary>True when Windows (Smart App Control, App Control, SmartScreen) refused to load a file of the program.</summary>
+    public static bool IsBlockedByWindows(int exitCode) => exitCode is BlockedByCodeIntegrity or InvalidImageHash;
+
+    /// <summary>
+    /// True when Windows refused to start the program itself: ERROR_ACCESS_DISABLED_BY_POLICY (1260),
+    /// ERROR_CODE_INTEGRITY... (4551, 4552), ERROR_VIRUS_INFECTED (225) and ERROR_BAD_EXE_FORMAT-less policy blocks.
+    /// </summary>
+    public static bool IsBlockedByWindows(Win32Exception ex) => ex.NativeErrorCode is 1260 or 4551 or 4552 or 225;
+
+    /// <summary>
+    /// True when Smart App Control is on (or still evaluating) on this PC. It blocks unsigned programs and DLLs that
+    /// Microsoft's cloud doesn't know, whatever the user clicks, and the only ways around are a signed copy of the
+    /// program or turning it off (which Windows then never turns on again without a reset).
+    /// </summary>
+    public static bool SmartAppControlActive()
+    {
+        if (!OperatingSystem.IsWindows())
+            return false;
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\CI\Policy");
+            // 0 off, 1 on (enforced), 2 evaluation mode.
+            return key?.GetValue("VerifiedAndReputablePolicyState") is int state && state != 0;
+        }
+        catch (Exception ex) when (ex is SecurityException or UnauthorizedAccessException or IOException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The exception for a program Windows blocked, with the program, the exit code and whether Smart App Control is
+    /// on as detail.
+    /// </summary>
+    public static ConversionRefusedException Blocked(string executable, string code) =>
+        new(BlockedErrorKey, $"{Path.GetFileName(executable)}, {code}{(SmartAppControlActive() ? ", Smart App Control" : "")}");
+
+    /// <summary>
     /// Throws a <see cref="ConversionRefusedException"/> saying that a runtime file is missing (with the program and
     /// the exit code as detail) when <paramref name="exitCode"/> is <see cref="DllNotFound"/> or
     /// <see cref="EntryPointNotFound"/>, instead of the raw exit code each engine would report.
@@ -34,6 +89,8 @@ public static class AppLocalRuntime
     {
         if (IsMissingDll(exitCode))
             throw new ConversionRefusedException(ErrorKey, $"{Path.GetFileName(executable)}, 0x{exitCode:X8}");
+        if (IsBlockedByWindows(exitCode))
+            throw Blocked(executable, $"0x{exitCode:X8}");
     }
 
     /// <summary>
