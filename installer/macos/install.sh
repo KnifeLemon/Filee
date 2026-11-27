@@ -66,7 +66,7 @@ if [ "$upgrade" = true ]; then
     if [ ! -w "$parent_dir" ]; then
         exec /usr/bin/osascript - "$source_dir" "$install_dir" <<'APPLESCRIPT'
 on run argv
-  set rootCommand to "set -eu; work_dir=$(/usr/bin/mktemp -d /private/tmp/filee-update.XXXXXX); cleanup() { /bin/rm -rf -- \"$work_dir\"; }; trap cleanup EXIT HUP INT TERM; /usr/bin/ditto \"$1\" \"$work_dir/payload\"; source_app=\"$work_dir/payload/Filee.app\"; staged_app=\"$work_dir/staged.app\"; previous_app=\"$work_dir/previous.app\"; source_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \"$source_app/Contents/Info.plist\" 2>/dev/null || true); target_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \"$2/Contents/Info.plist\" 2>/dev/null || true); [ -d \"$source_app\" ] && [ ! -L \"$source_app\" ] && [ -x \"$source_app/Contents/MacOS/Filee\" ] && [ \"$source_id\" = com.filee.app ] && [ -d \"$2\" ] && [ ! -L \"$2\" ] && [ -x \"$2/Contents/MacOS/Filee\" ] && [ \"$target_id\" = com.filee.app ] && /usr/bin/codesign --verify --deep --strict \"$source_app\" || exit 1; /usr/bin/ditto \"$source_app\" \"$staged_app\"; /usr/bin/codesign --verify --deep --strict \"$staged_app\"; /bin/mv \"$2\" \"$previous_app\"; if ! /bin/mv \"$staged_app\" \"$2\"; then /bin/mv \"$previous_app\" \"$2\" || true; exit 1; fi; /usr/bin/xattr -dr com.apple.quarantine \"$2\" 2>/dev/null || true"
+  set rootCommand to "set -eu; work_dir=$(/usr/bin/mktemp -d /private/tmp/filee-update.XXXXXX); cleanup() { /bin/rm -rf -- \"$work_dir\"; }; trap cleanup EXIT HUP INT TERM; /usr/bin/ditto \"$1\" \"$work_dir/payload\"; source_app=\"$work_dir/payload/Filee.app\"; staged_app=\"$work_dir/staged.app\"; previous_app=\"$work_dir/previous.app\"; source_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \"$source_app/Contents/Info.plist\" 2>/dev/null || true); target_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \"$2/Contents/Info.plist\" 2>/dev/null || true); [ -d \"$source_app\" ] && [ ! -L \"$source_app\" ] && [ -x \"$source_app/Contents/MacOS/Filee\" ] && [ \"$source_id\" = com.filee.app ] && [ -d \"$2\" ] && [ ! -L \"$2\" ] && [ -x \"$2/Contents/MacOS/Filee\" ] && [ \"$target_id\" = com.filee.app ] && /usr/bin/codesign --verify --deep --strict \"$source_app\" || exit 1; /usr/bin/ditto \"$source_app\" \"$staged_app\"; /usr/bin/codesign --verify --deep --strict \"$staged_app\"; /bin/mv \"$2\" \"$previous_app\"; if ! /bin/mv \"$staged_app\" \"$2\"; then if ! /bin/mv \"$previous_app\" \"$2\"; then trap - EXIT HUP INT TERM; printf '%s\n' \"Could not activate the update or restore the previous Filee app. Your previous app remains at $previous_app\" >&2; exit 1; fi; exit 1; fi; /usr/bin/xattr -dr com.apple.quarantine \"$2\" 2>/dev/null || true"
   do shell script "/bin/sh -c " & quoted form of rootCommand & " filee-root-update " & (quoted form of item 1 of argv) & " " & (quoted form of item 2 of argv) with administrator privileges
 end run
 APPLESCRIPT
@@ -92,7 +92,11 @@ APPLESCRIPT
         exit 1
     fi
     if ! mv "$staged_app" "$install_dir"; then
-        mv "$previous_app" "$install_dir" || true
+        if ! mv "$previous_app" "$install_dir"; then
+            trap - EXIT HUP INT TERM
+            printf '%s\n' "Could not activate the update or restore the previous Filee app. Your previous app remains at $previous_app" >&2
+            exit 1
+        fi
         printf '%s\n' "Could not activate the update; the previous Filee app was restored." >&2
         exit 1
     fi
