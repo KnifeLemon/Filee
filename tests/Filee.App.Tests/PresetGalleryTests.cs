@@ -716,7 +716,7 @@ public sealed class PresetGalleryTests : IDisposable
         Assert.Equal(AppHost.Get<ILocalizer>()["gallery.title"], AutomationProperties.GetName(button));
         Assert.True(button.Command!.CanExecute(null));
         var export = page.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "GalleryExportButton");
-        Assert.Equal(AppHost.Get<ILocalizer>()["gallery.export"], AutomationProperties.GetName(export));
+        Assert.Equal(AppHost.Get<ILocalizer>()["gallery.export_title"], AutomationProperties.GetName(export));
         window.Close();
     }
 
