@@ -88,8 +88,15 @@ internal static class FfmpegRunner
             }
         };
 
-        if (!process.Start())
-            throw new InvalidOperationException($"Could not start {ffmpeg}.");
+        try
+        {
+            if (!process.Start())
+                throw new InvalidOperationException($"Could not start {ffmpeg}.");
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (AppLocalRuntime.IsBlockedByWindows(ex))
+        {
+            throw AppLocalRuntime.Blocked(ffmpeg, ex.Message);
+        }
         ProcessRunner.Lower(process);
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();

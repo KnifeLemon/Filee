@@ -114,6 +114,15 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         {
             return EngineStatus.Available(tools.Ffmpeg, $"FFmpeg {VersionOf(tools.Ffmpeg)}");
         }
+        catch (ConversionRefusedException ex) when (ex.ErrorKey == AppLocalRuntime.BlockedErrorKey)
+        {
+            // Windows (Smart App Control) blocked ffmpeg.exe or one of its unsigned DLLs (#1847).
+            return EngineStatus.Unavailable(AppLocalRuntime.BlockedReasonKey, ex.Detail);
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (AppLocalRuntime.IsBlockedByWindows(ex))
+        {
+            return EngineStatus.Unavailable(AppLocalRuntime.BlockedReasonKey, $"{Path.GetFileName(tools.Ffmpeg)}, {ex.Message}");
+        }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         {
             // Present but broken, e.g. a DLL next to ffmpeg.exe is missing.
@@ -797,6 +806,8 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             {
                 throw new InvalidOperationException("FFmpeg did not start in time.");
             }
+            if (AppLocalRuntime.IsBlockedByWindows(result.ExitCode))
+                throw AppLocalRuntime.Blocked(ffmpeg, $"0x{result.ExitCode:X8}");
             if (result.ExitCode != 0)
                 throw new InvalidOperationException($"FFmpeg does not start (exit code {result.ExitCode}).");
             // "ffmpeg version 9.1-full_build-www.gyan.dev Copyright …" → "9.1"
