@@ -46,7 +46,7 @@
           </Button>
           <!-- A preset.json of the chosen presets for a submission to the gallery. -->
           <Button x:Name="GalleryExportButton" Command="{Binding ExportForGalleryCommand}" Margin="0,0,6,6"
-                  ToolTip.Tip="{DynamicResource gallery.export_title}" AutomationProperties.Name="{DynamicResource gallery.export}">
+                  ToolTip.Tip="{DynamicResource gallery.export_title}" AutomationProperties.Name="{DynamicResource gallery.export_title}">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Upload}" />
               <TextBlock Text="{DynamicResource gallery.export}" />
