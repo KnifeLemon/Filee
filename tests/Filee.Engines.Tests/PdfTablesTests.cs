@@ -365,4 +365,48 @@ public class PdfTablesTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     private static double ColumnSum(Worksheet sheet, int column) =>
         sheet.Rows.Values.Select(r => r.GetValueOrDefault(column)?.Value ?? 0).Sum();
+
+    [Fact]
+    public async Task Smart_reads_a_category_in_the_first_row_of_an_unmarked_table_as_body()
+    {
+        // No heading across columns: the first row is the only header row, even though its category reaches down.
+        var pdf = new PdfBuilder().NewPage();
+        Spanned(pdf, 100, [50, 150, 300, 400], 5,
+        [
+            new(0, 0, 3, 1, "Fruit"), new(0, 1, 1, 1, "Apple"), new(0, 2, 1, 1, "3"),
+            new(1, 1, 1, 1, "Pear"), new(1, 2, 1, 1, "4"),
+            new(2, 1, 1, 1, "Plum"), new(2, 2, 1, 1, "5"),
+            new(3, 0, 2, 1, "Veg"), new(3, 1, 1, 1, "Leek"), new(3, 2, 1, 1, "6"),
+            new(4, 1, 1, 1, "Kale"), new(4, 2, 1, 1, "7"),
+        ]);
+        var sheet = await SheetAsync(pdf.Save(Path.Combine(fx.NewFolder(), "unmarked.pdf")), MergedCells.Smart);
+
+        Assert.Equal(1, sheet.FrozenRows); // not the three rows "Fruit" covers
+        Assert.Equal("Veg", sheet.Get(4, 0)!.Text);
+        Assert.DoesNotContain(new CellRange(3, 0, 4, 0), sheet.Merges);
+    }
+
+    [Fact]
+    public async Task A_page_ending_with_only_the_header_still_freezes_it()
+    {
+        // Page 1 ends with the two heading rows ("Sales" over Jan and Feb); the body is on page 2.
+        double[] xs = [50, 150, 250, 350, 500];
+        var pdf = new PdfBuilder().NewPage();
+        Spanned(pdf, 760, xs, 2,
+        [
+            new(0, 0, 2, 1, "Region"), new(0, 1, 1, 2, "Sales"), new(0, 3, 2, 1, "Total"),
+            new(1, 1, 1, 1, "Jan"), new(1, 2, 1, 1, "Feb"),
+        ], boldRows: 2);
+        pdf.NewPage();
+        Spanned(pdf, 60, xs, 2,
+        [
+            new(0, 0, 1, 1, "West"), new(0, 1, 1, 1, "10"), new(0, 2, 1, 1, "20"), new(0, 3, 1, 1, "30"),
+            new(1, 0, 1, 1, "East"), new(1, 1, 1, 1, "5"), new(1, 2, 1, 1, "6"), new(1, 3, 1, 1, "11"),
+        ]);
+        var sheet = await SheetAsync(pdf.Save(Path.Combine(fx.NewFolder(), "header-alone.pdf")), MergedCells.Smart);
+
+        Assert.Equal("Region", sheet.Get(0, 0)!.Text);
+        Assert.Equal("East", sheet.Get(3, 0)!.Text); // one sheet: the body went on from the heading
+        Assert.Equal(2, sheet.FrozenRows);
+    }
 }

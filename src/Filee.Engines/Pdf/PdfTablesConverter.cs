@@ -99,6 +99,7 @@ public sealed class PdfTablesConverter : IConverter
         string[]? header = null;
         var row = 0;
         var budget = new TableSheets.FillBudget();
+        var headers = 0;
         foreach (var placed in tables)
         {
             var goesOn = previous is not null && sheet is not null && previous.LastOnPage && placed.FirstOnPage
@@ -114,11 +115,13 @@ public sealed class PdfTablesConverter : IConverter
                 budget = new TableSheets.FillBudget(); // every part of the table repeats into this sheet's one XML part
                 header = TableSheets.RowTexts(placed.Table.Rows[0]);
                 TableSheets.SetColumnWidths(sheet, placed.Table);
-                // Smart: the header stays in view while scrolling, unless the whole table is header.
-                if (merged == MergedCells.Smart && TableSheets.HeaderRows(placed.Table) is var headers && headers < placed.Table.Rows.Count)
-                    sheet.FrozenRows = headers;
+                headers = merged == MergedCells.Smart ? TableSheets.HeaderRows(placed.Table) : 0;
             }
             row = TableSheets.Place(sheet!, placed.Table, row, skip, drawn: true, merged, continues: goesOn, budget);
+            // Smart: the header stays in view while scrolling, unless the whole sheet is header (counting the parts on
+            // the next pages: a page may end with nothing but the header).
+            if (headers > 0 && row > headers)
+                sheet!.FrozenRows = headers;
             previous = placed;
         }
         return book;

@@ -80,8 +80,8 @@ en: Tables from PDF, Word and web pages keep their header merges in Excel and fi
   the rows, such as a group total, so a column adds up as before) and fills the ones that get in the way of working:
   text spanning rows below the header, such as a category beside its items, is unmerged and written into every row, so
   each row reads whole for filters and pivot tables. The header rows of a PDF table are frozen. **Keep all merged** is
-  the earlier behaviour; **Unmerge and fill** leaves no merged cell. A merge whose text would repeat more than 32
-  million characters on one sheet stays merged. On the command line: `--merged-cells smart|keep|fill`.
+  the earlier behaviour; **Unmerge and fill** leaves no merged cell. A merge whose text would be repeated more than
+  33,554,432 characters in all on one sheet stays merged. On the command line: `--merged-cells smart|keep|fill`.
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
   rectangles, typed notes) without an appearance stream, which PDF/A requires, so the PDF/A preset's output was marked

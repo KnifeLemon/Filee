@@ -246,7 +246,11 @@ internal static partial class TableSheets
         var width = cells.Max(c => c.Column + c.Columns);
         if (marked == 0 && count > 1 && cells.Where(c => c.Row == 0).ToList() is [{ Column: 0 } title] && title.Columns == width && width > 1)
             header = 2;
-        for (var grew = true; grew;)
+        // A cell reaching down from the header only makes it a two-level heading when the header is marked, or has a
+        // heading across columns ("Q1" over "Jan Feb Mar"). In an unmarked table (every PDF one) a first row whose
+        // category spans its items' rows is the body's first row, and growing over it would freeze and keep the body.
+        var twoLevel = marked > 0 || cells.Any(c => c.Row < header && c.Columns > 1);
+        for (var grew = twoLevel; grew;)
         {
             grew = false;
             foreach (var c in cells)
