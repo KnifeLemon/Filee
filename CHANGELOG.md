@@ -72,6 +72,8 @@ ko: 16비트 정수·부동소수점 GeoTIFF 래스터를 PNG, JPG 같은 그림
 en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched across their data range
 ko: 드래그 제스처가 드래그 중에 누른 수정키로는 도넛을 열지 않게 설정할 수 있어요
 en: A drag gesture can be set to open the donut only when its keys are held before you press the mouse button
+ko: Blizzard 텍스처(.blp)를 PNG, JPG 같은 이미지로 변환할 수 있어요
+en: Blizzard textures (.blp) convert to PNG, JPG and other image formats
 -->
 
 - **Keep Ctrl for copying during a drag** (#1863). A drag gesture also opens the donut when its modifier keys are
@@ -320,6 +322,11 @@ en: A drag gesture can be set to open the donut only when its keys are held befo
   horizontal or floating-point predictors) are now read directly and stretched linearly per band to grayscale (1–2
   bands) or RGB (3+ bands), with `GDAL_NODATA` and NaN cells drawn black instead of coming out nearly black or clipped
   white. Ordinary 8-bit TIFFs and non-GeoTIFFs stay on ImageMagick unchanged.
+
+- **Blizzard textures (`.blp`)** (#644). Warcraft III (BLP1: JPEG and palette) and World of Warcraft (BLP2: palette,
+  DXT1/DXT3/DXT5 and uncompressed BGRA) textures now open on the images donut and convert to PNG, JPG, TGA, DDS and the
+  other image formats. Filee reads the largest mipmap and does not write BLP files; Warcraft III beta BLP0 files with
+  separate mipmap files are not supported.
 
 ## 2.5.0
 

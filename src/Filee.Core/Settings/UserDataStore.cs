@@ -1237,6 +1237,9 @@ internal static class SettingsMigrations
                     changed |= AddLikeNewLibrary(presets, id);
             changed |= LearnExtensions(profiles, out _, ["nex", "nxs", "nexus", "fasta", "fa", "fas", "fna", "faa", "phy", "phylip"]);
         }
+        // v105: Blizzard textures (.blp, #644) learn the images donut; custom claims stay put.
+        if (from < 105)
+            changed |= LearnExtensions(profiles, out _, ["blp"]);
         return changed;
     }
 
