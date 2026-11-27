@@ -1,8 +1,9 @@
 // Built-in e-book conversions, no external program: EPUB, MOBI / AZW / AZW3 / PRC, FB2, HTMLZ and TXTZ are read into
 // the HWPX document model and written as EPUB, HWPX (→ PDF / images through rhwp and PDFium), TXT, HTML, Markdown,
 // FB2, HTMLZ or TXTZ; HTML, Markdown, TXT and DOCX become e-books too. Comics (CBZ / CBR / CB7 / CBT / CBC) become
-// PDF, fixed-layout EPUB or CBZ, PDF becomes CBZ, and AZW4 (Print Replica) gives back its PDF. EPUB ↔ KEPUB (Kobo)
-// adds or removes Kobo's sentence markup and keeps the rest of the book as it is.
+// PDF, fixed-layout EPUB or CBZ, PDF becomes CBZ, and AZW4 (Print Replica) gives back its PDF. A ZIP or RAR of
+// pictures is copied as it is under the comic name, CBZ or CBR (#1482). EPUB ↔ KEPUB (Kobo) adds or removes Kobo's
+// sentence markup and keeps the rest of the book as it is.
 // Formats only calibre reads or writes (LIT, LRF, PDB, MOBI / AZW3 output, ...) are in CalibreConverter.
 
 using System.Text;
@@ -50,6 +51,10 @@ public sealed class EbookConverter : IConverter
         .. Comics.Where(from => from != "cbz").Select(from => new ConversionEdge(from, "cbz")),
         // Pages as pictures lose the text: other routes to EPUB (through DOCX, TXT, ...) should win when they exist.
         new("pdf", "cbz", 15),
+        // A CBZ is a ZIP of pictures and a CBR a RAR of them: the archive is copied byte for byte under the comic name.
+        // Only for the user's own archive, never as a step: a ZIP made from something else is no comic.
+        new("zip", "cbz", DirectOnly: true),
+        new("rar", "cbr", DirectOnly: true),
         new("azw4", "pdf"),
     ];
 
@@ -62,6 +67,8 @@ public sealed class EbookConverter : IConverter
     private static IReadOnlyList<string> Convert(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         progress?.Report(0.05);
+        if (step.From is "zip" or "rar")
+            return ComicBook.CopyAsComic(step, progress);
         var work = EbookFiles.NewFolder(step.WorkDirectory, "ebook");
         if (Comics.Contains(step.From) || step.From == "pdf")
             return Comic(step, work, progress, cancellationToken);

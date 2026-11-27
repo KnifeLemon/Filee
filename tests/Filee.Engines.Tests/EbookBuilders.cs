@@ -436,6 +436,65 @@ internal static class EbookBuilders
         return path;
     }
 
+    /// <summary>A ZIP of the comic pages and a ComicInfo.xml, named .zip.</summary>
+    public static string ZipOfPictures(string folder)
+    {
+        var path = Path.Combine(folder, "만화.zip");
+        using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
+        foreach (var (name, width, height) in ComicPages)
+            Entry(zip, name, Picture(name, width, height));
+        Entry(zip, "ComicInfo.xml", "<ComicInfo/>");
+        return path;
+    }
+
+    /// <summary>A RAR of the comic pages, named .rar.</summary>
+    public static string RarOfPictures(string folder, bool encrypted = false) =>
+        Rar(Path.Combine(folder, "comic.rar"), [.. ComicPages.Select(p => (p.Name, Picture(p.Name, p.Width, p.Height)))], encrypted);
+
+    /// <summary>
+    /// A RAR 4 archive with its files stored, written per RAR's technical note: Filee can't write RAR. With
+    /// <paramref name="encrypted"/> the file headers say the files are encrypted (their data stays plain).
+    /// </summary>
+    public static string Rar(string path, IReadOnlyList<(string Name, byte[] Data)> files, bool encrypted = false)
+    {
+        using var stream = File.Create(path);
+        stream.Write([0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00]); // "Rar!" marker block
+        RarBlock(stream, 0x73, 0, new byte[6]);                     // archive header: two reserved fields
+        foreach (var (name, data) in files)
+        {
+            var nameBytes = Encoding.ASCII.GetBytes(name.Replace('/', '\\'));
+            var body = new byte[25 + nameBytes.Length];
+            BinaryPrimitives.WriteUInt32LittleEndian(body.AsSpan(0), (uint)data.Length);  // packed size
+            BinaryPrimitives.WriteUInt32LittleEndian(body.AsSpan(4), (uint)data.Length);  // unpacked size
+            body[8] = 2;                                                                    // host OS: Windows
+            BinaryPrimitives.WriteUInt32LittleEndian(body.AsSpan(9), Archives.Crc32.Compute(data));
+            BinaryPrimitives.WriteUInt32LittleEndian(body.AsSpan(13), 0x5A860000);         // DOS date 2025-04-06
+            body[17] = 20;                                                                  // version to unpack: 2.0
+            body[18] = 0x30;                                                                // method: store
+            BinaryPrimitives.WriteUInt16LittleEndian(body.AsSpan(19), (ushort)nameBytes.Length);
+            BinaryPrimitives.WriteUInt32LittleEndian(body.AsSpan(21), 0x20);               // attributes: archive
+            nameBytes.CopyTo(body, 25);
+            RarBlock(stream, 0x74, (ushort)(0x8000 | (encrypted ? 0x0004 : 0)), body);
+            stream.Write(data);
+        }
+        RarBlock(stream, 0x7B, 0x4000, []); // end of archive
+        return path;
+    }
+
+    /// <summary>A RAR 4 block: CRC (the low half of the CRC-32 of the rest), type, flags, size, then the fields.</summary>
+    private static void RarBlock(Stream stream, byte type, ushort flags, byte[] fields)
+    {
+        var header = new byte[5 + fields.Length];
+        header[0] = type;
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(1), flags);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(3), (ushort)(header.Length + 2));
+        fields.CopyTo(header, 5);
+        var crc = new byte[2];
+        BinaryPrimitives.WriteUInt16LittleEndian(crc, (ushort)Archives.Crc32.Compute(header));
+        stream.Write(crc);
+        stream.Write(header);
+    }
+
     private static byte[] Picture(string name, uint width, uint height)
     {
         using var image = new MagickImage(MagickColors.Coral, width, height);

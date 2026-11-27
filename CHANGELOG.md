@@ -74,6 +74,12 @@ ko: 드래그 제스처가 드래그 중에 누른 수정키로는 도넛을 열
 en: A drag gesture can be set to open the donut only when its keys are held before you press the mouse button
 ko: Blizzard 텍스처(.blp)를 PNG, JPG 같은 이미지로 변환할 수 있어요
 en: Blizzard textures (.blp) convert to PNG, JPG and other image formats
+ko: 그림이 든 ZIP은 CBZ로, RAR은 CBR로 다시 압축하지 않고 이름만 바꿔 저장할 수 있어요
+en: A ZIP of pictures becomes a CBZ and a RAR a CBR as it is, without packing it again
+ko: CSV의 NaN, Infinity, 앞뒤에 공백이 있는 값, +007 같은 코드가 숫자로 바뀌지 않고 글자 그대로 남아요
+en: CSV cells like NaN, Infinity, " 007" or +007 stay as written instead of turning into numbers
+ko: 명령줄에서 --to=jpg처럼 쓸 수 있고, 값 자리에 옵션이 오면 값이 빠졌다고 알려 줘요
+en: The command line takes --to=jpg and says when an option's value is missing
 ko: 단일 밴드 GeoTIFF와 SRTM 고도 타일(.hgt)을 고도·값 색상표 PNG로 미리 볼 수 있어요
 en: Single-band GeoTIFF and SRTM .hgt rasters convert to colour-mapped PNG previews with transparent no-data cells
 -->
@@ -260,7 +266,8 @@ en: Single-band GeoTIFF and SRTM .hgt rasters convert to colour-mapped PNG previ
 
 - **A progress ring with ticks** (by @adnan-bhaldar, #1747). *Settings → Theme → Progress ring* can show the ring
   while a file converts as ticks that light up one by one around the percentage. *Arc*, the ring so far, stays the
-  default.
+  default. In the middle of the ticks, under the percentage, the source format and the preset show, like `MP4 → WEBP`
+  (by @adnan-bhaldar, #1848); with files of different kinds, only the preset.
 
 - **Theme page** (by @adnan-bhaldar): *Appearance* is three buttons, System, Light and Dark, instead of a list. The
   preview's Save and Cancel buttons react to the mouse like real ones, and still save nothing.
@@ -290,6 +297,7 @@ en: Single-band GeoTIFF and SRTM .hgt rasters convert to colour-mapped PNG previ
   folder can't be written is readable in every language and says on the terminal which folder and why (#1590).
 
 - **macOS:** the menu bar icon has no tooltip, which on macOS 27.2 could stay on screen far from the icon (#1193).
+  Finder's right-click item and the permission explanations are in Arabic too (by @collodev21).
 
 - **Merging into one PDF or a multi-page TIFF** (by @Marouane-elfadli): cancelling the merge marks the files as
   cancelled instead of failing the job, and an error during it (a full disk, a locked output file) now shows on each
@@ -329,6 +337,24 @@ en: Single-band GeoTIFF and SRTM .hgt rasters convert to colour-mapped PNG previ
   DXT1/DXT3/DXT5 and uncompressed BGRA) textures now open on the images donut and convert to PNG, JPG, TGA, DDS and the
   other image formats. Filee reads the largest mipmap and does not write BLP files; Warcraft III beta BLP0 files with
   separate mipmap files are not supported.
+
+- **A ZIP of pictures becomes a CBZ, a RAR a CBR, as it is** (#1482). A comic in a ZIP or RAR is the same file as a CBZ
+  or CBR under another name, so the **CBZ** preset now takes a ZIP and the new **CBR** preset (in the palette) takes a
+  RAR, and both copy the file byte for byte with the comic extension: nothing is unpacked or packed again, and the
+  original stays. An archive with no pictures in it, or one protected with a password, is refused with a reason. Other
+  files next to the pictures (`ComicInfo.xml`, a readme) are kept. Filee still doesn't write RAR: a CBR comes only from
+  your own RAR. CB7 and CBT become CBZ as before.
+
+- **CSV cells that only look like numbers stay text** (by @trungduc22). Converting a CSV or TSV to XLSX or ODS turned
+  `NaN`, `Infinity`, a value too large to hold (`1e309`), a number with spaces around it (` 007`) and a code like
+  `+007` into numbers, so the leading zeros and the `+` were lost and the non-numbers came out broken. These cells are
+  now text, as written.
+
+- **Command line options** (by @yavuzmeteafsar, #1709). A long option takes its value after `=` too (`--to=jpg`,
+  `--iso-label=My disc`); a flag without a value, such as `--json=x`, is an unknown option. An option followed by
+  another option instead of its value, such as `-o --json`, now says it needs a value instead of saving into a folder
+  named `--json`. Everything after `--` is a file to convert, even if it starts with `-`. The examples in
+  `filee help` use Windows paths on Windows and `~/` paths on macOS and Linux.
 
 - **Colour previews of elevation and index rasters** (#155). Drop a single-band GeoTIFF (including 8-bit classified or
   index rasters) or an SRTM `.hgt` elevation tile onto **Elevation colours** or **Value colours** to get a colour-mapped
