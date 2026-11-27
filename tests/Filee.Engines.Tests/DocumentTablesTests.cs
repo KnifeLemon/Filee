@@ -2,9 +2,11 @@
 // and dates as real values, the cells' own borders and frozen header rows; a clear failure when there is no table; and
 // no route that reaches spreadsheets through a document made from something else.
 
+using System.Globalization;
 using System.Text;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
+using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Office.Sheets;
 using static Filee.Engines.Tests.DocxBuilder;
 
@@ -317,5 +319,59 @@ public class DocumentTablesTests(EngineFixture fx) : IClassFixture<EngineFixture
         var last = File.ReadLines(csv).Last();
         Assert.Equal(filled, last.StartsWith(text + ",", StringComparison.Ordinal));
         Assert.EndsWith(",512", last);
+    }
+
+    [Theory]
+    [InlineData(30_000, true)]
+    [InlineData(40_000, false)]
+    public async Task The_budget_counts_a_merge_across_columns_by_every_cell_it_covers(int length, bool filled)
+    {
+        // One row, 1,000 columns (the most a colspan reaches): 999 copies, 29,970,000 characters fit and 39,960,000 don't.
+        var text = new string('w', length);
+        var html = Html("wide.html", $"<table border=\"1\"><tr><th>Head</th></tr><tr><td colspan=\"1000\">{text}</td></tr></table>");
+        var sheet = (await ConvertAsync(html, MergedCells.Fill)).Sheets[0];
+
+        Assert.Equal(!filled, sheet.Merges.Contains(new CellRange(1, 0, 1, 999)));
+        Assert.Equal(filled ? length : 0, sheet.Get(1, 999)?.Text.Length ?? 0);
+    }
+
+    [Fact]
+    public void The_parts_of_a_table_on_one_sheet_share_the_budget()
+    {
+        // A PDF table over two pages lands on one sheet in two parts: 20,000,000 characters each, together past the budget.
+        static HTable Part()
+        {
+            var table = new HTable();
+            for (var r = 0; r < 1001; r++)
+            {
+                var row = new HRow();
+                if (r == 0)
+                    row.Cells.Add(Spanning(new string('p', 20_000), rows: 1001));
+                row.Cells.Add(Spanning(r.ToString(CultureInfo.InvariantCulture)));
+                table.Rows.Add(row);
+            }
+            return table;
+        }
+        static HCell Spanning(string text, int rows = 1)
+        {
+            var cell = new HCell { RowSpan = rows };
+            var paragraph = new HParagraph();
+            paragraph.Inlines.Add(new HText(text, default));
+            cell.Blocks.Add(paragraph);
+            return cell;
+        }
+
+        var shared = new Worksheet("Table 1");
+        var budget = new TableSheets.FillBudget();
+        var next = TableSheets.Place(shared, Part(), 0, 0, drawn: true, MergedCells.Fill, continues: false, budget);
+        TableSheets.Place(shared, Part(), next, 0, drawn: true, MergedCells.Fill, continues: true, budget);
+        Assert.DoesNotContain(new CellRange(0, 0, 1000, 0), shared.Merges); // the first part fills
+        Assert.Contains(new CellRange(1001, 0, 2001, 0), shared.Merges); // the second part keeps its merge
+        Assert.Equal(1000L * 20_000, budget.Used);
+
+        // Each on its own sheet, both fill.
+        var alone = new Worksheet("Table 2");
+        TableSheets.Place(alone, Part(), 0, 0, drawn: true, MergedCells.Fill);
+        Assert.Empty(alone.Merges);
     }
 }

@@ -1460,7 +1460,10 @@ public enum MergedCells
     /// <summary>Every merged cell stays merged, as the document draws it.</summary>
     Keep,
 
-    /// <summary>No merged cells: each merged cell's value is written into every cell it covered.</summary>
+    /// <summary>
+    /// No merged cells: each merged cell's value is written into every cell it covered (unless that would repeat more
+    /// text than a sheet should hold, as for <see cref="Smart"/>).
+    /// </summary>
     Fill,
 }
 

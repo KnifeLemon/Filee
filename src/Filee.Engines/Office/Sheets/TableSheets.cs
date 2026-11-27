@@ -4,7 +4,7 @@
 // - Merged cells stay merged or are filled as the preset says (DocumentOptions.MergedCells): Smart keeps the header's,
 //   the across-columns ones and the ones holding a number, and fills text down the body's rows. A kept merge's other
 //   cells keep the borders, as Excel draws them from every cell. A fill that would repeat more than
-//   MaxFilledCharacters of text in one table stays merged.
+//   MaxFilledCharacters of text on one sheet stays merged.
 // - Cells that read as numbers ("1,234.50", "(120)", "$9.99"), percentages ("12.5%") or dates with the year first
 //   ("2026-10-23", "2026. 10. 23.") become real numbers and dates, in a number format that shows them as the document
 //   did, so they can be calculated with. Anything else stays text: numbers with a leading zero (codes, phone numbers),
@@ -41,6 +41,15 @@ internal static partial class TableSheets
     /// refuse past a size, so a fill stays well under it; past the budget, the merge stays merged.
     /// </summary>
     internal const long MaxFilledCharacters = BoundedXml.MaxPartBytes / 8;
+
+    /// <summary>
+    /// The characters filling has repeated on one sheet so far, against <see cref="MaxFilledCharacters"/>: shared by
+    /// the parts of a PDF table that goes on over several pages, which all land on that sheet.
+    /// </summary>
+    internal sealed class FillBudget
+    {
+        public long Used { get; set; }
+    }
 
     /// <summary>
     /// Sets the sheet's column widths from the table: its absolute widths (PDF, DOCX), its relative ones (HTML), or
@@ -152,8 +161,12 @@ internal static partial class TableSheets
     /// <param name="continues">
     /// The table goes on from the one placed above it (a PDF table over a page break): it has no header rows of its own.
     /// </param>
+    /// <param name="budget">
+    /// What filling has already used on this sheet, when the table goes on from one placed above it; a new budget
+    /// otherwise.
+    /// </param>
     public static int Place(Worksheet sheet, HTable table, int top, int skip, bool drawn,
-        MergedCells merged, bool continues = false)
+        MergedCells merged, bool continues = false, FillBudget? budget = null)
     {
         if (drawn)
         {
@@ -169,7 +182,7 @@ internal static partial class TableSheets
         var defaults = table.Borders ?? HBorders.Grid;
         var cells = Grid(table, skip).ToList();
         var header = merged == MergedCells.Smart ? HeaderRows(table, cells, skip, continues) : 0;
-        long filled = 0;
+        budget ??= new FillBudget();
         foreach (var (cell, row, column, rows, columns) in cells)
         {
             var style = StyleOf(cell, drawn ? null : cell.Borders ?? defaults);
@@ -182,10 +195,10 @@ internal static partial class TableSheets
             if (fill)
             {
                 var repeated = (long)text.Length * ((long)rows * columns - 1);
-                if (filled + repeated > MaxFilledCharacters)
+                if (budget.Used + repeated > MaxFilledCharacters)
                     (keep, fill) = (true, false);
                 else
-                    filled += repeated;
+                    budget.Used += repeated;
             }
             sheet.Set(at, column, shown);
             for (var r = at; r < at + rows; r++)
