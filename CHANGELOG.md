@@ -70,9 +70,17 @@ ko: 생물정보학 서열 정렬 형식(NEXUS, FASTA, PHYLIP)을 서로 변환�
 en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
 ko: 16비트 정수·부동소수점 GeoTIFF 래스터를 PNG, JPG 같은 그림으로 변환하면 값 범위에 맞춰 선명하게 나와요
 en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched across their data range
+ko: 드래그 제스처가 드래그 중에 누른 수정키로는 도넛을 열지 않게 설정할 수 있어요
+en: A drag gesture can be set to open the donut only when its keys are held before you press the mouse button
 ko: Blizzard 텍스처(.blp)를 PNG, JPG 같은 이미지로 변환할 수 있어요
 en: Blizzard textures (.blp) convert to PNG, JPG and other image formats
 -->
+
+- **Keep Ctrl for copying during a drag** (#1863). A drag gesture also opens the donut when its modifier keys are
+  pressed after the drag started, so pressing Ctrl in the middle of a drag to copy in File Explorer opened the donut
+  instead. In **Settings → Shortcuts**, turn off **Also open when the keys are pressed during a drag** on that
+  gesture: it then opens only when the keys are already held as you press the mouse button, and a key pressed during
+  the drag goes to the file manager as usual. On by default, so nothing changes until you turn it off.
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
   rectangles, typed notes) without an appearance stream, which PDF/A requires, so the PDF/A preset's output was marked
