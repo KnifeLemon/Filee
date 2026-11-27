@@ -5,7 +5,8 @@
 // Windows looks in a program's folder first): the "vcruntime" download (conda-forge) next to rhwp.exe, Filee.exe
 // (for unhwp.dll) and gswin64c.exe, LibreOffice's own copy next to soffice.exe (see CopyLibreOfficeRuntime).
 // When a DLL is still missing, Windows does not start the program at all and reports STATUS_DLL_NOT_FOUND as its
-// exit code; ThrowIfMissing turns that into a message the user can act on.
+// exit code; ThrowIfMissing turns that into a message the user can act on. The same goes for a program Windows
+// blocked because it can't verify one of its files (Smart App Control, #1847): the message says so.
 
 using System.ComponentModel;
 using System.Security;
@@ -29,12 +30,12 @@ public static class AppLocalRuntime
     public static bool IsMissingDll(int exitCode) => exitCode is DllNotFound or EntryPointNotFound;
 
     /// <summary>
-    /// Exit code of a program whose DLL Windows' code integrity refused to load (0xC0E90002): Smart App Control or
-    /// App Control for Business blocking a file it cannot verify. Windows shows it as "Bad Image" (#1847).
+    /// Exit code of a program one of whose files Windows' code integrity refused to load: STATUS_SYSTEM_INTEGRITY_POLICY_VIOLATION
+    /// (0xC0E90002), what Smart App Control gives for an unsigned file it doesn't know. Windows shows it as "Bad Image" (#1847).
     /// </summary>
-    public const int BlockedByCodeIntegrity = unchecked((int)0xC0E90002);
+    public const int PolicyViolation = unchecked((int)0xC0E90002);
 
-    /// <summary>Exit code of a program whose file failed the image hash / signature check (0xC0000428).</summary>
+    /// <summary>Exit code of a program whose file failed the image hash or signature check: STATUS_INVALID_IMAGE_HASH (0xC0000428).</summary>
     public const int InvalidImageHash = unchecked((int)0xC0000428);
 
     /// <summary>Localization key of the message for a program Windows blocked (see <see cref="IsBlockedByWindows(int)"/>).</summary>
@@ -43,19 +44,29 @@ public static class AppLocalRuntime
     /// <summary>Localization key of the engine status for a program Windows blocked.</summary>
     public const string BlockedReasonKey = "engine.reason.blocked_by_windows";
 
-    /// <summary>True when Windows (Smart App Control, App Control, SmartScreen) refused to load a file of the program.</summary>
-    public static bool IsBlockedByWindows(int exitCode) => exitCode is BlockedByCodeIntegrity or InvalidImageHash;
+    /// <summary>
+    /// True when Windows' code integrity (Smart App Control, App Control for Business) refused to load a file of the
+    /// program: <see cref="PolicyViolation"/>, <see cref="InvalidImageHash"/> and the reputation answers that mean
+    /// "can't tell, so not allowed" (STATUS_SYSTEM_INTEGRITY_REPUTATION_OFFLINE 0xC0E9000A, _UNFRIENDLY_FILE
+    /// 0xC0E9000B, _UNATTAINABLE 0xC0E9000C, _EXPLICIT_DENY_FILE 0xC0E9000D). The codes for a file known to be
+    /// malicious or unwanted (0xC0E90007, 0xC0E90008) are left out: that is not a signing problem.
+    /// </summary>
+    public static bool IsBlockedByWindows(int exitCode) =>
+        exitCode is PolicyViolation or InvalidImageHash
+            or unchecked((int)0xC0E9000A) or unchecked((int)0xC0E9000B) or unchecked((int)0xC0E9000C) or unchecked((int)0xC0E9000D);
 
     /// <summary>
-    /// True when Windows refused to start the program itself: ERROR_ACCESS_DISABLED_BY_POLICY (1260),
-    /// ERROR_CODE_INTEGRITY... (4551, 4552), ERROR_VIRUS_INFECTED (225) and ERROR_BAD_EXE_FORMAT-less policy blocks.
+    /// True when Windows refused to start the program itself because of a policy: ERROR_ACCESS_DISABLED_BY_POLICY (1260,
+    /// group policy, AppLocker), ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION (4551), ERROR_SYSTEM_INTEGRITY_REPUTATION_OFFLINE
+    /// (4559) and the _UNFRIENDLY_FILE, _UNATTAINABLE and _EXPLICIT_DENY_FILE answers (4580 to 4582). Not
+    /// ERROR_VIRUS_INFECTED (225, antivirus) and not the policy-itself errors 4552 to 4555 (a broken or unsigned policy).
     /// </summary>
-    public static bool IsBlockedByWindows(Win32Exception ex) => ex.NativeErrorCode is 1260 or 4551 or 4552 or 225;
+    public static bool IsBlockedByWindows(Win32Exception ex) => ex.NativeErrorCode is 1260 or 4551 or 4559 or 4580 or 4581 or 4582;
 
     /// <summary>
     /// True when Smart App Control is on (or still evaluating) on this PC. It blocks unsigned programs and DLLs that
-    /// Microsoft's cloud doesn't know, whatever the user clicks, and the only ways around are a signed copy of the
-    /// program or turning it off (which Windows then never turns on again without a reset).
+    /// Microsoft's cloud doesn't know, and the only ways around are a signed copy of the program or turning it off
+    /// (which Windows doesn't let the user turn on again without a reset).
     /// </summary>
     public static bool SmartAppControlActive()
     {
@@ -74,8 +85,8 @@ public static class AppLocalRuntime
     }
 
     /// <summary>
-    /// The exception for a program Windows blocked, with the program, the exit code and whether Smart App Control is
-    /// on as detail.
+    /// The exception for a program Windows blocked: the program and the exit code or error as detail, followed by
+    /// "Smart App Control" when it is on.
     /// </summary>
     public static ConversionRefusedException Blocked(string executable, string code) =>
         new(BlockedErrorKey, $"{Path.GetFileName(executable)}, {code}{(SmartAppControlActive() ? ", Smart App Control" : "")}");
