@@ -97,6 +97,14 @@ public sealed class TriggerGesture
     /// </summary>
     public DonutFace Face { get; set; } = DonutFace.Front;
 
+    /// <summary>
+    /// <see cref="TriggerKind.Drag"/> only: the modifiers may also be pressed after the drag started (in Explorer many
+    /// people start dragging and then press the key). Off, they count only when held as the mouse button goes down, so
+    /// a key pressed during a drag stays the file manager's: Ctrl to copy instead of move, say (#1863). On by default,
+    /// and settings saved before it existed read as on.
+    /// </summary>
+    public bool AllowLateModifier { get; set; } = true;
+
     public TriggerGesture Clone() => (TriggerGesture)MemberwiseClone();
 
     /// <summary>Default gestures for the current OS.</summary>
