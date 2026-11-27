@@ -774,6 +774,8 @@
   "triggers.clear": "清除",
   "triggers.clipboard": "轉換剪貼簿上的內容",
   "triggers.clipboard_note": "先用複製的檔案，否則用複製的圖片（按住 Control 拍的截圖）。結果會取代剪貼簿上的內容，可直接貼上；圖片的結果存到瀏覽器檔案的資料夾。兩者都沒有時，什麼也不會發生。",
+  "triggers.late_modifier": "拖曳中按下修飾鍵也會開啟",
+  "triggers.late_modifier_note": "關閉後，只有在按下滑鼠按鈕之前就按住的修飾鍵才有效。拖曳過程中按下的鍵交給檔案管理員處理（例如改為複製而非移動）。",
   "triggers.recording_key": "請按下一個鍵…",
   "triggers.flip_title": "翻轉圓環",
   "triggers.flip_description": "圓環開啟時，按下此鍵或轉動滑鼠滾輪即可顯示背面。每個圓環的背面在環形工具列中設定。",

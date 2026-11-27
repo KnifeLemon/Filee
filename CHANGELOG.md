@@ -70,9 +70,19 @@ ko: 생물정보학 서열 정렬 형식(NEXUS, FASTA, PHYLIP)을 서로 변환�
 en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
 ko: 16비트 정수·부동소수점 GeoTIFF 래스터를 PNG, JPG 같은 그림으로 변환하면 값 범위에 맞춰 선명하게 나와요
 en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched across their data range
+ko: 드래그 제스처가 드래그 중에 누른 수정키로는 도넛을 열지 않게 설정할 수 있어요
+en: A drag gesture can be set to open the donut only when its keys are held before you press the mouse button
+ko: Blizzard 텍스처(.blp)를 PNG, JPG 같은 이미지로 변환할 수 있어요
+en: Blizzard textures (.blp) convert to PNG, JPG and other image formats
 ko: 그림이 든 ZIP은 CBZ로, RAR은 CBR로 다시 압축하지 않고 이름만 바꿔 저장할 수 있어요
 en: A ZIP of pictures becomes a CBZ and a RAR a CBR as it is, without packing it again
 -->
+
+- **Keep Ctrl for copying during a drag** (#1863). A drag gesture also opens the donut when its modifier keys are
+  pressed after the drag started, so pressing Ctrl in the middle of a drag to copy in File Explorer opened the donut
+  instead. In **Settings → Shortcuts**, turn off **Also open when the keys are pressed during a drag** on that
+  gesture: it then opens only when the keys are already held as you press the mouse button, and a key pressed during
+  the drag goes to the file manager as usual. On by default, so nothing changes until you turn it off.
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
   rectangles, typed notes) without an appearance stream, which PDF/A requires, so the PDF/A preset's output was marked
@@ -314,6 +324,11 @@ en: A ZIP of pictures becomes a CBZ and a RAR a CBR as it is, without packing it
   horizontal or floating-point predictors) are now read directly and stretched linearly per band to grayscale (1–2
   bands) or RGB (3+ bands), with `GDAL_NODATA` and NaN cells drawn black instead of coming out nearly black or clipped
   white. Ordinary 8-bit TIFFs and non-GeoTIFFs stay on ImageMagick unchanged.
+
+- **Blizzard textures (`.blp`)** (#644). Warcraft III (BLP1: JPEG and palette) and World of Warcraft (BLP2: palette,
+  DXT1/DXT3/DXT5 and uncompressed BGRA) textures now open on the images donut and convert to PNG, JPG, TGA, DDS and the
+  other image formats. Filee reads the largest mipmap and does not write BLP files; Warcraft III beta BLP0 files with
+  separate mipmap files are not supported.
 
 - **A ZIP of pictures becomes a CBZ, a RAR a CBR, as it is** (#1482). A comic in a ZIP or RAR is the same file as a CBZ
   or CBR under another name, so the **CBZ** preset now takes a ZIP and the new **CBR** preset (in the palette) takes a

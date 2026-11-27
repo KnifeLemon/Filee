@@ -778,6 +778,8 @@
   "triggers.clear": "Effacer",
   "triggers.clipboard": "Convertir le contenu du presse-papiers",
   "triggers.clipboard_note": "D'abord les fichiers copiés, sinon une image copiée (une capture prise en maintenant Contrôle). Le résultat la remplace dans le presse-papiers, prêt à coller ; celui d'une image est enregistré là où vont les fichiers du navigateur. Sans l'un ni l'autre, rien ne se passe.",
+  "triggers.late_modifier": "Ouvrir aussi si les touches sont pressées pendant le glisser",
+  "triggers.late_modifier_note": "Désactivé : les touches ne comptent que si elles sont déjà maintenues avant d'appuyer sur le bouton de la souris. Celles pressées pendant le glisser restent au gestionnaire de fichiers, par exemple pour copier au lieu de déplacer.",
   "triggers.recording_key": "Appuyez sur une touche…",
   "triggers.flip_title": "Retourner le menu circulaire",
   "triggers.flip_description": "Quand le menu circulaire est ouvert, cette touche ou un cran de molette affiche son verso. Le verso de chaque menu se règle dans Menu circulaire.",

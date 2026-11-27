@@ -765,6 +765,8 @@
   "triggers.clear": "Hapus",
   "triggers.clipboard": "Konversi isi papan klip",
   "triggers.clipboard_note": "File yang disalin lebih dulu; jika tidak ada, gambar yang disalin (tangkapan layar yang diambil sambil menahan Control). Hasilnya menggantikannya di papan klip, siap ditempel; hasil dari gambar disimpan di tempat file dari browser disimpan. Jika keduanya tidak ada, tidak terjadi apa-apa.",
+  "triggers.late_modifier": "Buka juga jika tombol ditekan saat menyeret",
+  "triggers.late_modifier_note": "Mati: tombol pengubah hanya dihitung jika sudah ditahan sebelum tombol mouse ditekan. Tombol yang ditekan saat menyeret diserahkan ke pengelola file, misalnya untuk menyalin alih-alih memindahkan.",
   "triggers.recording_key": "Tekan tombol…",
   "triggers.flip_title": "Balik donut",
   "triggers.flip_description": "Saat donut terbuka, tombol ini atau putaran roda mouse menampilkan bagian belakangnya. Setiap donut mendapatkan bagian belakangnya di bawah Toolbar donut.",

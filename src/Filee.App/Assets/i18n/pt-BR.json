@@ -778,6 +778,8 @@
   "triggers.clear": "Limpar",
   "triggers.clipboard": "Converter o que está na área de transferência",
   "triggers.clipboard_note": "Primeiro os arquivos copiados; senão, uma imagem copiada (uma captura feita segurando Control). O resultado a substitui na área de transferência, pronto para colar; o de uma imagem é salvo onde ficam os arquivos do navegador. Sem nenhum dos dois, nada acontece.",
+  "triggers.late_modifier": "Abrir também se as teclas forem pressionadas durante o arraste",
+  "triggers.late_modifier_note": "Desligado: as teclas só contam se já estiverem pressionadas antes de apertar o botão do mouse. As pressionadas durante o arraste ficam para o gerenciador de arquivos, por exemplo para copiar em vez de mover.",
   "triggers.recording_key": "Pressione uma tecla…",
   "triggers.flip_title": "Virar o menu",
   "triggers.flip_description": "Com o menu aberto, esta tecla ou um giro da roda do mouse mostra o verso. Cada menu recebe o verso em Menu circular.",

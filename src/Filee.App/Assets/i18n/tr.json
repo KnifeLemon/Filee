@@ -761,6 +761,8 @@
   "triggers.clear": "Temizle",
   "triggers.clipboard": "Panodakini dönüştür",
   "triggers.clipboard_note": "Önce kopyalanan dosyalar, yoksa kopyalanan bir resim (Control basılıyken alınan ekran görüntüsü). Sonuç panoda onun yerini alır ve yapıştırmaya hazırdır; bir resmin sonucu tarayıcıdan gelen dosyaların kaydedildiği yere kaydedilir. İkisi de yoksa hiçbir şey olmaz.",
+  "triggers.late_modifier": "Tuşlar sürükleme sırasında basılınca da aç",
+  "triggers.late_modifier_note": "Kapalıyken tuşlar yalnızca fare düğmesine basmadan önce basılı tutulursa sayılır. Sürükleme sırasında basılan tuşlar dosya yöneticisine kalır; örneğin taşımak yerine kopyalamak için.",
   "triggers.recording_key": "Bir tuşa basın…",
   "triggers.flip_title": "Halkayı çevir",
   "triggers.flip_description": "Halka açıkken bu tuş veya fare tekerleği arka yüzü gösterir. Her halkanın arka yüzünü Halka araç çubuğu bölümünden ayarlayabilirsiniz.",

@@ -764,6 +764,8 @@
 "triggers.clear": "Cancella",
 "triggers.clipboard": "Converti il contenuto degli appunti",
 "triggers.clipboard_note": "Prima i file copiati, altrimenti un'immagine copiata (uno screenshot fatto tenendo premuto Control). Il risultato la sostituisce negli appunti, pronto da incollare; il risultato di un'immagine viene salvato dove finiscono i file dal browser. Se non c'è nessuno dei due, non succede nulla.",
+"triggers.late_modifier": "Apri anche se i tasti vengono premuti durante il trascinamento",
+"triggers.late_modifier_note": "Disattivato: i tasti contano solo se sono già premuti prima di premere il pulsante del mouse. Quelli premuti durante il trascinamento restano al gestore file, ad esempio per copiare invece di spostare.",
 "triggers.recording_key": "Premi un tasto…",
 "triggers.flip_title": "Capovolgi il donut",
 "triggers.flip_description": "Mentre il donut è aperto, questo tasto o un giro della rotellina del mouse ne mostra il retro. Ogni donut ha il suo retro in Barra donut.",
