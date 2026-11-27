@@ -1379,7 +1379,7 @@
   "theme.progress_ring.Ticks": "Ticks",
   "theme.progress_ring_hint": "The ring shown while a file converts. Ticks light up one by one around the percentage.",
   "theme.system_font": "Use the system font",
-  "theme.system_font_hint": "Shows text in your system's own font. Filee's built-in fonts still draw any script it lacks.",
+  "theme.system_font_hint": "Shows text in your system's own font, like other apps. Filee's built-in fonts still draw any script it lacks.",
   "theme.reduce_motion": "Reduce animations",
   "theme.reduce_motion_hint": "Turns off transitions and the donut's bounce.",
   "theme.window_size": "Window size",
