@@ -2632,7 +2632,7 @@ public class WhatsNewMedia
             var path = Path.Combine(folder, name);
             clip.WriteWebP(path);
             // The first frame next to the screenshots, for review.
-            clip.SaveFirstFrame(Path.Combine(TestServices.ScreenshotDirectory, $"whatsnew-{language}-" + Path.ChangeExtension(name, ".png")));
+            clip.SaveFirstFrame(TestServices.ScreenshotPath($"whatsnew-{language}-" + Path.ChangeExtension(name, ".png")));
             Assert.InRange(new FileInfo(path).Length, 1, 400 * 1024);
             if (language != "en" || clip.Poster is not null)
                 SetPoster(folder, name, clip.PosterIn(path));

@@ -68,4 +68,42 @@ internal static class TestServices
             return dir;
         }
     }
+
+    /// <summary>
+    /// Where a screenshot is saved: in a folder for its language (screenshots/en, screenshots/pt-BR, ...) when the
+    /// file name has one of Filee's language codes, such as page-theme-en.png, otherwise in screenshots itself.
+    /// </summary>
+    public static string ScreenshotPath(string name)
+    {
+        var folder = ScreenshotDirectory;
+        var language = ScreenshotLanguage(name);
+        if (language is not null)
+        {
+            folder = Path.Combine(folder, language);
+            Directory.CreateDirectory(folder);
+        }
+
+        return Path.Combine(folder, name);
+    }
+
+    /// <summary>
+    /// The language code in a file name, or null. The code must be a whole piece of the name, split at hyphens
+    /// (donut-download-badge-dark.png has none, although "dark" contains "ar").
+    /// </summary>
+    public static string? ScreenshotLanguage(string name)
+    {
+        var stem = Path.GetFileNameWithoutExtension(name);
+        foreach (var (code, _) in AppLanguages.All.OrderByDescending(l => l.Code.Length))
+        {
+            for (var at = stem.IndexOf(code, StringComparison.OrdinalIgnoreCase); at >= 0;
+                 at = stem.IndexOf(code, at + 1, StringComparison.OrdinalIgnoreCase))
+            {
+                var end = at + code.Length;
+                if ((at == 0 || stem[at - 1] == '-') && (end == stem.Length || stem[end] == '-'))
+                    return code;
+            }
+        }
+
+        return null;
+    }
 }

@@ -54,6 +54,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
         Scope = Scopes.First(s => s.Value == gesture.Scope);
         Clipboard = gesture.Clipboard;
         Face = Faces.First(f => f.Value == gesture.Face);
+        AllowLateModifier = gesture.AllowLateModifier;
         _loading = false;
     }
 
@@ -70,13 +71,13 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
 
     [ObservableProperty] private bool _enabled;
 
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(UsesMouse), nameof(UsesKey), nameof(UsesThreshold), nameof(UsesHold), nameof(UsesClipboard), nameof(IsConnectShortcut))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(UsesMouse), nameof(UsesKey), nameof(UsesThreshold), nameof(UsesHold), nameof(UsesClipboard), nameof(UsesLateModifier), nameof(IsConnectShortcut))]
     private Choice<TriggerKind> _kind = null!;
 
-    [ObservableProperty] private bool _ctrl;
-    [ObservableProperty] private bool _alt;
-    [ObservableProperty] private bool _shift;
-    [ObservableProperty] private bool _meta;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(UsesLateModifier))] private bool _ctrl;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(UsesLateModifier))] private bool _alt;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(UsesLateModifier))] private bool _shift;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(UsesLateModifier))] private bool _meta;
     [ObservableProperty] private Choice<TriggerMouseButton> _button = null!;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(KeyText))] private string? _key;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ThresholdText))] private int _dragThreshold;
@@ -84,6 +85,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     [ObservableProperty] private Choice<TriggerScope> _scope = null!;
     [ObservableProperty] private bool _clipboard;
     [ObservableProperty] private Choice<DonutFace> _face = null!;
+    [ObservableProperty] private bool _allowLateModifier;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(KeyText))] private bool _isRecording;
 
     public bool UsesMouse => Kind.Value != TriggerKind.KeyChord;
@@ -92,6 +94,8 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     public bool UsesHold => Kind.Value == TriggerKind.Hold;
     /// <summary>A keyboard shortcut where the clipboard can be read: it may convert what is on the clipboard.</summary>
     public bool UsesClipboard => UsesKey && ClipboardAvailable;
+    /// <summary>A drag with modifier keys: they may also be pressed once the drag is under way, unless turned off (#1863).</summary>
+    public bool UsesLateModifier => Kind?.Value == TriggerKind.Drag && (Ctrl || Alt || Shift || Meta);
     public bool IsConnectShortcut => Kind?.Value == TriggerKind.Click;
     public string KeyText => IsRecording ? RecordingLabel : string.IsNullOrEmpty(Key) ? "—" : Key;
     public string ThresholdText => DragThreshold == 0 ? SystemLabel : $"{DragThreshold}px";
@@ -107,7 +111,8 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     {
         base.OnPropertyChanged(e);
         if (_loading || e.PropertyName is nameof(IsRecording) or nameof(KeyText) or nameof(ThresholdText) or nameof(Summary)
-            or nameof(UsesMouse) or nameof(UsesKey) or nameof(UsesThreshold) or nameof(UsesHold) or nameof(UsesClipboard))
+            or nameof(UsesMouse) or nameof(UsesKey) or nameof(UsesThreshold) or nameof(UsesHold) or nameof(UsesClipboard)
+            or nameof(UsesLateModifier))
             return;
 
         _gesture.Enabled = Enabled;
@@ -121,6 +126,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
         _gesture.Scope = Scope.Value;
         _gesture.Clipboard = Clipboard;
         _gesture.Face = Face.Value;
+        _gesture.AllowLateModifier = AllowLateModifier;
         OnPropertyChanged(nameof(Summary));
         _save();
     }

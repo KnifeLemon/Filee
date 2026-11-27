@@ -772,6 +772,8 @@
   "triggers.clear": "Xóa",
   "triggers.clipboard": "Chuyển đổi nội dung trong bảng nhớ tạm",
   "triggers.clipboard_note": "Ưu tiên tệp đã sao chép, nếu không có thì một ảnh đã sao chép (ảnh chụp màn hình khi giữ Control). Kết quả sẽ thay thế nội dung đó trong bảng nhớ tạm, sẵn sàng để dán; kết quả của ảnh được lưu vào nơi lưu tệp từ trình duyệt. Nếu không có cả hai, sẽ không có gì xảy ra.",
+  "triggers.late_modifier": "Vẫn mở khi nhấn phím bổ trợ trong lúc kéo",
+  "triggers.late_modifier_note": "Khi tắt, phím bổ trợ chỉ có tác dụng nếu đã được giữ trước khi nhấn nút chuột. Phím nhấn trong lúc kéo được để cho trình quản lý tệp, chẳng hạn để sao chép thay vì di chuyển.",
   "triggers.recording_key": "Nhấn một phím…",
   "triggers.flip_title": "Lật vòng tròn",
   "triggers.flip_description": "Khi vòng tròn đang mở, phím này hoặc một lần xoay con lăn chuột sẽ hiện mặt sau. Mặt sau của mỗi vòng tròn được đặt trong Thanh công cụ vòng tròn.",

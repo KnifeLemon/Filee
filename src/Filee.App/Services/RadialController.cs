@@ -813,6 +813,7 @@ public sealed class RadialController(
         _dropped = true;
         _progressJob = job;
         viewModel.ProgressJob = job;
+        viewModel.ProgressCaption = ProgressCaptions.For(job.Job.Sources, job.Job.PresetDisplayName);
         _lastRingJob = job;
         donut.BeginProgress();
         donut.SetProgress(job.Progress / 100);

@@ -68,12 +68,22 @@ ko: JSP 파일(.jsp)을 텍스트처럼 PDF, Word 등으로 바꿀 수 있어요
 en: JavaServer Pages (.jsp) convert like text, to PDF, Word and more
 ko: 생물정보학 서열 정렬 형식(NEXUS, FASTA, PHYLIP)을 서로 변환할 수 있어요
 en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
+ko: 16비트 정수·부동소수점 GeoTIFF 래스터를 PNG, JPG 같은 그림으로 변환하면 값 범위에 맞춰 선명하게 나와요
+en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched across their data range
+ko: 드래그 제스처가 드래그 중에 누른 수정키로는 도넛을 열지 않게 설정할 수 있어요
+en: A drag gesture can be set to open the donut only when its keys are held before you press the mouse button
 -->
 
 - **Portable copies on Windows update themselves** (#1605). **Update** in Settings → About now downloads the new
   portable zip, checks it against the signed checksum list like the Setup update, and replaces the app files in
   place. The `data` folder and `filee.portable` stay as they are, and the old files are kept in `.backup-<pid>`
   until the new version has started.
+
+- **Keep Ctrl for copying during a drag** (#1863). A drag gesture also opens the donut when its modifier keys are
+  pressed after the drag started, so pressing Ctrl in the middle of a drag to copy in File Explorer opened the donut
+  instead. In **Settings → Shortcuts**, turn off **Also open when the keys are pressed during a drag** on that
+  gesture: it then opens only when the keys are already held as you press the mouse button, and a key pressed during
+  the drag goes to the file manager as usual. On by default, so nothing changes until you turn it off.
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
   rectangles, typed notes) without an appearance stream, which PDF/A requires, so the PDF/A preset's output was marked
@@ -309,6 +319,12 @@ en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
   Unaligned FASTA files with unequal sequence lengths are refused when targeting PHYLIP or NEXUS. The formats belong to
   the Science & medical field (off by default in Settings → Fields). The **FASTA**, **PHYLIP** and **NEXUS** presets in
   the palette make each one.
+
+- **16-bit and floating-point GeoTIFF rasters convert to pictures** (#155). GeoTIFF elevation and satellite rasters
+  (16- and 32-bit integers, 32- and 64-bit floats, striped or tiled, uncompressed, LZW, Deflate or PackBits, with
+  horizontal or floating-point predictors) are now read directly and stretched linearly per band to grayscale (1–2
+  bands) or RGB (3+ bands), with `GDAL_NODATA` and NaN cells drawn black instead of coming out nearly black or clipped
+  white. Ordinary 8-bit TIFFs and non-GeoTIFFs stay on ImageMagick unchanged.
 
 ## 2.5.0
 

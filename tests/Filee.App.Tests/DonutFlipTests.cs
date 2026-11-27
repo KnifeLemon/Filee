@@ -1284,7 +1284,7 @@ public class DonutFlipTests
             using (var turning = new Avalonia.Media.Imaging.RenderTargetBitmap(size))
             {
                 turning.Render(window);
-                using var png = File.Create(Path.Combine(TestServices.ScreenshotDirectory, $"donut-flip-midway-{suffix}.png"));
+                using var png = File.Create(TestServices.ScreenshotPath($"donut-flip-midway-{suffix}.png"));
                 turning.Save(png, new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
             }
 

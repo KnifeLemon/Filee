@@ -776,6 +776,8 @@
   "triggers.clear": "Limpar",
   "triggers.clipboard": "Converter o conteúdo da área de transferência",
   "triggers.clipboard_note": "Primeiro os ficheiros copiados; caso contrário, uma imagem copiada (uma captura feita com Control premido). O resultado substitui-a na área de transferência, pronto a colar; o de uma imagem é guardado onde ficam os ficheiros do browser. Sem nenhum dos dois, nada acontece.",
+  "triggers.late_modifier": "Abrir também se as teclas forem premidas durante o arrastamento",
+  "triggers.late_modifier_note": "Desligado: as teclas só contam se já estiverem premidas antes de carregar no botão do rato. As premidas durante o arrastamento ficam para o gestor de ficheiros, por exemplo para copiar em vez de mover.",
   "triggers.recording_key": "Prime uma tecla…",
   "triggers.flip_title": "Virar a barra circular",
   "triggers.flip_description": "Com a barra circular aberta, esta tecla ou a roda do rato mostra o verso. Configura o verso de cada barra em Barra circular.",
