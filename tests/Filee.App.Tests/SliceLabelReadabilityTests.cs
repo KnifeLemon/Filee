@@ -78,7 +78,7 @@ public class SliceLabelReadabilityTests
     // Every problem in a file beside the screenshots (only the first 40 in the failure message).
     private static void Report(List<string> problems, [System.Runtime.CompilerServices.CallerMemberName] string test = "")
     {
-        File.WriteAllLines(Path.Combine(TestServices.ScreenshotDirectory, $"readability-{test}.txt"), problems);
+        File.WriteAllLines(TestServices.ScreenshotPath($"readability-{test}.txt"), problems);
         Assert.True(problems.Count == 0, $"{problems.Count} problems:\n{string.Join("\n", problems.Take(40))}");
     }
 

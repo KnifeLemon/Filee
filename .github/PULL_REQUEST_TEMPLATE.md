@@ -23,7 +23,7 @@
 
 ## Screenshots (UI changes)
 
-<!-- Drag images into this box. Rendered pages are in tests/Filee.App.Tests/bin/<config>/net10.0/screenshots -->
+<!-- Drag images into this box. Rendered pages are in tests/Filee.App.Tests/bin/<config>/net10.0/screenshots, in a folder for each language (en, pt-BR, ...) -->
 
 ## Checklist
 
