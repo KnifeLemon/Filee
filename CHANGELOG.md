@@ -68,6 +68,8 @@ ko: JSP 파일(.jsp)을 텍스트처럼 PDF, Word 등으로 바꿀 수 있어요
 en: JavaServer Pages (.jsp) convert like text, to PDF, Word and more
 ko: 생물정보학 서열 정렬 형식(NEXUS, FASTA, PHYLIP)을 서로 변환할 수 있어요
 en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
+ko: 16비트 정수·부동소수점 GeoTIFF 래스터를 PNG, JPG 같은 그림으로 변환하면 값 범위에 맞춰 선명하게 나와요
+en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched across their data range
 ko: PDF·Word·웹 페이지의 표를 Excel로 바꿀 때 머리글의 병합은 남기고, 여러 행에 걸친 분류는 행마다 채워서 정렬과 필터가 돼요
 en: Tables from PDF, Word and web pages keep their header merges in Excel and fill categories into every row, so the sheet sorts and filters
 -->
@@ -314,6 +316,12 @@ en: Tables from PDF, Word and web pages keep their header merges in Excel and fi
   Unaligned FASTA files with unequal sequence lengths are refused when targeting PHYLIP or NEXUS. The formats belong to
   the Science & medical field (off by default in Settings → Fields). The **FASTA**, **PHYLIP** and **NEXUS** presets in
   the palette make each one.
+
+- **16-bit and floating-point GeoTIFF rasters convert to pictures** (#155). GeoTIFF elevation and satellite rasters
+  (16- and 32-bit integers, 32- and 64-bit floats, striped or tiled, uncompressed, LZW, Deflate or PackBits, with
+  horizontal or floating-point predictors) are now read directly and stretched linearly per band to grayscale (1–2
+  bands) or RGB (3+ bands), with `GDAL_NODATA` and NaN cells drawn black instead of coming out nearly black or clipped
+  white. Ordinary 8-bit TIFFs and non-GeoTIFFs stay on ImageMagick unchanged.
 
 ## 2.5.0
 

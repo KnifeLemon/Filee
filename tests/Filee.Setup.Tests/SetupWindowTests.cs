@@ -496,9 +496,33 @@ public class SetupWindowTests
         using var frame = window.CaptureRenderedFrame();
         Assert.NotNull(frame);
         var folder = Path.Combine(AppContext.BaseDirectory, "screenshots");
+        var language = ScreenshotLanguage(name);
+        if (language is not null)
+            folder = Path.Combine(folder, language);
         Directory.CreateDirectory(folder);
         using var stream = File.Create(Path.Combine(folder, name));
         frame.Save(stream, new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
+    }
+
+    /// <summary>
+    /// The language code in a screenshot's file name (setup-1-welcome-pt-BR.png), or null. The code must be a whole
+    /// piece of the name, split at hyphens; screenshots are saved in a folder for their language.
+    /// </summary>
+    internal static string? ScreenshotLanguage(string name)
+    {
+        var stem = Path.GetFileNameWithoutExtension(name);
+        foreach (var (code, _) in SetupTexts.Languages.OrderByDescending(l => l.Code.Length))
+        {
+            for (var at = stem.IndexOf(code, StringComparison.OrdinalIgnoreCase); at >= 0;
+                 at = stem.IndexOf(code, at + 1, StringComparison.OrdinalIgnoreCase))
+            {
+                var end = at + code.Length;
+                if ((at == 0 || stem[at - 1] == '-') && (end == stem.Length || stem[end] == '-'))
+                    return code;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>Pumps until <paramref name="done"/> holds, for what another thread posts to the UI; fails after 10 s.</summary>

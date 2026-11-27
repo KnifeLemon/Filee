@@ -683,7 +683,7 @@ public class WhatsNewTests
     {
         using var frame = window.CaptureRenderedFrame();
         Assert.NotNull(frame);
-        using var stream = File.Create(Path.Combine(TestServices.ScreenshotDirectory, name));
+        using var stream = File.Create(TestServices.ScreenshotPath(name));
         frame.Save(stream, new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
     }
 }

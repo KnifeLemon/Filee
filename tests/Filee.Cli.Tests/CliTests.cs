@@ -514,13 +514,89 @@ public sealed class CliTests : IDisposable
     [InlineData("1:2:3:4")]
     [InlineData("0s")]
     [InlineData("25h")]
-    [InlineData("-5m")]
     public void Split_every_refuses_what_is_neither_pages_nor_a_length(string value) =>
         Assert.StartsWith("--split-every must be", CliOptions.Parse(["convert", "a.mp4", "--to", "mp4", "--split-every", value]).Error);
 
     [Fact]
+    public void Split_every_does_not_take_a_negative_length_as_its_value() =>
+        Assert.Equal("--split-every needs a value.", CliOptions.Parse(["convert", "a.mp4", "--to", "mp4", "--split-every", "-5m"]).Error);
+
+    [Fact]
     public void Sort_is_refused_by_watch_rather_than_ignored() =>
         Assert.Contains("--sort", CliOptions.Parse(["watch", "inbox", "--to", "pdf", "--sort", "name"]).Error);
+
+    /// <summary>--option=value is the same as --option value (#1709).</summary>
+    [Fact]
+    public void An_option_takes_its_value_after_an_equals_sign()
+    {
+        var spaced = CliOptions.Parse(["convert", "photo.png", "--to", "jpg"]);
+        var joined = CliOptions.Parse(["convert", "photo.png", "--to=jpg"]);
+
+        Assert.Null(joined.Error);
+        Assert.Equal(spaced.To, joined.To);
+        Assert.Equal(["photo.png"], joined.Inputs);
+    }
+
+    [Fact]
+    public void Only_the_first_equals_sign_ends_the_option_name()
+    {
+        var options = CliOptions.Parse(["convert", "a.png", "--to", "iso", "--output=a=b", "--quality=80", "--iso-label=My disc", "--from=x=y"]);
+
+        Assert.Null(options.Error);
+        Assert.Equal("a=b", options.Output);
+        Assert.Equal(80, options.Quality);
+        Assert.Equal("My disc", options.IsoLabel);
+        Assert.Equal(["x=y"], options.From);
+    }
+
+    [Theory]
+    [InlineData("--json=x")]
+    [InlineData("--quiet=1")]
+    [InlineData("--recursive=yes")]
+    [InlineData("--help=x")]
+    public void A_flag_refuses_a_value_rather_than_ignoring_it(string arg)
+    {
+        var options = CliOptions.Parse(["convert", "a.png", "--to", "jpg", arg]);
+
+        Assert.Equal("convert", options.Command);
+        Assert.Equal($"Unknown option '{arg}'.", options.Error);
+    }
+
+    /// <summary>An option where a value should be means the value is missing (#1709): no folder named --json.</summary>
+    [Theory]
+    [InlineData("-o needs a value.", "convert", "a.png", "--to", "jpg", "-o", "--json")]
+    [InlineData("--to needs a value.", "convert", "a.png", "--to", "-r")]
+    [InlineData("-o needs a value.", "convert", "a.png", "--to", "jpg", "-o", "-")]
+    [InlineData("--to needs a value.", "convert", "a.png", "--to=")]
+    public void An_option_is_not_taken_as_a_value(string error, params string[] args)
+    {
+        var options = CliOptions.Parse(args);
+
+        Assert.Equal(error, options.Error);
+        Assert.Null(options.Output);
+    }
+
+    /// <summary>After "--" everything is a file or folder, "-" and "--" included (#1709).</summary>
+    [Fact]
+    public void Everything_after_a_double_dash_is_a_file()
+    {
+        var options = CliOptions.Parse(["convert", "--to", "pdf", "--", "--draft.md", "-", "-h", "--"]);
+
+        Assert.Null(options.Error);
+        Assert.Equal("convert", options.Command);
+        Assert.Equal("pdf", options.To);
+        Assert.Equal(["--draft.md", "-", "-h", "--"], options.Inputs);
+    }
+
+    [Fact]
+    public void Options_after_a_double_dash_are_files_too()
+    {
+        var options = CliOptions.Parse(["convert", "--", "--draft.md", "--to", "pdf"]);
+
+        Assert.Null(options.To);
+        Assert.Equal(["--draft.md", "--to", "pdf"], options.Inputs);
+        Assert.Equal("Use either --to <format> or --preset <preset>.", options.Error);
+    }
 
     [Fact]
     public async Task Converts_to_a_format_of_a_turned_off_field()

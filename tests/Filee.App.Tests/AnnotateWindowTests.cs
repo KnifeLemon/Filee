@@ -996,8 +996,8 @@ public sealed class AnnotateWindowTests : IDisposable
                     // What each side drew with, and the two pictures with the screenshots, for a platform this can't be
                     // run on by hand (a CI runner).
                     var name = $"annotate-label-{string.Concat(text.Where(char.IsAsciiLetterOrDigit))}";
-                    typed.Write(Path.Combine(TestServices.ScreenshotDirectory, name + "-box.png"));
-                    drawn.Write(Path.Combine(TestServices.ScreenshotDirectory, name + "-label.png"));
+                    typed.Write(TestServices.ScreenshotPath(name + "-box.png"));
+                    drawn.Write(TestServices.ScreenshotPath(name + "-label.png"));
                     Assert.Fail($"\"{text}\": the label differs from its box by {difference:0.00} of 255 (at {dx}, {dy}).\n"
                         + $"Box: {Fonts(BoxRuns(window.Editor, text))}\nLabel: {Fonts(LabelRuns(text))}");
                 }

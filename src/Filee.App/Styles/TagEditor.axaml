@@ -122,6 +122,12 @@
     <Setter Property="Margin" Value="2" />
     <Setter Property="MinHeight" Value="26" />
   </Style>
+  <!-- Material You gives the chip box the SurfaceAlt fill (above), the same as the chips, so the chips vanished into it. They take
+       TagChipBrush instead (MaterialYouPalette: the accent at a low opacity). Soft keeps its SurfaceAlt chips. The focused,
+       warning and muted chips below come later and keep their own fills. -->
+  <Style Selector="Window.material-you Border.tagchip">
+    <Setter Property="Background" Value="{DynamicResource TagChipBrush}" />
+  </Style>
   <Style Selector="Border.tagchip:focus">
     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />

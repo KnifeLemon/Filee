@@ -517,7 +517,7 @@ public class BrowserDropTests
             using (var frame = window.CaptureRenderedFrame())
             {
                 Assert.NotNull(frame);
-                using var stream = File.Create(Path.Combine(TestServices.ScreenshotDirectory, $"page-general-browser-drops-{language}.png"));
+                using var stream = File.Create(TestServices.ScreenshotPath($"page-general-browser-drops-{language}.png"));
                 frame.Save(stream, new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
             }
 

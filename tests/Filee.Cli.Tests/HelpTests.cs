@@ -23,4 +23,31 @@ public sealed class HelpTests
         Assert.Contains(FormattableString.Invariant(
             $"--settle <seconds> How long a file must stay unchanged (default {FolderWatcher.DefaultSettleTime.TotalSeconds})"), output.ToString());
     }
+
+    /// <summary>Paths in help follow the platform (#1709): D:\Scans and \ on Windows, ~/Scans and / elsewhere.</summary>
+    [Fact]
+    public void Help_paths_follow_the_platform()
+    {
+        var general = Help.Text(null);
+        var watch = Help.Text("watch");
+
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Contains(@"filee convert D:\Scans", general);
+            Assert.Contains(@"filee watch D:\Inbox", general);
+            Assert.Contains(@"<folder>\converted", watch);
+            Assert.Contains(@"<folder>\originals", watch);
+            Assert.DoesNotContain("~/", general);
+        }
+        else
+        {
+            Assert.Contains("filee convert ~/Scans", general);
+            Assert.Contains("filee watch ~/Inbox", general);
+            Assert.Contains("<folder>/converted", watch);
+            Assert.Contains("<folder>/originals", watch);
+            Assert.DoesNotContain(@"D:\", general);
+            Assert.DoesNotContain(@"\converted", watch);
+            Assert.DoesNotContain(@"\originals", watch);
+        }
+    }
 }
