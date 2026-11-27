@@ -74,6 +74,8 @@ ko: 드래그 제스처가 드래그 중에 누른 수정키로는 도넛을 열
 en: A drag gesture can be set to open the donut only when its keys are held before you press the mouse button
 ko: Blizzard 텍스처(.blp)를 PNG, JPG 같은 이미지로 변환할 수 있어요
 en: Blizzard textures (.blp) convert to PNG, JPG and other image formats
+ko: 그림이 든 ZIP은 CBZ로, RAR은 CBR로 다시 압축하지 않고 이름만 바꿔 저장할 수 있어요
+en: A ZIP of pictures becomes a CBZ and a RAR a CBR as it is, without packing it again
 -->
 
 - **Keep Ctrl for copying during a drag** (#1863). A drag gesture also opens the donut when its modifier keys are
@@ -327,6 +329,13 @@ en: Blizzard textures (.blp) convert to PNG, JPG and other image formats
   DXT1/DXT3/DXT5 and uncompressed BGRA) textures now open on the images donut and convert to PNG, JPG, TGA, DDS and the
   other image formats. Filee reads the largest mipmap and does not write BLP files; Warcraft III beta BLP0 files with
   separate mipmap files are not supported.
+
+- **A ZIP of pictures becomes a CBZ, a RAR a CBR, as it is** (#1482). A comic in a ZIP or RAR is the same file as a CBZ
+  or CBR under another name, so the **CBZ** preset now takes a ZIP and the new **CBR** preset (in the palette) takes a
+  RAR, and both copy the file byte for byte with the comic extension: nothing is unpacked or packed again, and the
+  original stays. An archive with no pictures in it, or one protected with a password, is refused with a reason. Other
+  files next to the pictures (`ComicInfo.xml`, a readme) are kept. Filee still doesn't write RAR: a CBR comes only from
+  your own RAR. CB7 and CBT become CBZ as before.
 
 ## 2.5.0
 
