@@ -154,7 +154,7 @@
   "error.engine_file_mismatch": "This file isn't the one Filee downloads for this engine: it's damaged or a different version",
   "error.needs_shaping": "This script needs LibreOffice to convert correctly. Install it in Settings → Engines",
   "error.runtime_missing": "A Microsoft Visual C++ runtime file this engine needs is missing or outdated. Update or reinstall Filee, or install the Microsoft Visual C++ Redistributable (x64)",
-  "error.blocked_by_windows": "Windows blocked a file of this engine because it is not digitally signed (Smart App Control). Turn off Smart App Control in Windows Security → App & browser control, or in Settings → Engines choose \"Use another copy…\" and pick a signed FFmpeg (a build your organization has signed)",
+  "error.blocked_by_windows": "Windows blocked a file of this engine because it isn't digitally signed or Windows can't verify who published it (Smart App Control or another security policy). Turn off Smart App Control in Windows Security → App & browser control, or in Settings → Engines choose “Use my copy…” and pick a copy your security policy allows",
   "error.conversion_failed": "The engine reported an error",
   "error.pdf_no_tables": "This PDF has no tables drawn with lines, so there is nothing to put in a spreadsheet. A scanned PDF has no text at all.",
   "error.document_no_tables": "This file has no tables, so there is nothing to put in a spreadsheet. Columns lined up with tabs or spaces aren't read as a table.",
@@ -237,7 +237,7 @@
 
   "engine.reason.not_installed": "Not installed",
   "engine.reason.error": "Error while checking",
-  "engine.reason.blocked_by_windows": "Blocked by Windows (Smart App Control). See Settings → Engines",
+  "engine.reason.blocked_by_windows": "Blocked by Windows (Smart App Control or another security policy)",
   "engine.reason.unsupported_platform": "Not available on this platform",
   "engine.reason.needs_package": "Needs {0}. Install it in Settings → Engines",
   "engine.reason.needs_perl": "Needs Perl, which isn't on this computer",
