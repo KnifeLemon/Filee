@@ -127,7 +127,7 @@ internal static class Help
           -q, --quality <1-100>  Image quality for JPG, WebP, AVIF, …
               --merged-cells <smart|keep|fill>
                                  PDF, DOCX or HTML tables to XLSX, ODS or CSV: smart keeps the header's merges and
-                                 fills cells spanning the body's rows; keep merges as drawn; fill merges nothing
+                                 numbers, fills text spanning the body's rows; keep merges as drawn; fill merges nothing
               --pages <range>    The pages of PDFs, e.g. 13-55 or 1-3,8,12-15 (default: the preset's)
               --split-every <n>  PDF to PDF: a file for every n pages, named _p1-50, _p51-100, … (1: one per page).
                                  With a length (90s, 10m, 1h30m, 1:30:00), video to video: a part for every

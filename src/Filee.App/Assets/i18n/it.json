@@ -1086,7 +1086,7 @@
 "presets.merged_cells.Smart": "Intelligente: unisci intestazioni, riempi righe",
 "presets.merged_cells.Keep": "Mantieni tutto unito",
 "presets.merged_cells.Fill": "Dividi e riempi",
-"presets.merged_cells_hint": "Intelligente: le righe di intestazione e le celle su più colonne restano unite; una cella su più righe sotto l'intestazione (una categoria accanto ai suoi articoli) viene divisa e il suo valore scritto in ogni riga, così il foglio si può ordinare, filtrare e sommare.\nMantieni tutto unito: come lo disegna il documento.\nDividi e riempi: nessuna cella unita; ogni valore si ripete in tutte le celle che copriva.",
+"presets.merged_cells_hint": "Per le tabelle di un PDF, di un documento Word (DOCX) o di una pagina web (HTML). Intelligente: le righe di intestazione e le celle su più colonne restano unite; una cella su più righe sotto l'intestazione (una categoria accanto ai suoi articoli) viene divisa e il suo testo scritto in ogni riga, così ogni riga si legge per intero in filtri e tabelle pivot. I numeri restano uniti, quindi i totali non cambiano.\nMantieni tutto unito: come lo disegna il documento.\nDividi e riempi: nessuna cella unita; ogni valore si ripete in tutte le celle che copriva.",
 "presets.pdf_compression": "Comprimi",
 "presets.pdf_compression.None": "Non comprimere",
 "presets.pdf_compression.Screen": "Minima (immagini a 72 dpi)",

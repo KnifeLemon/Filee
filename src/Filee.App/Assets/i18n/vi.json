@@ -1102,7 +1102,7 @@
   "presets.merged_cells.Smart": "Thông minh: gộp tiêu đề, điền các hàng",
   "presets.merged_cells.Keep": "Giữ nguyên tất cả ô gộp",
   "presets.merged_cells.Fill": "Bỏ gộp và điền",
-  "presets.merged_cells_hint": "Thông minh: các hàng tiêu đề và ô trải qua nhiều cột vẫn được gộp; ô trải qua nhiều hàng bên dưới tiêu đề (một danh mục cạnh các mục của nó) được bỏ gộp và giá trị được ghi vào mọi hàng, để trang tính có thể sắp xếp, lọc và tính tổng.\nGiữ nguyên tất cả ô gộp: như tài liệu vẽ.\nBỏ gộp và điền: không có ô gộp; mỗi giá trị được lặp lại ở mọi ô mà nó từng phủ.",
+  "presets.merged_cells_hint": "Dành cho bảng từ PDF, tài liệu Word (DOCX) hoặc trang web (HTML). Thông minh: các hàng tiêu đề và ô trải qua nhiều cột vẫn được gộp; ô trải qua nhiều hàng bên dưới tiêu đề (một danh mục cạnh các mục của nó) được bỏ gộp và văn bản được ghi vào mọi hàng, để mỗi hàng đọc trọn vẹn trong bộ lọc và PivotTable. Các số vẫn được gộp, nên tổng không đổi.\nGiữ nguyên tất cả ô gộp: như tài liệu vẽ.\nBỏ gộp và điền: không có ô gộp; mỗi giá trị được lặp lại ở mọi ô mà nó từng phủ.",
   "presets.pdf_compression": "Nén",
   "presets.pdf_compression.None": "Không nén",
   "presets.pdf_compression.Screen": "Nhỏ nhất (ảnh 72 dpi)",

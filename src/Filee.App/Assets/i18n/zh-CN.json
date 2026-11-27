@@ -1102,7 +1102,7 @@
   "presets.merged_cells.Smart": "智能：表头合并，行填充",
   "presets.merged_cells.Keep": "全部保持合并",
   "presets.merged_cells.Fill": "取消合并并填充",
-  "presets.merged_cells_hint": "智能：表头行和跨列的单元格保持合并；表头下方跨行的单元格（如项目旁的类别）取消合并，并把值写入每一行，便于排序、筛选和求和。\n全部保持合并：与文档中的样子一致。\n取消合并并填充：没有合并单元格，每个值在其覆盖的所有单元格中重复。",
+  "presets.merged_cells_hint": "适用于来自 PDF、Word 文档（DOCX）或网页（HTML）的表格。智能：表头行和跨列的单元格保持合并；表头下方跨行的单元格（如项目旁的类别）取消合并，并把文字写入每一行，使每一行在筛选和数据透视表中都完整可读。数字保持合并，所以合计不变。\n全部保持合并：与文档中的样子一致。\n取消合并并填充：没有合并单元格，每个值在其覆盖的所有单元格中重复。",
   "presets.pdf_compression": "压缩",
   "presets.pdf_compression.None": "不压缩",
   "presets.pdf_compression.Screen": "最小（图片 72 dpi）",

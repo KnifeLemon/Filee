@@ -1102,7 +1102,7 @@
   "presets.merged_cells.Smart": "Intelligent : fusionner les en-têtes, remplir les lignes",
   "presets.merged_cells.Keep": "Tout garder fusionné",
   "presets.merged_cells.Fill": "Défusionner et remplir",
-  "presets.merged_cells_hint": "Intelligent : les lignes d'en-tête et les cellules sur plusieurs colonnes restent fusionnées ; une cellule sur plusieurs lignes sous l'en-tête (une catégorie à côté de ses articles) est défusionnée et sa valeur écrite dans chaque ligne, pour pouvoir trier, filtrer et additionner.\nTout garder fusionné : comme le document le dessine.\nDéfusionner et remplir : aucune cellule fusionnée ; chaque valeur est répétée dans chaque cellule qu'elle couvrait.",
+  "presets.merged_cells_hint": "Pour les tableaux d'un PDF, d'un document Word (DOCX) ou d'une page web (HTML). Intelligent : les lignes d'en-tête et les cellules sur plusieurs colonnes restent fusionnées ; une cellule sur plusieurs lignes sous l'en-tête (une catégorie à côté de ses articles) est défusionnée et son texte écrit dans chaque ligne, pour que chaque ligne se lise en entier dans les filtres et les tableaux croisés dynamiques. Les nombres restent fusionnés, donc les totaux ne changent pas.\nTout garder fusionné : comme le document le dessine.\nDéfusionner et remplir : aucune cellule fusionnée ; chaque valeur est répétée dans chaque cellule qu'elle couvrait.",
   "presets.pdf_compression": "Compresser",
   "presets.pdf_compression.None": "Ne pas compresser",
   "presets.pdf_compression.Screen": "Le plus léger (images à 72 ppp)",

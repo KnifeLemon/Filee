@@ -1102,7 +1102,7 @@
   "presets.merged_cells.Smart": "스마트: 머리글은 병합, 행은 채우기",
   "presets.merged_cells.Keep": "모두 병합 유지",
   "presets.merged_cells.Fill": "병합 해제 후 채우기",
-  "presets.merged_cells_hint": "스마트: 머리글 행과 여러 열에 걸친 셀은 병합된 채로 두고, 머리글 아래에서 여러 행에 걸친 셀(항목 옆의 분류 등)은 병합을 풀고 값을 모든 행에 써요. 그래서 시트를 정렬하고 필터링하고 합계를 낼 수 있어요.\n모두 병합 유지: 문서에 그려진 그대로예요.\n병합 해제 후 채우기: 병합된 셀 없이, 각 값을 덮고 있던 모든 셀에 반복해요.",
+  "presets.merged_cells_hint": "PDF, Word 문서(DOCX), 웹 페이지(HTML)의 표를 위한 설정이에요. 스마트: 머리글 행과 여러 열에 걸친 셀은 병합된 채로 두고, 머리글 아래에서 여러 행에 걸친 셀(항목 옆의 분류 등)은 병합을 풀고 텍스트를 모든 행에 써요. 그래서 필터와 피벗 테이블에서 각 행이 온전히 읽혀요. 숫자는 병합된 채로 두기 때문에 합계는 바뀌지 않아요.\n모두 병합 유지: 문서에 그려진 그대로예요.\n병합 해제 후 채우기: 병합된 셀 없이, 각 값을 덮고 있던 모든 셀에 반복해요.",
   "presets.pdf_compression": "압축",
   "presets.pdf_compression.None": "압축 안 함",
   "presets.pdf_compression.Screen": "가장 작게 (이미지 72 dpi)",

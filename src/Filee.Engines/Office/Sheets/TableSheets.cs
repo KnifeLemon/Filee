@@ -1,9 +1,10 @@
 // Tables of the document model (HTable) written onto worksheets: shared by PDF → XLSX (PdfTablesConverter, #267) and
 // DOCX / HTML → XLSX (DocumentTablesConverter, #1016).
 //
-// - Merged cells stay merged or are filled as the preset says (DocumentOptions.MergedCells): Smart keeps the header's
-//   and the across-columns ones and fills the ones down the body's rows. A kept merge's other cells keep the borders, as
-//   Excel draws them from every cell.
+// - Merged cells stay merged or are filled as the preset says (DocumentOptions.MergedCells): Smart keeps the header's,
+//   the across-columns ones and the ones holding a number, and fills text down the body's rows. A kept merge's other
+//   cells keep the borders, as Excel draws them from every cell. A fill that would repeat more than
+//   MaxFilledCharacters of text in one table stays merged.
 // - Cells that read as numbers ("1,234.50", "(120)", "$9.99"), percentages ("12.5%") or dates with the year first
 //   ("2026-10-23", "2026. 10. 23.") become real numbers and dates, in a number format that shows them as the document
 //   did, so they can be calculated with. Anything else stays text: numbers with a leading zero (codes, phone numbers),
@@ -14,6 +15,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Filee.Core.Presets;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Office.Sheets;
 
@@ -31,6 +33,14 @@ internal static partial class TableSheets
 
     /// <summary>Widest column sized from its text, in characters: longer text wraps.</summary>
     private const double MaxFittedWidth = 60;
+
+    /// <summary>
+    /// Most characters that filling merged cells may repeat in one table. The cell limit
+    /// (<see cref="HwpxWriter.MaxTableCells"/>) doesn't bound text: one long cell merged over a million rows would be
+    /// copied into each. Every copy lands in the sheet's one XML part, which readers (ours: <see cref="BoundedXml.MaxPartBytes"/>)
+    /// refuse past a size, so a fill stays well under it; past the budget, the merge stays merged.
+    /// </summary>
+    internal const long MaxFilledCharacters = BoundedXml.MaxPartBytes / 8;
 
     /// <summary>
     /// Sets the sheet's column widths from the table: its absolute widths (PDF, DOCX), its relative ones (HTML), or
@@ -135,12 +145,15 @@ internal static partial class TableSheets
     /// their measured heights. Otherwise (DOCX, HTML) the cells keep their own borders and the rows fit their text, as
     /// a document's row height is only a minimum.
     /// </param>
-    /// <param name="merged">Which merged cells stay merged (<see cref="MergedCells"/>); the rest are filled.</param>
+    /// <param name="merged">
+    /// Which merged cells stay merged (<see cref="MergedCells"/>); the rest are filled, up to
+    /// <see cref="MaxFilledCharacters"/> repeated in the table.
+    /// </param>
     /// <param name="continues">
     /// The table goes on from the one placed above it (a PDF table over a page break): it has no header rows of its own.
     /// </param>
     public static int Place(Worksheet sheet, HTable table, int top, int skip, bool drawn,
-        MergedCells merged = MergedCells.Keep, bool continues = false)
+        MergedCells merged, bool continues = false)
     {
         if (drawn)
         {
@@ -156,19 +169,30 @@ internal static partial class TableSheets
         var defaults = table.Borders ?? HBorders.Grid;
         var cells = Grid(table, skip).ToList();
         var header = merged == MergedCells.Smart ? HeaderRows(table, cells, skip, continues) : 0;
+        long filled = 0;
         foreach (var (cell, row, column, rows, columns) in cells)
         {
             var style = StyleOf(cell, drawn ? null : cell.Borders ?? defaults);
             var at = top + row;
             var text = Text(cell);
+            var shown = Shown(text, style);
             var spans = rows > 1 || columns > 1;
-            var keep = spans && KeepsMerge(merged, row, rows, header, text);
-            sheet.Set(at, column, Shown(text, style));
+            var keep = spans && KeepsMerge(merged, row, rows, header, text, shown.IsNumber);
+            var fill = spans && !keep && text.Length > 0;
+            if (fill)
+            {
+                var repeated = (long)text.Length * ((long)rows * columns - 1);
+                if (filled + repeated > MaxFilledCharacters)
+                    (keep, fill) = (true, false);
+                else
+                    filled += repeated;
+            }
+            sheet.Set(at, column, shown);
             for (var r = at; r < at + rows; r++)
                 for (var c = column; c < column + columns; c++)
                     if (r != at || c != column)
-                        // A filled merge repeats its value, so every row reads whole on its own (sorting, filters, sums).
-                        sheet.Set(r, c, spans && !keep && text.Length > 0 ? Shown(text, style) : new SheetCell("", style));
+                        // A filled merge repeats its value, so every row reads whole on its own (filters, pivot tables).
+                        sheet.Set(r, c, fill ? shown : new SheetCell("", style));
             if (keep)
                 sheet.Merges.Add(new CellRange(at, column, at + rows - 1, column + columns - 1));
         }
@@ -177,16 +201,18 @@ internal static partial class TableSheets
 
     /// <summary>
     /// Whether a cell covering <paramref name="rows"/> rows from <paramref name="row"/> stays merged. Smart keeps the
-    /// merges that only help reading: in the header rows, and across columns (a title, a "Total" label, a group
-    /// heading). A merge down the rows of the body (a category beside its items) would stop the sheet from being
-    /// sorted or filtered and leave blanks that formulas and pivot tables read as missing, so it is filled. An empty
-    /// merged cell holds nothing to repeat and isn't merged either.
+    /// merges that only help reading: in the header rows (empty ones too, such as the corner above a column of labels),
+    /// and across columns (a title, a "Total" label, a group heading). A merge holding a number or a date down the rows
+    /// of the body (a group total beside its items) stays merged too: repeating it into every row would change what the
+    /// column adds up to. A text merge down the body (a category beside its items) leaves blanks that filters and pivot
+    /// tables read as missing, so it is filled. An empty merged cell in the body holds nothing to repeat and isn't
+    /// merged.
     /// </summary>
-    private static bool KeepsMerge(MergedCells merged, int row, int rows, int header, string text) => merged switch
+    private static bool KeepsMerge(MergedCells merged, int row, int rows, int header, string text, bool number) => merged switch
     {
         MergedCells.Keep => true,
         MergedCells.Fill => false,
-        _ => text.Length > 0 && (row < header || rows == 1),
+        _ => row < header || (text.Length > 0 && (rows == 1 || number)),
     };
 
     /// <summary>

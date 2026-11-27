@@ -1102,7 +1102,7 @@
   "presets.merged_cells.Smart": "Inteligente: mesclar cabeçalhos, preencher linhas",
   "presets.merged_cells.Keep": "Manter tudo mesclado",
   "presets.merged_cells.Fill": "Desfazer e preencher",
-  "presets.merged_cells_hint": "Inteligente: as linhas de cabeçalho e as células que ocupam várias colunas continuam mescladas; uma célula que ocupa várias linhas abaixo do cabeçalho (uma categoria ao lado dos seus itens) é desfeita e seu valor escrito em cada linha, para que a planilha possa ser classificada, filtrada e somada.\nManter tudo mesclado: como o documento desenha.\nDesfazer e preencher: nenhuma célula mesclada; cada valor se repete em todas as células que cobria.",
+  "presets.merged_cells_hint": "Para tabelas de um PDF, de um documento do Word (DOCX) ou de uma página da web (HTML). Inteligente: as linhas de cabeçalho e as células que ocupam várias colunas continuam mescladas; uma célula que ocupa várias linhas abaixo do cabeçalho (uma categoria ao lado dos seus itens) é desfeita e seu texto escrito em cada linha, para que cada linha seja lida por inteiro em filtros e tabelas dinâmicas. Os números continuam mesclados, então os totais não mudam.\nManter tudo mesclado: como o documento desenha.\nDesfazer e preencher: nenhuma célula mesclada; cada valor se repete em todas as células que cobria.",
   "presets.pdf_compression": "Comprimir",
   "presets.pdf_compression.None": "Não comprimir",
   "presets.pdf_compression.Screen": "Menor (imagens a 72 dpi)",

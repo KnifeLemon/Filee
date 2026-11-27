@@ -1102,7 +1102,7 @@
   "presets.merged_cells.Smart": "智慧：標題合併，列填滿",
   "presets.merged_cells.Keep": "全部保持合併",
   "presets.merged_cells.Fill": "取消合併並填滿",
-  "presets.merged_cells_hint": "智慧：標題列與跨欄的儲存格保持合併；標題下方跨列的儲存格（例如項目旁的類別）取消合併，並把值寫入每一列，方便排序、篩選與加總。\n全部保持合併：與文件中的樣子相同。\n取消合併並填滿：沒有合併儲存格，每個值會在其涵蓋的所有儲存格中重複。",
+  "presets.merged_cells_hint": "適用於來自 PDF、Word 文件（DOCX）或網頁（HTML）的表格。智慧：標題列與跨欄的儲存格保持合併；標題下方跨列的儲存格（例如項目旁的類別）取消合併，並把文字寫入每一列，讓每一列在篩選與樞紐分析表中都完整可讀。數字保持合併，所以合計不變。\n全部保持合併：與文件中的樣子相同。\n取消合併並填滿：沒有合併儲存格，每個值會在其涵蓋的所有儲存格中重複。",
   "presets.pdf_compression": "壓縮",
   "presets.pdf_compression.None": "不壓縮",
   "presets.pdf_compression.Screen": "最小（圖片 72 dpi）",

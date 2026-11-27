@@ -53,7 +53,7 @@ public sealed class DocumentTablesConverter : IConverter
     }
 
     /// <summary>The document's tables as sheets, in reading order: one per table that has any text.</summary>
-    internal static Workbook Build(HDocument document, MergedCells merged = MergedCells.Keep)
+    internal static Workbook Build(HDocument document, MergedCells merged)
     {
         var book = new Workbook();
         foreach (var table in Tables(document.Sections.SelectMany(s => s.Blocks)))

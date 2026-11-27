@@ -1087,7 +1087,7 @@
   "presets.merged_cells.Smart": "Akıllı: başlıkları birleştir, satırları doldur",
   "presets.merged_cells.Keep": "Tümünü birleşik tut",
   "presets.merged_cells.Fill": "Ayır ve doldur",
-  "presets.merged_cells_hint": "Akıllı: başlık satırları ve birden çok sütuna yayılan hücreler birleşik kalır; başlığın altında birden çok satıra yayılan bir hücre (kalemlerinin yanındaki bir kategori) ayrılır ve değeri her satıra yazılır, böylece sayfa sıralanabilir, filtrelenebilir ve toplanabilir.\nTümünü birleşik tut: belgede çizildiği gibi.\nAyır ve doldur: birleştirilmiş hücre yok; her değer kapladığı tüm hücrelerde tekrarlanır.",
+  "presets.merged_cells_hint": "PDF'deki, Word belgesindeki (DOCX) veya web sayfasındaki (HTML) tablolar için. Akıllı: başlık satırları ve birden çok sütuna yayılan hücreler birleşik kalır; başlığın altında birden çok satıra yayılan bir hücre (kalemlerinin yanındaki bir kategori) ayrılır ve metni her satıra yazılır, böylece her satır filtrelerde ve pivot tablolarda bütün olarak okunur. Sayılar birleşik kalır, bu yüzden toplamlar değişmez.\nTümünü birleşik tut: belgede çizildiği gibi.\nAyır ve doldur: birleştirilmiş hücre yok; her değer kapladığı tüm hücrelerde tekrarlanır.",
   "presets.pdf_compression": "Sıkıştır",
   "presets.pdf_compression.None": "Sıkıştırma",
   "presets.pdf_compression.Screen": "En küçük (görseller 72 dpi)",

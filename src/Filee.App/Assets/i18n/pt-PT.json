@@ -1102,7 +1102,7 @@
   "presets.merged_cells.Smart": "Inteligente: unir cabeçalhos, preencher linhas",
   "presets.merged_cells.Keep": "Manter tudo unido",
   "presets.merged_cells.Fill": "Separar e preencher",
-  "presets.merged_cells_hint": "Inteligente: as linhas de cabeçalho e as células que ocupam várias colunas continuam unidas; uma célula que ocupa várias linhas abaixo do cabeçalho (uma categoria ao lado dos seus artigos) é separada e o seu valor escrito em cada linha, para que a folha possa ser ordenada, filtrada e somada.\nManter tudo unido: como o documento desenha.\nSeparar e preencher: nenhuma célula unida; cada valor repete-se em todas as células que cobria.",
+  "presets.merged_cells_hint": "Para tabelas de um PDF, de um documento do Word (DOCX) ou de uma página web (HTML). Inteligente: as linhas de cabeçalho e as células que ocupam várias colunas continuam unidas; uma célula que ocupa várias linhas abaixo do cabeçalho (uma categoria ao lado dos seus artigos) é separada e o seu texto escrito em cada linha, para que cada linha se leia por inteiro em filtros e tabelas dinâmicas. Os números continuam unidos, por isso os totais não mudam.\nManter tudo unido: como o documento desenha.\nSeparar e preencher: nenhuma célula unida; cada valor repete-se em todas as células que cobria.",
   "presets.pdf_compression": "Comprimir",
   "presets.pdf_compression.None": "Não comprimir",
   "presets.pdf_compression.Screen": "Tamanho mínimo (imagens a 72 dpi)",

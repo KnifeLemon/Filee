@@ -1437,9 +1437,11 @@ public sealed class DocumentOptions
 
     /// <summary>
     /// Spreadsheets made from the tables of a PDF, a Word document or a web page: which of the table's merged cells
-    /// stay merged (<see cref="MergedCells.Smart"/> by default).
+    /// stay merged (<see cref="MergedCells.Smart"/> by default). Read leniently: a value this version doesn't know
+    /// (from a newer Filee or a shared preset) reads as the default instead of failing the whole preset file.
     /// </summary>
-    public MergedCells MergedCells { get; set; }
+    [JsonConverter(typeof(LenientEnumJsonConverter<MergedCells>))]
+    public MergedCells MergedCells { get; set; } = MergedCells.Smart;
 
     public DocumentOptions Clone() => (DocumentOptions)MemberwiseClone();
 }
@@ -1448,9 +1450,10 @@ public sealed class DocumentOptions
 public enum MergedCells
 {
     /// <summary>
-    /// Merged where it helps reading, filled where it would get in the way of working: header rows and cells that
-    /// span columns stay merged; a cell spanning rows below the header (a category beside its items) is unmerged and
-    /// its value written into every row, so the sheet can be sorted, filtered and summed.
+    /// Merged where it helps reading, filled where it would get in the way of working: header rows, cells that span
+    /// columns and numbers stay merged; text spanning rows below the header (a category beside its items) is unmerged
+    /// and written into every row, so each row reads whole for filters and pivot tables. A column's total doesn't
+    /// change. The first value, so a preset without it, or with a value this version doesn't know, reads as Smart.
     /// </summary>
     Smart,
 

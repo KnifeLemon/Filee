@@ -237,11 +237,9 @@ public class PdfTablesTests(EngineFixture fx) : IClassFixture<EngineFixture>
         return pdf.Save(Path.Combine(fx.NewFolder(), "sales-report.pdf"));
     }
 
-    private async Task<Worksheet> SheetAsync(string pdf, MergedCells? merged)
+    private async Task<Worksheet> SheetAsync(string pdf, MergedCells merged)
     {
-        var preset = new Preset { TargetFormat = "xlsx" };
-        if (merged is { } m)
-            preset.Document.MergedCells = m;
+        var preset = new Preset { TargetFormat = "xlsx", Document = { MergedCells = merged } };
         var job = await fx.ConvertAsync([pdf], preset);
         Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
         return Assert.Single(XlsxReader.Read(job.Outputs.Single()).Sheets);
@@ -250,13 +248,13 @@ public class PdfTablesTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Smart_keeps_the_header_and_across_column_merges_and_fills_the_categories_down()
     {
-        var sheet = await SheetAsync(SalesReport(), merged: null); // Smart is the default
+        var sheet = await SheetAsync(SalesReport(), MergedCells.Smart);
 
         Assert.Equal(
             new[] { new CellRange(0, 0, 1, 0), new CellRange(0, 1, 1, 1), new CellRange(0, 2, 0, 4), new CellRange(0, 5, 1, 5), new CellRange(7, 0, 7, 1) }
                 .OrderBy(r => r.ToString()),
             sheet.Merges.OrderBy(r => r.ToString()));
-        // Every item row names its category, so the sheet sorts and filters by it.
+        // Every item row names its category, so filters and pivot tables read it.
         foreach (var row in new[] { 2, 3, 4 })
             Assert.Equal("Glass", sheet.Get(row, 0)!.Text);
         foreach (var row in new[] { 5, 6 })
@@ -306,11 +304,65 @@ public class PdfTablesTests(EngineFixture fx) : IClassFixture<EngineFixture>
             new(3, 1, 1, 1, "Bar hinge"), new(3, 2, 1, 1, "1,250.00"),
             new(4, 1, 1, 1, "Pivot hinge"), new(4, 2, 1, 1, "2,100.00"),
         ]);
-        var sheet = await SheetAsync(pdf.Save(Path.Combine(fx.NewFolder(), "price-list.pdf")), merged: null);
+        var sheet = await SheetAsync(pdf.Save(Path.Combine(fx.NewFolder(), "price-list.pdf")), MergedCells.Smart);
 
         Assert.Equal(new[] { new CellRange(0, 0, 0, 2) }, sheet.Merges);
         Assert.Equal(2, sheet.FrozenRows); // the title and the column headings
         Assert.Equal("Hinges", sheet.Get(4, 0)!.Text);
         Assert.Equal(2100, sheet.Get(4, 2)!.Value);
     }
+
+    /// <summary>The review's case: a region's total merged down beside its items, which filling would count twice.</summary>
+    private static void RegionTotals(PdfBuilder pdf, double top, bool header, string region, string[] items, string[] sales, string total)
+    {
+        var cells = new List<Span>();
+        var first = 0;
+        if (header)
+        {
+            cells.AddRange([new(0, 0, 1, 1, "Region"), new(0, 1, 1, 1, "Item"), new(0, 2, 1, 1, "Sales"), new(0, 3, 1, 1, "Region total")]);
+            first = 1;
+        }
+        cells.Add(new(first, 0, items.Length, 1, region));
+        cells.Add(new(first, 3, items.Length, 1, total));
+        for (var i = 0; i < items.Length; i++)
+            cells.AddRange([new(first + i, 1, 1, 1, items[i]), new(first + i, 2, 1, 1, sales[i])]);
+        Spanned(pdf, top, [50, 150, 250, 350, 500], first + items.Length, [.. cells], boldRows: first);
+    }
+
+    [Fact]
+    public async Task Smart_keeps_a_total_merged_down_so_the_column_adds_up_as_drawn()
+    {
+        var pdf = new PdfBuilder().NewPage();
+        RegionTotals(pdf, 100, header: true, "North", ["A", "B"], ["100", "200"], "300");
+        var path = pdf.Save(Path.Combine(fx.NewFolder(), "region-totals.pdf"));
+
+        var smart = await SheetAsync(path, MergedCells.Smart);
+        Assert.Contains(new CellRange(1, 3, 2, 3), smart.Merges);
+        Assert.Null(smart.Get(2, 3)?.Value);
+        Assert.Equal("North", smart.Get(2, 0)!.Text); // the text beside it is still filled
+        Assert.Equal(300, ColumnSum(smart, 3));
+        Assert.Equal(300, ColumnSum(await SheetAsync(path, MergedCells.Keep), 3));
+        // Unmerge and fill says it repeats every value, so it may count it twice.
+        Assert.Equal(600, ColumnSum(await SheetAsync(path, MergedCells.Fill), 3));
+    }
+
+    [Fact]
+    public async Task A_table_going_on_over_the_next_page_keeps_its_totals_merged_too()
+    {
+        var pdf = new PdfBuilder().NewPage();
+        RegionTotals(pdf, 700, header: true, "North", ["A", "B"], ["100", "200"], "300");
+        pdf.NewPage();
+        RegionTotals(pdf, 60, header: false, "West", ["C", "D", "E"], ["10", "20", "30"], "60");
+        var sheet = await SheetAsync(pdf.Save(Path.Combine(fx.NewFolder(), "two-pages.pdf")), MergedCells.Smart);
+
+        // One sheet: the part on the second page has no header rows of its own, and its total stays merged as well.
+        Assert.Equal("West", sheet.Get(5, 0)!.Text);
+        Assert.Contains(new CellRange(3, 3, 5, 3), sheet.Merges);
+        Assert.DoesNotContain(new CellRange(3, 0, 5, 0), sheet.Merges);
+        Assert.Equal(360, ColumnSum(sheet, 3));
+        Assert.Equal(1, sheet.FrozenRows);
+    }
+
+    private static double ColumnSum(Worksheet sheet, int column) =>
+        sheet.Rows.Values.Select(r => r.GetValueOrDefault(column)?.Value ?? 0).Sum();
 }

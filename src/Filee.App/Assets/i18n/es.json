@@ -1087,7 +1087,7 @@
   "presets.merged_cells.Smart": "Inteligente: combinar encabezados, rellenar filas",
   "presets.merged_cells.Keep": "Mantener todo combinado",
   "presets.merged_cells.Fill": "Separar y rellenar",
-  "presets.merged_cells_hint": "Inteligente: las filas de encabezado y las celdas que abarcan varias columnas siguen combinadas; una celda que abarca varias filas bajo el encabezado (una categoría junto a sus artículos) se separa y su valor se escribe en cada fila, para poder ordenar, filtrar y sumar.\nMantener todo combinado: como lo dibuja el documento.\nSeparar y rellenar: sin celdas combinadas; cada valor se repite en todas las celdas que cubría.",
+  "presets.merged_cells_hint": "Para tablas de un PDF, un documento de Word (DOCX) o una página web (HTML). Inteligente: las filas de encabezado y las celdas que abarcan varias columnas siguen combinadas; una celda que abarca varias filas bajo el encabezado (una categoría junto a sus artículos) se separa y su texto se escribe en cada fila, para que cada fila se lea completa en filtros y tablas dinámicas. Los números siguen combinados, así que los totales no cambian.\nMantener todo combinado: como lo dibuja el documento.\nSeparar y rellenar: sin celdas combinadas; cada valor se repite en todas las celdas que cubría.",
   "presets.pdf_compression": "Comprimir",
   "presets.pdf_compression.None": "No comprimir",
   "presets.pdf_compression.Screen": "El más pequeño (imágenes a 72 ppp)",

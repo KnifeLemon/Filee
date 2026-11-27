@@ -70,17 +70,18 @@ ko: 생물정보학 서열 정렬 형식(NEXUS, FASTA, PHYLIP)을 서로 변환�
 en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
 ko: 16비트 정수·부동소수점 GeoTIFF 래스터를 PNG, JPG 같은 그림으로 변환하면 값 범위에 맞춰 선명하게 나와요
 en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched across their data range
-ko: PDF·Word·웹 페이지의 표를 Excel로 바꿀 때 머리글의 병합은 남기고, 여러 행에 걸친 분류는 행마다 채워서 정렬과 필터가 돼요
-en: Tables from PDF, Word and web pages keep their header merges in Excel and fill categories into every row, so the sheet sorts and filters
+ko: PDF·Word·웹 페이지의 표를 Excel로 바꿀 때 머리글의 병합은 남기고, 여러 행에 걸친 분류는 행마다 채워서 필터와 피벗 테이블에 쓸 수 있어요
+en: Tables from PDF, Word and web pages keep their header merges in Excel and fill categories into every row, ready for filters and pivot tables
 -->
 
-- **Merged cells in spreadsheets made from tables** (PDF, DOCX, HTML → XLSX, ODS, CSV). A new *Merged cells* choice
-  in the preset: **Smart** (the default) keeps the merges that help reading (the header rows, including two-level
-  headings, and cells across columns such as a title or a "Grand total" label) and fills the ones that get in the way
-  of working: a cell spanning rows below the header, such as a category beside its items, is unmerged and its value
-  written into every row, so the sheet sorts, filters and feeds pivot tables. The header rows of a PDF table are
-  frozen. **Keep all merged** is the earlier behaviour; **Unmerge and fill** leaves no merged cell. On the command
-  line: `--merged-cells smart|keep|fill`.
+- **Merged cells in spreadsheets made from tables** (PDF, DOCX, HTML → XLSX, ODS, CSV; #1016). A new *Merged cells*
+  choice in the preset: **Smart** (the default) keeps the merges that help reading (the header rows, including two-level
+  headings and an empty corner, cells across columns such as a title or a "Grand total" label, and numbers merged down
+  the rows, such as a group total, so a column adds up as before) and fills the ones that get in the way of working:
+  text spanning rows below the header, such as a category beside its items, is unmerged and written into every row, so
+  each row reads whole for filters and pivot tables. The header rows of a PDF table are frozen. **Keep all merged** is
+  the earlier behaviour; **Unmerge and fill** leaves no merged cell. A merge whose text would repeat more than 32
+  million characters in one table stays merged. On the command line: `--merged-cells smart|keep|fill`.
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
   rectangles, typed notes) without an appearance stream, which PDF/A requires, so the PDF/A preset's output was marked

@@ -1102,7 +1102,7 @@
   "presets.merged_cells.Smart": "Inteligentnie: scal nagłówki, wypełnij wiersze",
   "presets.merged_cells.Keep": "Zachowaj wszystkie scalone",
   "presets.merged_cells.Fill": "Rozdziel i wypełnij",
-  "presets.merged_cells_hint": "Inteligentnie: wiersze nagłówka i komórki na kilka kolumn pozostają scalone; komórka na kilka wierszy pod nagłówkiem (kategoria obok swoich pozycji) jest rozdzielana, a jej wartość wpisywana w każdy wiersz, aby arkusz można było sortować, filtrować i sumować.\nZachowaj wszystkie scalone: tak, jak rysuje to dokument.\nRozdziel i wypełnij: bez scalonych komórek; każda wartość powtarza się we wszystkich komórkach, które zajmowała.",
+  "presets.merged_cells_hint": "Dla tabel z PDF, dokumentu Word (DOCX) lub strony internetowej (HTML). Inteligentnie: wiersze nagłówka i komórki na kilka kolumn pozostają scalone; komórka na kilka wierszy pod nagłówkiem (kategoria obok swoich pozycji) jest rozdzielana, a jej tekst wpisywany w każdy wiersz, aby każdy wiersz był czytelny w całości w filtrach i tabelach przestawnych. Liczby pozostają scalone, więc sumy się nie zmieniają.\nZachowaj wszystkie scalone: tak, jak rysuje to dokument.\nRozdziel i wypełnij: bez scalonych komórek; każda wartość powtarza się we wszystkich komórkach, które zajmowała.",
   "presets.pdf_compression": "Kompresja",
   "presets.pdf_compression.None": "Bez kompresji",
   "presets.pdf_compression.Screen": "Najmniejszy (obrazy w 72 dpi)",

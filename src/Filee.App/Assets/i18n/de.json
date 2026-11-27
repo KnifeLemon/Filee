@@ -1087,7 +1087,7 @@
   "presets.merged_cells.Smart": "Intelligent: Kopfzeilen verbinden, Zeilen füllen",
   "presets.merged_cells.Keep": "Alle verbunden lassen",
   "presets.merged_cells.Fill": "Aufheben und füllen",
-  "presets.merged_cells_hint": "Intelligent: Kopfzeilen und Zellen über mehrere Spalten bleiben verbunden; eine Zelle über mehrere Zeilen unterhalb der Kopfzeile (eine Kategorie neben ihren Posten) wird aufgehoben und ihr Wert in jede Zeile geschrieben, damit sich die Tabelle sortieren, filtern und summieren lässt.\nAlle verbunden lassen: wie im Dokument.\nAufheben und füllen: keine verbundenen Zellen; jeder Wert steht in jeder Zelle, die er bedeckte.",
+  "presets.merged_cells_hint": "Für Tabellen aus einer PDF, einem Word-Dokument (DOCX) oder einer Webseite (HTML). Intelligent: Kopfzeilen und Zellen über mehrere Spalten bleiben verbunden; eine Zelle über mehrere Zeilen unterhalb der Kopfzeile (eine Kategorie neben ihren Posten) wird aufgehoben und ihr Text in jede Zeile geschrieben, damit jede Zeile für Filter und Pivot-Tabellen vollständig lesbar ist. Zahlen bleiben verbunden, damit sich die Summen nicht ändern.\nAlle verbunden lassen: wie im Dokument.\nAufheben und füllen: keine verbundenen Zellen; jeder Wert steht in jeder Zelle, die er bedeckte.",
   "presets.pdf_compression": "Komprimieren",
   "presets.pdf_compression.None": "Nicht komprimieren",
   "presets.pdf_compression.Screen": "Kleinste Datei (Bilder mit 72 dpi)",

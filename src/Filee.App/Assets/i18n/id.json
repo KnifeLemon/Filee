@@ -1087,7 +1087,7 @@
   "presets.merged_cells.Smart": "Cerdas: gabung judul, isi baris",
   "presets.merged_cells.Keep": "Biarkan semua tergabung",
   "presets.merged_cells.Fill": "Pisahkan dan isi",
-  "presets.merged_cells_hint": "Cerdas: baris judul dan sel yang melintasi beberapa kolom tetap tergabung; sel yang melintasi beberapa baris di bawah judul (kategori di samping itemnya) dipisahkan dan nilainya ditulis di setiap baris, sehingga lembar bisa diurutkan, difilter, dan dijumlahkan.\nBiarkan semua tergabung: seperti yang digambar dokumen.\nPisahkan dan isi: tanpa sel gabungan; setiap nilai diulang di semua sel yang ditutupinya.",
+  "presets.merged_cells_hint": "Untuk tabel dari sebuah PDF, dokumen Word (DOCX), atau halaman web (HTML). Cerdas: baris judul dan sel yang melintasi beberapa kolom tetap tergabung; sel yang melintasi beberapa baris di bawah judul (kategori di samping itemnya) dipisahkan dan teksnya ditulis di setiap baris, sehingga setiap baris terbaca utuh untuk filter dan tabel pivot. Angka tetap tergabung, jadi total tidak berubah.\nBiarkan semua tergabung: seperti yang digambar dokumen.\nPisahkan dan isi: tanpa sel gabungan; setiap nilai diulang di semua sel yang ditutupinya.",
   "presets.pdf_compression": "Kompresi",
   "presets.pdf_compression.None": "Jangan kompres",
   "presets.pdf_compression.Screen": "Terkecil (gambar 72 dpi)",
