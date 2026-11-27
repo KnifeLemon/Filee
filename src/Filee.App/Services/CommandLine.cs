@@ -207,15 +207,7 @@ public sealed record CommandLine(
         if (!int.TryParse(args[1], out var pid) || pid <= 0)
             return false;
 
-        var targetDir = args[2];
-        var logFile = args[3];
-        var markerFile = args[4];
-        var stagingDir = args[5];
-
-        if (!Directory.Exists(targetDir) || !Directory.Exists(stagingDir))
-            return false;
-
-        options = new UpdateSwapOptions(pid, targetDir, logFile, markerFile, stagingDir);
+        options = new UpdateSwapOptions(pid, args[2], args[3], args[4], args[5]);
         return true;
     }
 }

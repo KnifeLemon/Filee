@@ -48,8 +48,15 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        if (CommandLine.TryParseUpdateSwap(args, out var swapOptions))
+        if (args.Length > 0 && args[0] == "--update-swap")
         {
+            if (!CommandLine.TryParseUpdateSwap(args, out var swapOptions))
+            {
+                PortableUpdateHelper.LogAborted(
+                    args.Length >= 4 ? args[3] : null,
+                    "Update aborted: invalid --update-swap arguments");
+                return 1;
+            }
             return PortableUpdateHelper.Run(swapOptions!);
         }
 

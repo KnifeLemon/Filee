@@ -252,6 +252,13 @@ internal static class PortableUpdateHelper
         return fullFile.StartsWith(fullDir, comparison);
     }
 
+    internal static void LogAborted(string? logFile, string message)
+    {
+        Console.Error.WriteLine(message);
+        if (!string.IsNullOrWhiteSpace(logFile))
+            AppendLog(logFile, message);
+    }
+
     private static void AppendLog(string logFile, string message)
     {
         try

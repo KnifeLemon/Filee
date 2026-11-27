@@ -1376,6 +1376,38 @@ public class UpdateServiceTests
     }
 
     [Fact]
+    public void TryParseUpdateSwap_does_not_require_existing_directories()
+    {
+        var parsed = CommandLine.TryParseUpdateSwap(
+            ["--update-swap", "42", @"C:\nonexistent\target", @"C:\nonexistent\update.log", @"C:\nonexistent\marker", @"C:\nonexistent\staging"],
+            out var options);
+
+        Assert.True(parsed);
+        Assert.NotNull(options);
+        Assert.Equal(42, options.TargetPid);
+        Assert.Equal(@"C:\nonexistent\target", options.TargetDir);
+        Assert.Equal(@"C:\nonexistent\staging", options.StagingDir);
+    }
+
+    [Fact]
+    public void Program_Main_with_invalid_update_swap_args_logs_and_returns_1_without_starting_app()
+    {
+        var logFile = Path.Combine(TempFolder(), "swap-invalid.log");
+
+        var exitCode = Program.Main(["--update-swap", "not-a-pid", "target", logFile, "marker", "staging"]);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("invalid --update-swap arguments", File.ReadAllText(logFile));
+
+        var missingArgsExit = Program.Main(["--update-swap"]);
+        Assert.Equal(1, missingArgsExit);
+
+        var missingDirsExit = Program.Main(["--update-swap", "42", Path.Combine(TempFolder(), "missing-target"), logFile, "marker", Path.Combine(TempFolder(), "missing-staging")]);
+        Assert.Equal(1, missingDirsExit);
+        Assert.Contains("target or staging directory does not exist", File.ReadAllText(logFile));
+    }
+
+    [Fact]
     public void CleanupPortableUpdateArtifacts_removes_dead_pid_backup_and_workspace_and_preserves_active()
     {
         var installDir = TempFolder();
