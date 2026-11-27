@@ -361,7 +361,7 @@ internal static class KeyFrames
         try
         {
             var result = await ProcessRunner.RunAsync(ffmpeg,
-                ["-hide_banner", "-nostdin", "-v", "error", "-copyts", .. MediaEncoding.SeekTo(ss), "-i", input, "-map", "0:V:0", "-c", "copy",
+                ["-hide_banner", "-nostdin", "-v", "error", "-copyts", .. MediaEncoding.SeekTo(ss), .. MediaInput.Open(input), "-map", "0:V:0", "-c", "copy",
                     "-frames:v", "1", "-f", "framecrc", "-"], LookTimeout, cancellationToken).ConfigureAwait(false);
             if (result.ExitCode != 0)
                 return null;
@@ -527,10 +527,12 @@ internal static class KeyFrames
 
     /// <summary>
     /// The files <paramref name="input"/> reads: itself, or those a protocol URL of <see cref="MediaInput"/> names (a
-    /// .nov export's recording through <c>subfile</c>, a Hikvision recording after its header through <c>concat</c>).
+    /// .nov export's recording through <c>subfile</c>, a Hikvision recording after its header through <c>concat</c>, a
+    /// DVD title's disc image).
     /// </summary>
     private static string[] FilesIn(string input) =>
-        input.StartsWith("subfile,", StringComparison.Ordinal) && input.IndexOf(",,:", StringComparison.Ordinal) is >= 0 and var at
+        MediaInput.IsDvdVideo(input) ? [MediaInput.DvdVideoPath(input)]
+        : input.StartsWith("subfile,", StringComparison.Ordinal) && input.IndexOf(",,:", StringComparison.Ordinal) is >= 0 and var at
             ? [input[(at + 3)..]]
             : input.StartsWith("concat:", StringComparison.Ordinal) ? input["concat:".Length..].Split('|') : [input];
 
@@ -539,7 +541,7 @@ internal static class KeyFrames
     {
         try
         {
-            var result = await ProcessRunner.RunAsync(ffprobe, arguments, LookTimeout, cancellationToken).ConfigureAwait(false);
+            var result = await ProcessRunner.RunAsync(ffprobe, MediaInput.Arguments(arguments), LookTimeout, cancellationToken).ConfigureAwait(false);
             return result.ExitCode == 0 ? result.StandardOutput : null;
         }
         catch (Exception ex) when (ex is TimeoutException or Win32Exception or IOException or InvalidOperationException

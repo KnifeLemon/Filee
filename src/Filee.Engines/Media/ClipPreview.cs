@@ -256,7 +256,7 @@ public static partial class ClipPreview
     {
         var input = MediaInput.For(path);
         var track = await MediaInfo.AudioTrackAsync(tools.Ffprobe, input, cancellationToken).ConfigureAwait(false);
-        var result = await ProcessRunner.RunAsync(tools.Ffmpeg, SilenceArguments(input, start, end, track), TimeSpan.FromMinutes(10), cancellationToken);
+        var result = await ProcessRunner.RunAsync(tools.Ffmpeg, MediaInput.Arguments(SilenceArguments(input, start, end, track)), TimeSpan.FromMinutes(10), cancellationToken);
         if (result.ExitCode != 0)
             throw new InvalidOperationException("FFmpeg failed: " + FfmpegRunner.Summarize(result.StandardError));
         return ParseSilences(result.StandardError, start, end);
@@ -346,7 +346,7 @@ public static partial class ClipPreview
             RedirectStandardError = true,
             WorkingDirectory = Path.GetDirectoryName(executable) ?? "",
         };
-        foreach (var argument in arguments)
+        foreach (var argument in MediaInput.Arguments(arguments))
             psi.ArgumentList.Add(argument);
         var process = new Process { StartInfo = psi };
         if (!process.Start())

@@ -81,13 +81,16 @@ internal static class MediaJoining
 
     private static readonly char[] ForbiddenConcatCharacters = ['\n', '\r', '\0'];
 
-    /// <summary>True when every path can be written as a single line of an FFmpeg concat manifest.</summary>
+    /// <summary>
+    /// True when every path can be written as a single line of an FFmpeg concat manifest. A DVD title can't: the manifest
+    /// has no place for its demuxer, so DVD clips are joined as separate inputs.
+    /// </summary>
     public static bool CanUseConcatList(IEnumerable<string> paths) =>
         paths.All(IsSafeConcatPath);
 
     private static bool IsSafeConcatPath(string path)
     {
-        if (path.IndexOfAny(ForbiddenConcatCharacters) >= 0)
+        if (path.IndexOfAny(ForbiddenConcatCharacters) >= 0 || MediaInput.IsDvdVideo(path))
             return false;
         var resolved = MediaInput.IsUrl(path) ? path : Path.GetFullPath(path);
         return resolved.IndexOfAny(ForbiddenConcatCharacters) < 0;

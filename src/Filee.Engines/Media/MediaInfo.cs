@@ -119,7 +119,7 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
     {
         DashSegment.ThrowIfNeedsInitSegment(input);
         var result = await ProcessRunner.RunAsync(ffprobe,
-            ["-hide_banner", "-v", "error", "-print_format", "json", "-show_format", "-show_streams", "-show_data_hash", "MD5", input],
+            ["-hide_banner", "-v", "error", "-print_format", "json", "-show_format", "-show_streams", "-show_data_hash", "MD5", .. MediaInput.Open(input)],
             ProbeTimeout, cancellationToken);
         if (result.ExitCode != 0)
         {

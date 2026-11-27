@@ -2262,6 +2262,20 @@ password-protected export is encrypted (AES-256, keyed by the password) and refu
 without a recording (`error.nov_no_video`); a damaged index throws `InvalidDataException`, checked against the file's
 size before anything is allocated. The `.exe` export is the client's player with the same streams appended: it stays a
 Windows program (`.exe` is read for its icon) and is never run.
+DVD-Video disc images (`.iso`, refs #1606) go to every video and audio target (never further: no route from a disc to
+pictures or documents, `DirectOnly`), besides unpacking as an archive. FFmpeg's `dvdvideo` demuxer (libdvdnav and
+libdvdread) plays a title as a player does: the video, every audio track and every subtitle track (DVD subtitles are
+pictures, kept by MKV) with their languages, the chapters and the real playing time. Left alone it plays title 1, often
+a warning or a trailer, so `Media/DvdVideoIso.cs` picks the longest title from the disc's IFO files (the title table
+of `VIDEO_TS.IFO`, the program chain of each title in `VTS_nn_0.IFO`), read from the image's ISO 9660 file system
+(every DVD-Video disc has one beside its UDF one). `MediaInput.For` gives it as a `dvdvideo:<title>:<path>` marker that
+`MediaInput.Arguments` turns into `-f dvdvideo -title N -i <path>` wherever FFmpeg and ffprobe run. Other titles of a
+minute or more are left out and the user is told (`notice.dvd_titles_left_out`). Refused: an image without
+`VIDEO_TS` (`error.iso_no_dvd_video`, it still extracts), a disc whose video packs carry the PES scrambling bits, a
+straight copy of a CSS-protected disc (`error.dvd_scrambled`: Filee doesn't break copy protection, even where the
+FFmpeg build could), and an FFmpeg without the demuxer (`error.dvd_needs_dvdvideo`): gyan.dev's full build (Windows)
+and BtbN's GPL builds (Linux) have it, Homebrew's FFmpeg does not. Directories and IFO files are read with their sizes
+checked against the image and capped at 4 MiB.
 Bink videos (`.bik`, read only, #751), the cutscene format of many games, are read by FFmpeg's `bink` demuxer and
 decoder and go to every video and audio target. FFmpeg has no Bink encoder, so nothing writes `.bik`.
 FLIC animations (`.flc` and `.fli`, read only, #940), from Autodesk Animator and Animator Pro and the cutscenes of DOS

@@ -58,7 +58,7 @@ internal static class FfmpegRunner
             StandardErrorEncoding = Encoding.UTF8,
             WorkingDirectory = Path.GetDirectoryName(ffmpeg) ?? "",
         };
-        foreach (var argument in arguments)
+        foreach (var argument in MediaInput.Arguments(arguments))
             psi.ArgumentList.Add(argument);
         // SVT-AV1 logs its settings to stderr, where they would bury FFmpeg's error message: errors only.
         psi.Environment["SVT_LOG"] = "1";
@@ -135,7 +135,7 @@ internal static class FfmpegRunner
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
-        foreach (var argument in arguments)
+        foreach (var argument in MediaInput.Arguments(arguments))
             psi.ArgumentList.Add(argument);
 
         using var process = new Process { StartInfo = psi };

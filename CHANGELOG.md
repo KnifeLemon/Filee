@@ -58,6 +58,8 @@ ko: Windows 앱 패키지(MSIX, AppX)의 압축을 풀거나 다른 압축 형�
 en: Windows app packages (MSIX, AppX) extract and convert to other archive formats
 ko: 동영상을 WebP로 바꾸면 정지 사진이 아니라 움직이는 WebP가 돼요
 en: Videos converted to WebP become animated WebPs, not a still picture
+ko: DVD 디스크 이미지(ISO)를 MKV, MP4 같은 동영상으로 바꿀 수 있어요. 모든 음성·자막 트랙과 챕터가 남아요
+en: DVD disc images (ISO) convert to MKV, MP4 and other videos with every audio and subtitle track and the chapters
 ko: 변환 형식의 '오디오와 같은 형식'으로 동영상의 소리를 다시 인코딩하지 않고 그대로 꺼내요
 en: Same format as the audio copies a video's sound track out without encoding it again
 ko: 클립 자르기의 '이 프레임에 주석'으로 지금 보이는 프레임을 주석에서 열어요
@@ -131,6 +133,13 @@ en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
   (`令和8年11月23日`), Minguo years and 上午/下午. Their locale is the system's region format when it is Chinese,
   Japanese or Korean, else the workbook's (from its fonts), else Simplified Chinese. XLSX and XLS files get both,
   in every output (PDF, HWPX, CSV, ...).
+
+- **DVD-Video disc images (`.iso`) convert to video** (refs #1606). Drop a DVD's ISO on MKV, MP4 or any other video or
+  audio target: Filee picks the film (the disc's longest title) and keeps every audio track and every subtitle track
+  with their languages, and the chapters; MKV keeps the DVD subtitles, which are pictures. Other titles (bonus
+  features, trailers) are left out and Filee says so. Copy-protected (CSS) discs are refused, as are ISOs without a
+  `VIDEO_TS` folder, which still extract as before. It needs FFmpeg's `dvdvideo` demuxer: Filee's FFmpeg download for
+  Windows and Linux has it, Homebrew's FFmpeg on macOS does not.
 
 - **BIN/CUE disc images to ISO** (#1680). Drop a `.cue` sheet with its `.bin` beside it to copy a single data track
   (`MODE1/2048`, `MODE1/2352`, `MODE2/2352` or `MODE2/2336`) straight into an ISO 9660 image without re-mastering, or
