@@ -82,7 +82,7 @@
 
 ## Install
 
-Download from [Releases](https://github.com/KnifeLemon/Filee/releases/latest).
+Download from [Releases](https://github.com/KnifeLemon/Filee/releases/latest). Chinese users can also download Filee from [FossNest](https://fossnest.org/zh-CN/repo/KnifeLemon/Filee), which provides a Chinese introduction and download mirrors.
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Microsoft Store" width="200"></a>
 
