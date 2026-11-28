@@ -145,7 +145,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             if (CmykPictures.Keeps(frame))
             {
                 // Print work keeps its colours: CMYK (and its profile) in the PDF too (#1027).
-                CmykPictures.Place(document, page, frame, asJpeg: step.From == "jpg", JpegQuality(options), box);
+                CmykPictures.Place(document, page, frame, asJpeg: IsLossyPhoto(step.From), JpegQuality(options), box);
             }
             else
             {
@@ -484,15 +484,15 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     }
 
     /// <summary>
-    /// Encodes a frame for embedding. JPEG sources stay JPEG (no generational loss beyond one re-encode at high quality);
-    /// everything else is embedded losslessly as PNG.
+    /// Encodes a frame for embedding. Lossy photos (<see cref="IsLossyPhoto"/>) go in as JPEG (no generational loss
+    /// beyond one re-encode at high quality); everything else, and any frame with transparency, losslessly as PNG.
     /// </summary>
     private static MemoryStream EncodeForPdf(IMagickImage<byte> frame, string sourceFormat, ImageOptions options)
     {
         // PDFsharp takes grey and RGB pictures; CMYK ones are placed by CmykPictures, this is only a safety net (#1055).
         PdfPictures.ToRgb(frame);
         var stream = new MemoryStream();
-        if (sourceFormat == "jpg" && !frame.HasAlpha)
+        if (IsLossyPhoto(sourceFormat) && !frame.HasAlpha)
         {
             frame.Quality = JpegQuality(options);
             frame.Write(stream, MagickFormat.Jpeg);
@@ -505,7 +505,14 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         return stream;
     }
 
-    /// <summary>A JPEG source goes into the PDF as JPEG again, at the preset's quality but never below 85.</summary>
+    /// <summary>
+    /// A source already stored lossily as a photo: JPEG, and HEIC (the format id "heic" also covers .heif and .hif).
+    /// Its frames go into the PDF as JPEG when they have no transparency; stored losslessly they would look no better
+    /// and make the PDF many times larger (#1873). AVIF and WebP can be lossless, so they stay PNG.
+    /// </summary>
+    internal static bool IsLossyPhoto(string sourceFormat) => sourceFormat is "jpg" or "heic";
+
+    /// <summary>A lossy photo goes into the PDF as JPEG again, at the preset's quality but never below 85.</summary>
     private static uint JpegQuality(ImageOptions options) => (uint)Math.Clamp(Math.Max(options.Quality, 85), 1, 100);
 
     private static (double Width, double Height) PageSize(PdfPageSize size, bool landscape)

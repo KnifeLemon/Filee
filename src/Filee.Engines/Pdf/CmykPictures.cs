@@ -1,6 +1,6 @@
 // CMYK pictures (print work: a CMYK PSD, TIFF or JPEG) go into a PDF as CMYK, with their own ICC profile (#1027).
 // PDFsharp's image import takes grey and RGB only, so the image XObject is written here: a JPEG source as JPEG data
-// (DCTDecode), anything else as the raw CMYK samples compressed losslessly (FlateDecode), transparency as a soft mask.
+// (DCTDecode; a HEIC photo too), anything else as the raw CMYK samples compressed losslessly (FlateDecode), transparency as a soft mask.
 
 using System.Globalization;
 using System.IO.Compression;
@@ -19,7 +19,7 @@ internal static class CmykPictures
 
     /// <summary>
     /// Draws <paramref name="frame"/> (CMYK) on <paramref name="page"/> into <paramref name="box"/> (points, from the
-    /// top left as XGraphics measures). <paramref name="asJpeg"/> keeps a JPEG source as JPEG at
+    /// top left as XGraphics measures). <paramref name="asJpeg"/> keeps a lossy photo (JPEG, HEIC) as JPEG at
     /// <paramref name="quality"/>; a picture with transparency is always stored losslessly.
     /// </summary>
     public static void Place(PdfDocument document, PdfPage page, IMagickImage<byte> frame, bool asJpeg, uint quality, XRect box)
