@@ -857,6 +857,7 @@ public sealed class CliTests : IDisposable
     [InlineData(new[] { "convert", "a.png", "--preset", "rotate" }, "rotate-left, rotate-right, rotate-180")]
     [InlineData(new[] { "convert", "--to", "jpg" }, "at least one file")]
     [InlineData(new[] { "convert", "a.png", "--to", "jpg", "--quality", "300" }, "--quality")]
+    [InlineData(new[] { "convert", "a.png", "--to", "xlsx", "--merged-cells", "some" }, "--merged-cells")]
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--pages", "1-x" }, "--pages")]
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "0" }, "--split-every")]
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-parts", "1" }, "--split-parts")]
@@ -1942,5 +1943,41 @@ public sealed class CliTests : IDisposable
         public Task JoinAsync(IReadOnlyList<string> inputPaths, string outputPath, string format, Preset preset,
             string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Unexpected media join");
+    }
+
+    [Theory]
+    [InlineData("smart", MergedCells.Smart)]
+    [InlineData("KEEP", MergedCells.Keep)]
+    [InlineData("fill", MergedCells.Fill)]
+    public void Merged_cells_choice_is_read(string value, MergedCells expected) =>
+        Assert.Equal(expected, CliOptions.Parse(["convert", "a.pdf", "--to", "xlsx", "--merged-cells", value]).MergedCells);
+
+    [Fact]
+    public async Task Merged_cells_option_is_refused_for_a_target_that_is_not_a_spreadsheet()
+    {
+        var html = Path.Combine(_folder, "table.html");
+        File.WriteAllText(html, "<table><tr><th>Item</th><th>Sales</th></tr><tr><td>A</td><td>100</td></tr></table>");
+        foreach (var target in new[] { "pdf", "docx", "zip" })
+        {
+            var rejected = await Run("convert", html, "--to", target, "--merged-cells", "keep", "--output", _folder);
+            Assert.NotEqual(0, rejected.Code);
+            Assert.Contains("--merged-cells requires an XLSX, ODS or CSV target", rejected.Errors);
+            Assert.False(File.Exists(Path.Combine(_folder, "table." + target)));
+        }
+        // A saved preset's target counts the same as --to.
+        var store = new UserDataStore(_settings);
+        store.Load();
+        store.Presets.Add(new Preset { Id = "merged-pdf", Name = "To PDF", TargetFormat = "pdf" });
+        store.SaveLibrary();
+        var fromPreset = await Run("convert", html, "--preset", "merged-pdf", "--merged-cells", "fill", "--output", _folder);
+        Assert.NotEqual(0, fromPreset.Code);
+        Assert.Contains("--merged-cells requires an XLSX, ODS or CSV target", fromPreset.Errors);
+        foreach (var target in new[] { "xlsx", "ods", "csv" })
+        {
+            var output = Directory.CreateDirectory(Path.Combine(_folder, "out-" + target)).FullName;
+            var accepted = await Run("convert", html, "--to", target, "--merged-cells", "keep", "--output", output);
+            Assert.True(accepted.Code == 0, accepted.Errors + accepted.Output);
+            Assert.True(File.Exists(Path.Combine(output, "table." + target)), accepted.Output);
+        }
     }
 }

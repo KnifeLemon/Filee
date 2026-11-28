@@ -244,7 +244,8 @@ internal static class SharedPresetRules
             ("ocrLanguage", new StringRule(64, SharedText.OcrLanguages)))),
         ("document", Obj(
             ("pdfA", Flag),
-            ("leaveOutPictures", Flag))),
+            ("leaveOutPictures", Flag),
+            ("mergedCells", Enum<MergedCells>()))),
         ("media", Obj(
             ("quality", Enum<MediaQuality>()),
             ("maxHeight", new IntRule(0, 8640)),

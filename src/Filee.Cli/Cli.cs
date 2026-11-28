@@ -351,6 +351,17 @@ internal static class Cli
             preset.Translate.Model = host.Store.Settings.PreferredOllamaModel;
         if (options.Quality is { } quality)
             preset.Image.Quality = quality;
+        // Refused rather than ignored for other targets, as --iso-label is: an option that does nothing is easy to miss
+        // in a script. The targets are the ones the preset editor shows the choice for.
+        if (options.MergedCells is { } merged)
+        {
+            if (preset.TargetFormat is not ("xlsx" or "ods" or "csv"))
+            {
+                errors.WriteLine("filee: --merged-cells requires an XLSX, ODS or CSV target.");
+                return null;
+            }
+            preset.Document.MergedCells = merged;
+        }
         // The pages of PDFs; asked for on the donut (AskedPages), given here.
         if (options.Pages is { } pages)
             preset.Pdf.PageRange = pages;

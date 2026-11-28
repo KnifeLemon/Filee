@@ -600,6 +600,12 @@
         </StackPanel>
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.pdf_tables_note}" IsVisible="{Binding ShowPdfTablesNote}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.document_tables_note}" IsVisible="{Binding ShowPdfTablesNote}" />
+        <!-- Tables → spreadsheet: which merged cells stay merged (DocumentOptions.MergedCells) -->
+        <StackPanel Spacing="4" IsVisible="{Binding ShowMergedCells}">
+          <TextBlock Classes="label" Text="{DynamicResource presets.merged_cells}" />
+          <ComboBox ItemsSource="{Binding MergedCellsChoices}" SelectedItem="{Binding MergedCells}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.merged_cells}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.merged_cells_hint}" />
+        </StackPanel>
         <!-- "Pages per sheet" (#737): several pages on each sheet -->
         <StackPanel Spacing="10" IsVisible="{Binding ShowSheets}">
           <Grid ColumnDefinitions="*,12,*">

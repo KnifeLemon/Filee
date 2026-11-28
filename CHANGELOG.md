@@ -80,6 +80,8 @@ ko: CSV의 NaN, Infinity, 앞뒤에 공백이 있는 값, +007 같은 코드가 
 en: CSV cells like NaN, Infinity, " 007" or +007 stay as written instead of turning into numbers
 ko: 명령줄에서 --to=jpg처럼 쓸 수 있고, 값 자리에 옵션이 오면 값이 빠졌다고 알려 줘요
 en: The command line takes --to=jpg and says when an option's value is missing
+ko: PDF·Word·웹 페이지의 표를 Excel로 바꿀 때 머리글의 병합은 남기고, 여러 행에 걸친 분류는 행마다 채워서 필터와 피벗 테이블에 쓸 수 있어요
+en: Tables from PDF, Word and web pages keep their header merges in Excel and fill categories into every row, ready for filters and pivot tables
 -->
 
 - **Keep Ctrl for copying during a drag** (#1863). A drag gesture also opens the donut when its modifier keys are
@@ -87,6 +89,15 @@ en: The command line takes --to=jpg and says when an option's value is missing
   instead. In **Settings → Shortcuts**, turn off **Also open when the keys are pressed during a drag** on that
   gesture: it then opens only when the keys are already held as you press the mouse button, and a key pressed during
   the drag goes to the file manager as usual. On by default, so nothing changes until you turn it off.
+
+- **Merged cells in spreadsheets made from tables (PDF, DOCX, HTML → XLSX, ODS, CSV)** (#1016). A new *Merged cells*
+  choice in the preset: **Smart** (the default) keeps the merges that help reading (the header rows, including two-level
+  headings and an empty corner, cells across columns such as a title or a "Grand total" label, and numbers merged down
+  the rows, such as a group total, so a column adds up as before) and fills the ones that get in the way of working:
+  text spanning rows below the header, such as a category beside its items, is unmerged and written into every row, so
+  each row reads whole for filters and pivot tables. The header rows of a PDF table are frozen. **Keep all merged** is
+  the earlier behaviour; **Unmerge and fill** leaves no merged cell. A merge whose text would be repeated more than
+  33,554,432 characters in all on one sheet stays merged. On the command line: `--merged-cells smart|keep|fill`.
 
 - **PDF/A with highlights and notes that carry no appearance** (#1566). Some editors save markup (highlights,
   rectangles, typed notes) without an appearance stream, which PDF/A requires, so the PDF/A preset's output was marked

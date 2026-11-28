@@ -1,7 +1,10 @@
 // Tables of the document model (HTable) written onto worksheets: shared by PDF → XLSX (PdfTablesConverter, #267) and
 // DOCX / HTML → XLSX (DocumentTablesConverter, #1016).
 //
-// - Merged cells stay merged; the rest of a merged area keeps the borders, as Excel draws them from every cell.
+// - Merged cells stay merged or are filled as the preset says (DocumentOptions.MergedCells): Smart keeps the header's,
+//   the across-columns ones and the ones holding a number, and fills text down the body's rows. A kept merge's other
+//   cells keep the borders, as Excel draws them from every cell. A fill that would repeat more than
+//   MaxFilledCharacters of text on one sheet stays merged.
 // - Cells that read as numbers ("1,234.50", "(120)", "$9.99"), percentages ("12.5%") or dates with the year first
 //   ("2026-10-23", "2026. 10. 23.") become real numbers and dates, in a number format that shows them as the document
 //   did, so they can be calculated with. Anything else stays text: numbers with a leading zero (codes, phone numbers),
@@ -10,7 +13,9 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Filee.Core.Presets;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Office.Sheets;
 
@@ -28,6 +33,23 @@ internal static partial class TableSheets
 
     /// <summary>Widest column sized from its text, in characters: longer text wraps.</summary>
     private const double MaxFittedWidth = 60;
+
+    /// <summary>
+    /// Most characters that filling merged cells may repeat in one table. The cell limit
+    /// (<see cref="HwpxWriter.MaxTableCells"/>) doesn't bound text: one long cell merged over a million rows would be
+    /// copied into each. Every copy lands in the sheet's one XML part, which readers (ours: <see cref="BoundedXml.MaxPartBytes"/>)
+    /// refuse past a size, so a fill stays well under it; past the budget, the merge stays merged.
+    /// </summary>
+    internal const long MaxFilledCharacters = BoundedXml.MaxPartBytes / 8;
+
+    /// <summary>
+    /// The characters filling has repeated on one sheet so far, against <see cref="MaxFilledCharacters"/>: shared by
+    /// the parts of a PDF table that goes on over several pages, which all land on that sheet.
+    /// </summary>
+    internal sealed class FillBudget
+    {
+        public long Used { get; set; }
+    }
 
     /// <summary>
     /// Sets the sheet's column widths from the table: its absolute widths (PDF, DOCX), its relative ones (HTML), or
@@ -132,7 +154,19 @@ internal static partial class TableSheets
     /// their measured heights. Otherwise (DOCX, HTML) the cells keep their own borders and the rows fit their text, as
     /// a document's row height is only a minimum.
     /// </param>
-    public static int Place(Worksheet sheet, HTable table, int top, int skip, bool drawn)
+    /// <param name="merged">
+    /// Which merged cells stay merged (<see cref="MergedCells"/>); the rest are filled, up to
+    /// <see cref="MaxFilledCharacters"/> repeated in the table.
+    /// </param>
+    /// <param name="continues">
+    /// The table goes on from the one placed above it (a PDF table over a page break): it has no header rows of its own.
+    /// </param>
+    /// <param name="budget">
+    /// What filling has already used on this sheet, when the table goes on from one placed above it; a new budget
+    /// otherwise.
+    /// </param>
+    public static int Place(Worksheet sheet, HTable table, int top, int skip, bool drawn,
+        MergedCells merged, bool continues = false, FillBudget? budget = null)
     {
         if (drawn)
         {
@@ -146,20 +180,91 @@ internal static partial class TableSheets
         }
         var next = top + Math.Max(0, table.Rows.Count - skip);
         var defaults = table.Borders ?? HBorders.Grid;
-        foreach (var (cell, row, column, rows, columns) in Grid(table, skip))
+        var cells = Grid(table, skip).ToList();
+        var header = merged == MergedCells.Smart ? HeaderRows(table, cells, skip, continues) : 0;
+        budget ??= new FillBudget();
+        foreach (var (cell, row, column, rows, columns) in cells)
         {
             var style = StyleOf(cell, drawn ? null : cell.Borders ?? defaults);
             var at = top + row;
-            sheet.Set(at, column, Shown(Text(cell), style));
+            var text = Text(cell);
+            var shown = Shown(text, style);
+            var spans = rows > 1 || columns > 1;
+            var keep = spans && KeepsMerge(merged, row, rows, header, text, shown.IsNumber);
+            var fill = spans && !keep && text.Length > 0;
+            if (fill)
+            {
+                var repeated = (long)text.Length * ((long)rows * columns - 1);
+                if (budget.Used + repeated > MaxFilledCharacters)
+                    (keep, fill) = (true, false);
+                else
+                    budget.Used += repeated;
+            }
+            sheet.Set(at, column, shown);
             for (var r = at; r < at + rows; r++)
                 for (var c = column; c < column + columns; c++)
                     if (r != at || c != column)
-                        sheet.Set(r, c, new SheetCell("", style));
-            if (rows > 1 || columns > 1)
+                        // A filled merge repeats its value, so every row reads whole on its own (filters, pivot tables).
+                        sheet.Set(r, c, fill ? shown : new SheetCell("", style));
+            if (keep)
                 sheet.Merges.Add(new CellRange(at, column, at + rows - 1, column + columns - 1));
         }
         return next;
     }
+
+    /// <summary>
+    /// Whether a cell covering <paramref name="rows"/> rows from <paramref name="row"/> stays merged. Smart keeps the
+    /// merges that only help reading: in the header rows (empty ones too, such as the corner above a column of labels),
+    /// and across columns (a title, a "Total" label, a group heading). A merge holding a number or a date down the rows
+    /// of the body (a group total beside its items) stays merged too: repeating it into every row would change what the
+    /// column adds up to. A text merge down the body (a category beside its items) leaves blanks that filters and pivot
+    /// tables read as missing, so it is filled. An empty merged cell in the body holds nothing to repeat and isn't
+    /// merged.
+    /// </summary>
+    private static bool KeepsMerge(MergedCells merged, int row, int rows, int header, string text, bool number) => merged switch
+    {
+        MergedCells.Keep => true,
+        MergedCells.Fill => false,
+        _ => row < header || (text.Length > 0 && (rows == 1 || number)),
+    };
+
+    /// <summary>
+    /// How many rows at the top of the table are its header, for <see cref="MergedCells.Smart"/>: the rows the document
+    /// marks as header (DOCX "repeat as header row", HTML &lt;thead&gt;), or else the first row; a title across the
+    /// whole table brings in the row under it; and a header cell spanning rows down brings in every row it covers
+    /// (two-level headings such as "Q1" over "Jan Feb Mar" beside an "Item" spanning both). A table going on from the
+    /// one above it has none.
+    /// </summary>
+    internal static int HeaderRows(HTable table, IReadOnlyList<(HCell Cell, int Row, int Column, int Rows, int Columns)> cells,
+        int skip, bool continues)
+    {
+        var count = table.Rows.Count - skip;
+        if (continues || count <= 0 || cells.Count == 0)
+            return 0;
+        var marked = table.Rows.Skip(skip).TakeWhile(r => r.Header).Count();
+        var header = Math.Max(1, marked);
+        var width = cells.Max(c => c.Column + c.Columns);
+        if (marked == 0 && count > 1 && cells.Where(c => c.Row == 0).ToList() is [{ Column: 0 } title] && title.Columns == width && width > 1)
+            header = 2;
+        // A cell reaching down from the header only makes it a two-level heading when the header is marked, or has a
+        // heading across columns ("Q1" over "Jan Feb Mar"). In an unmarked table (every PDF one) a first row whose
+        // category spans its items' rows is the body's first row, and growing over it would freeze and keep the body.
+        var twoLevel = marked > 0 || cells.Any(c => c.Row < header && c.Columns > 1);
+        for (var grew = twoLevel; grew;)
+        {
+            grew = false;
+            foreach (var c in cells)
+                if (c.Row < header && c.Row + c.Rows > header)
+                {
+                    header = c.Row + c.Rows;
+                    grew = true;
+                }
+        }
+        return Math.Min(header, count);
+    }
+
+    /// <summary>The header rows of a whole table (<see cref="HeaderRows(HTable, IReadOnlyList{ValueTuple{HCell, int, int, int, int}}, int, bool)"/>).</summary>
+    public static int HeaderRows(HTable table) => HeaderRows(table, Grid(table).ToList(), 0, false);
 
     /// <param name="borders">The cell's own borders; null draws a thin line on every side.</param>
     private static CellStyle StyleOf(HCell cell, HBorders? borders) => new()

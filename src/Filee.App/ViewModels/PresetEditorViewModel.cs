@@ -178,6 +178,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         TiffCompressions = Enum.GetValues<TiffCompression>().Select(v => new Choice<TiffCompression>(v, v.ToString().ToUpperInvariant())).ToList();
         FitsTiffModes = Enum.GetValues<FitsTiffMode>().Select(v => new Choice<FitsTiffMode>(v, loc[$"presets.fits_tiff.{v}"])).ToList();
         MediaQualities = Enum.GetValues<MediaQuality>().Select(v => new Choice<MediaQuality>(v, loc[$"presets.media_quality.{v}"])).ToList();
+        MergedCellsChoices = Enum.GetValues<MergedCells>().Select(v => new Choice<MergedCells>(v, loc[$"presets.merged_cells.{v}"])).ToList();
         MaxHeights = Steps(MaxHeightSteps, _edit.Media.MaxHeight, h => h == 0 ? loc["presets.max_height.original"] : $"{h}p");
         // A ratio set outside the editor (a hand-edited preset file) is offered too, instead of being lost.
         // "Pages per sheet" (#737): a number set outside the editor (a hand-edited preset file) is offered too.
@@ -262,6 +263,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _fitsTiffMode = FitsTiffModes.FirstOrDefault(m => m.Value == _edit.Image.FitsTiff) ?? FitsTiffModes[0];
         _fitsDebayer = _edit.Image.FitsDebayer;
         _mediaQuality = MediaQualities.First(q => q.Value == _edit.Media.Quality);
+        _mergedCells = MergedCellsChoices.FirstOrDefault(m => m.Value == _edit.Document.MergedCells) ?? MergedCellsChoices[0];
         _maxHeight = MaxHeights.First(h => h.Value == _edit.Media.MaxHeight);
         _cropFrame = CropFrames.FirstOrDefault(c => c.Value == _edit.Media.CropFrame) ?? CropFrames[0];
         _pagesPerSheet = SheetLayouts.FirstOrDefault(c => c.Value == _edit.Pdf.PagesPerSheet) ?? SheetLayouts.First(c => c.Value == 4);
@@ -505,6 +507,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>FITS → TIFF: the data as it is, or stretched (ImageOptions.FitsTiff).</summary>
     public IReadOnlyList<Choice<FitsTiffMode>> FitsTiffModes { get; }
     public IReadOnlyList<Choice<MediaQuality>> MediaQualities { get; }
+
+    /// <summary>Tables → spreadsheet: which merged cells stay merged (DocumentOptions.MergedCells).</summary>
+    public IReadOnlyList<Choice<MergedCells>> MergedCellsChoices { get; }
     public IReadOnlyList<Choice<int>> MaxHeights { get; }
     /// <summary>"Crop video": the picture inside the black bars, or a ratio.</summary>
     public IReadOnlyList<Choice<string>> CropFrames { get; }
@@ -556,7 +561,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowSourceBookmarks), nameof(ShowMergePaper), nameof(ShowMergePaperSettings),
         nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCombine),
         nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowAskCompressionImage), nameof(ShowAskCompressionMedia), nameof(ShowAskCompressionPdf),
-        nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
+        nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote), nameof(ShowMergedCells),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
         nameof(ShowVideoSplit), nameof(ShowVideoParts),
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowTurnUpright), nameof(ShowCaption),
@@ -1016,6 +1021,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>What Copy to folder does with the originals, as the box below it is set.</summary>
     public string CopyHint => _loc[MoveInsteadOfCopy ? "presets.move_hint" : "presets.copy_hint"];
     [ObservableProperty] private Choice<MediaQuality> _mediaQuality;
+    [ObservableProperty] private Choice<MergedCells> _mergedCells;
     [ObservableProperty] private Choice<int> _maxHeight;
     [ObservableProperty] private Choice<string> _cropFrame;
 
@@ -1139,6 +1145,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         Choices.Restore(oldValue, newValue, v => TiffCompression = v);
     partial void OnFitsTiffModeChanged(Choice<FitsTiffMode>? oldValue, Choice<FitsTiffMode> newValue) =>
         Choices.Restore(oldValue, newValue, v => FitsTiffMode = v);
+    partial void OnMergedCellsChanged(Choice<MergedCells>? oldValue, Choice<MergedCells> newValue) => Choices.Restore(oldValue, newValue, v => MergedCells = v);
     partial void OnMediaQualityChanged(Choice<MediaQuality>? oldValue, Choice<MediaQuality> newValue) => Choices.Restore(oldValue, newValue, v => MediaQuality = v);
     partial void OnMaxHeightChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => MaxHeight = v);
     partial void OnCropFrameChanged(Choice<string>? oldValue, Choice<string> newValue) => Choices.Restore(oldValue, newValue, v => CropFrame = v);
@@ -1243,6 +1250,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     /// <summary>XLSX: what a PDF, a Word document or a web page becomes (its tables, PdfTablesConverter and DocumentTablesConverter).</summary>
     public bool ShowPdfTablesNote => TargetId == "xlsx";
+
+    /// <summary>The spreadsheets a document's tables become (PdfTablesConverter, DocumentTablesConverter): merged cells.</summary>
+    public bool ShowMergedCells => TargetId is "xlsx" or "ods" or "csv";
     public bool ShowPdfCompressionOptions => ShowPdfCompression && CompressionLevel.Value != PdfCompression.None;
 
     /// <summary>Text from scans goes into the formats Filee writes from a PDF's text itself (PdfOptions.OcrTargets).</summary>
@@ -1480,6 +1490,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _original.Document.PdfA = PdfA;
         // Only where the option is shown, as with SaveEveryFrame below.
         _original.Document.LeaveOutPictures = ShowLeaveOutPictures && LeaveOutPictures;
+        _original.Document.MergedCells = MergedCells.Value;
 
         var media = _original.Media;
         media.Quality = MediaQuality.Value;

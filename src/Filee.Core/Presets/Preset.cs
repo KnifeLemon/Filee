@@ -1435,7 +1435,36 @@ public sealed class DocumentOptions
     /// </summary>
     public bool LeaveOutPictures { get; set; }
 
+    /// <summary>
+    /// Spreadsheets made from the tables of a PDF, a Word document or a web page: which of the table's merged cells
+    /// stay merged (<see cref="MergedCells.Smart"/> by default). Read leniently: a value this version doesn't know
+    /// (from a newer Filee or a shared preset) reads as the default instead of failing the whole preset file.
+    /// </summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<MergedCells>))]
+    public MergedCells MergedCells { get; set; } = MergedCells.Smart;
+
     public DocumentOptions Clone() => (DocumentOptions)MemberwiseClone();
+}
+
+/// <summary>What happens to a table's merged cells when it becomes a spreadsheet (PDF, DOCX, HTML → XLSX, ODS, CSV).</summary>
+public enum MergedCells
+{
+    /// <summary>
+    /// Merged where it helps reading, filled where it would get in the way of working: header rows, cells that span
+    /// columns and numbers stay merged; text spanning rows below the header (a category beside its items) is unmerged
+    /// and written into every row, so each row reads whole for filters and pivot tables. A column's total doesn't
+    /// change. The first value, so a preset without it, or with a value this version doesn't know, reads as Smart.
+    /// </summary>
+    Smart,
+
+    /// <summary>Every merged cell stays merged, as the document draws it.</summary>
+    Keep,
+
+    /// <summary>
+    /// No merged cells: each merged cell's value is written into every cell it covered (unless that would repeat more
+    /// text than a sheet should hold, as for <see cref="Smart"/>).
+    /// </summary>
+    Fill,
 }
 
 /// <summary>Trade-off between quality and file size for video and lossy audio.</summary>

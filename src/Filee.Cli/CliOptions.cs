@@ -19,6 +19,8 @@ internal sealed record CliOptions
     public bool Recursive { get; set; }
     public FileSortOrder? Sort { get; set; }
     public int? Quality { get; set; }
+    /// <summary>--merged-cells: which merged cells of a document's tables stay merged in a spreadsheet.</summary>
+    public Filee.Core.Presets.MergedCells? MergedCells { get; set; }
     public string? Pages { get; set; }
     public Filee.Core.Presets.IsoFileSystem? IsoFileSystem { get; set; }
     public string? IsoLabel { get; set; }
@@ -112,6 +114,13 @@ internal sealed record CliOptions
             {
                 case "--iso-label":
                     options.IsoLabel = Value();
+                    break;
+                case "--merged-cells":
+                    var merged = Value()?.ToLowerInvariant();
+                    if (merged == "smart") options.MergedCells = Filee.Core.Presets.MergedCells.Smart;
+                    else if (merged == "keep") options.MergedCells = Filee.Core.Presets.MergedCells.Keep;
+                    else if (merged == "fill") options.MergedCells = Filee.Core.Presets.MergedCells.Fill;
+                    else options.Error ??= "--merged-cells must be smart, keep or fill.";
                     break;
                 case "--iso-filesystem":
                     var filesystem = Value()?.ToLowerInvariant();
