@@ -10,6 +10,7 @@
 
 using Filee.Core.Formats;
 using Filee.Core.Presets;
+using Filee.Engines.Wic;
 using ImageMagick;
 using ImageMagick.Formats;
 
@@ -25,7 +26,7 @@ internal static class ImageReader
     /// Reads <paramref name="path"/> as format <paramref name="formatId"/>. Layered formats come back as a single,
     /// flattened image; other multi-frame formats (TIFF pages, GIF frames, ICO sizes) keep all frames.
     /// </summary>
-    /// <param name="cancellationToken">Stops the merge of a GIMP file between rows; other formats are read at once.</param>
+    /// <param name="cancellationToken">Stops the merge of a GIMP file between rows or the Windows TIFF fallback between pages.</param>
     public static MagickImageCollection Read(string path, string formatId, Preset preset,
         CancellationToken cancellationToken = default)
     {
@@ -67,6 +68,27 @@ internal static class ImageReader
             if (formatId == "raw")
                 RawTone.ToSrgb(images);
         }
+        catch (MagickException ex) when (formatId == "tiff" && IsTiffStripReadError(ex.Message))
+        {
+            images.Dispose();
+            if (!OperatingSystem.IsWindows())
+                throw;
+
+            // Some TIFFs (including large map rasters) have strips that libtiff rejects but Windows can decode.
+            // Keep the normal reader for all other TIFFs, and never treat a partial set of pages as success.
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return WicImageReader.ReadTiff(path, cancellationToken);
+            }
+            catch (Exception fallback) when (fallback is InvalidDataException or InvalidOperationException or MagickException
+                or System.Runtime.InteropServices.COMException)
+            {
+                throw new InvalidOperationException(
+                    ex.Message + " Windows TIFF fallback also failed: " + fallback.Message,
+                    new AggregateException(ex, fallback));
+            }
+        }
         catch (MagickException ex) when (formatId == "dcm")
         {
             images.Dispose();
@@ -102,6 +124,12 @@ internal static class ImageReader
 
         return images;
     }
+
+    /// <summary>Only retry strip decoding failures, not resource limits or unrelated conversion errors.</summary>
+    internal static bool IsTiffStripReadError(string message) =>
+        message.Contains("TIFFFillStrip", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("TIFFReadEncodedStrip", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("Read error on strip", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The photo (JPEG or HEIC) of a LIVP, read from the package without unpacking it.</summary>
     private static MagickImageCollection ReadLivePhoto(string path, Preset preset)

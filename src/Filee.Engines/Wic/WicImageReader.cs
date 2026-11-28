@@ -1,5 +1,5 @@
 // Reads JPEG XR (.jxr, .wdp, .hdp) with Windows' own codec through WIC. ImageMagick has no JPEG XR coder on any
-// platform, so this is the only reader. The picture becomes an ordinary 8-bit sRGB MagickImage; resizing, rotating
+// platform, so this is the only reader. Also a fallback for TIFF strip decoding failures. The picture becomes an ordinary 8-bit sRGB MagickImage; resizing, rotating
 // and encoding are then ImageMagick's, as for every other image.
 //
 // Pixel formats with integer channels (8 or 16 bits, grey, RGB, CMYK) are converted by WIC to 8-bit BGRA. Fixed-point
@@ -24,16 +24,69 @@ internal static class WicImageReader
     {
         IWICImagingFactory? factory = null;
         IWICBitmapDecoder? decoder = null;
-        IWICBitmapFrameDecode? frame = null;
-        IWICComponentInfo? info = null;
-        IWICFormatConverter? converter = null;
         try
         {
             factory = CreateFactory();
             decoder = factory.CreateDecoderFromFilename(path, IntPtr.Zero, GenericRead, DecodeMetadataCacheOnDemand);
             if (decoder.GetFrameCount() == 0)
                 throw new InvalidDataException("The file holds no picture.");
-            frame = decoder.GetFrame(0);
+            return ReadFrame(factory, decoder, 0);
+        }
+        catch (COMException ex)
+        {
+            throw new InvalidOperationException(ex.HResult == ComponentNotFound
+                ? "Windows can't read this file: it is not a JPEG XR picture, or Windows' JPEG XR codec is missing."
+                : $"Windows couldn't decode this JPEG XR picture (0x{ex.HResult:X8}): {ex.Message}", ex);
+        }
+        finally
+        {
+            Release(decoder);
+            Release(factory);
+        }
+    }
+
+    /// <summary>Decodes every TIFF page with the Windows codec, preserving order and resolution.</summary>
+    public static MagickImageCollection ReadTiff(string path, CancellationToken cancellationToken = default)
+    {
+        IWICImagingFactory? factory = null;
+        IWICBitmapDecoder? decoder = null;
+        var images = new MagickImageCollection();
+        try
+        {
+            factory = CreateFactory();
+            decoder = factory.CreateDecoderFromFilename(path, IntPtr.Zero, GenericRead, DecodeMetadataCacheOnDemand);
+            var count = decoder.GetFrameCount();
+            if (count == 0)
+                throw new InvalidDataException("The TIFF holds no picture.");
+            for (uint index = 0; index < count; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                images.Add(ReadFrame(factory, decoder, index));
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return images;
+        }
+        catch
+        {
+            images.Dispose();
+            throw;
+        }
+        finally
+        {
+            Release(decoder);
+            Release(factory);
+        }
+    }
+
+    private static MagickImage ReadFrame(IWICImagingFactory factory, IWICBitmapDecoder decoder, uint index)
+    {
+        IWICBitmapFrameDecode? frame = null;
+        IWICComponentInfo? info = null;
+        IWICFormatConverter? converter = null;
+        MagickImage? image = null;
+        try
+        {
+            frame = decoder.GetFrame(index);
             frame.GetSize(out var width, out var height);
             if (width == 0 || height == 0)
                 throw new InvalidDataException("The picture is empty.");
@@ -50,7 +103,7 @@ internal static class WicImageReader
             converter.Initialize((IWICBitmapSource)frame, ref target, BitmapDitherTypeNone, IntPtr.Zero, 0, BitmapPaletteTypeCustom);
 
             var pixels = hdr ? ToneMapped(converter, (int)width, (int)height) : Bgra(converter, (int)width, (int)height);
-            var image = new MagickImage();
+            image = new MagickImage();
             image.ReadPixels(pixels, new PixelReadSettings(width, height, StorageType.Char, hdr ? PixelMapping.RGBA : PixelMapping.BGRA));
             // HDR screenshots carry an alpha channel that is opaque everywhere: a PNG of them needs none.
             if (!pixelFormat.SupportsTransparency() || IsOpaque(pixels))
@@ -59,22 +112,16 @@ internal static class WicImageReader
             frame.GetResolution(out var dpiX, out var dpiY);
             if (dpiX is > 0 and < 100_000 && dpiY is > 0 and < 100_000)
                 image.Density = new Density(dpiX, dpiY, DensityUnit.PixelsPerInch);
-            return image;
-        }
-        catch (COMException ex)
-        {
-            throw new InvalidOperationException(ex.HResult == ComponentNotFound
-                ? "Windows can't read this file: it is not a JPEG XR picture, or Windows' JPEG XR codec is missing."
-                : $"Windows couldn't decode this JPEG XR picture (0x{ex.HResult:X8}): {ex.Message}", ex);
+            var result = image;
+            image = null; // ownership passes to the caller
+            return result;
         }
         finally
         {
-            // The decoder keeps the file open until it is released.
+            image?.Dispose();
             Release(converter);
             Release(info);
             Release(frame);
-            Release(decoder);
-            Release(factory);
         }
     }
 
