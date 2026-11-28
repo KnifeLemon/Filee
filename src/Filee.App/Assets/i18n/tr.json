@@ -1176,8 +1176,13 @@
   "presets.group.archive": "Arşiv",
   "presets.iso_filesystem": "ISO dosya sistemi",
   "presets.iso_label": "Birim etiketi",
+  "presets.iso_label_joliet_hint": "En fazla 16 BMP karakteri. Boşsa kaynak adı kullanılır.",
+  "presets.iso_label_udf_hint": "En fazla 30 Latin-1 karakteri veya 15 UTF-16 birimi. Boşsa kaynak adı kullanılır.",
+  "error.iso_label_length": "Birim etiketi {0} için çok uzun.",
+  "error.iso_label_characters": "Desteklenmeyen karakterleri veya baştaki/sondaki boşlukları kaldırın.",
 
   "presets.iso_label_hint": "Boş bırakılırsa klasör veya arşiv adı kullanılır. Joliet: büyük/küçük harf ve tireler korunarak en fazla 16 BMP Unicode karakteri. UDF: 30 Latin-1 karakteri veya 15 UTF-16 birimi.",
+  "presets.ask_iso_label_hint": "Dönüştürmeden önce her girdi için birim etiketi seçin. Yukarıdaki etiket önceden doldurulur; boşsa kaynak adı kullanılır. İzlenen klasörler ve komut satırı sormaz.",
   "presets.archive_level": "Sıkıştırma",
   "presets.archive_level.Store": "Yok (yalnızca depola)",
   "presets.archive_level.Fast": "Hızlı",

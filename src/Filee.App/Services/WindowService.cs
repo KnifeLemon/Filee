@@ -228,6 +228,27 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         return dialog.Result;
     }
 
+    internal AskIsoLabelWindow? AskIsoLabel { get; private set; }
+
+    public async Task<string?> AskIsoLabelAsync(string path, Preset preset, int index = 0, int total = 1)
+    {
+        AskIsoLabel?.Close();
+        var dialog = new AskIsoLabelWindow { DataContext = new AskIsoLabelViewModel(path, preset, loc, index, total) };
+        dialog.StartIso.Content = loc.DisplayName(preset);
+        PrepareWindow(dialog);
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        dialog.Closed += (_, _) =>
+        {
+            if (AskIsoLabel == dialog) AskIsoLabel = null;
+            closed.TrySetResult();
+        };
+        AskIsoLabel = dialog;
+        dialog.Show();
+        dialog.Activate();
+        await closed.Task;
+        return dialog.Result;
+    }
+
     private AskPagesWindow? _askPages;
 
     internal AskPagesWindow? AskPages => _askPages;

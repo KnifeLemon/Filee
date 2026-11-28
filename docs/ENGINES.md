@@ -2074,6 +2074,10 @@ A dotted folder name keeps its suffix. Names are fitted to the selected filesyst
 when no usable label remains. Each input gets its own label, independently of the output filename.
 The ISO preset's **Volume label** field overrides this default; empty uses the input name. The CLI equivalent is
 `--iso-label "MY_DISC"`, which overrides the preset for that command without changing the saved preset.
+**Ask every time** is off by default. When enabled, the app asks for each input's label before starting the batch,
+prefilled with the custom label or the fitted source name. An empty answer uses the source name. Cancelling any
+label or save-location dialog starts none of the batch. Answers apply only to that conversion; the saved preset
+stays unchanged. Watch folders and the CLI never open this dialog and use the saved label or source name instead.
 Custom labels are validated rather than silently changed. Joliet preserves case, spaces, punctuation and BMP Unicode
 within its 16-character limit, excluding control characters and `*`, `/`, `:`, `;`, `?` and backslashes. Its primary
 ISO 9660 descriptor has a separate uppercase ASCII-compatible label for older readers. UDF accepts up to

@@ -1191,8 +1191,13 @@
   "presets.group.archive": "압축",
   "presets.iso_filesystem": "ISO 파일 시스템",
   "presets.iso_label": "볼륨 이름",
+  "presets.iso_label_joliet_hint": "BMP 문자 최대 16자. 비워 두면 원본 이름을 사용합니다.",
+  "presets.iso_label_udf_hint": "Latin-1 최대 30자 또는 UTF-16 15단위. 비워 두면 원본 이름을 사용합니다.",
+  "error.iso_label_length": "볼륨 레이블이 {0} 제한을 초과합니다.",
+  "error.iso_label_characters": "지원하지 않는 문자나 앞뒤 공백을 제거하세요.",
 
   "presets.iso_label_hint": "비우면 폴더 또는 압축 파일 이름을 사용합니다. Joliet: 대소문자와 하이픈을 유지하며 BMP Unicode 최대 16자. UDF: Latin-1 30자 또는 UTF-16 15단위.",
+  "presets.ask_iso_label_hint": "변환 전에 각 입력의 볼륨 레이블을 선택합니다. 위 레이블이 미리 입력되며 비어 있으면 원본 이름을 사용합니다. 감시 폴더와 명령줄에서는 묻지 않습니다.",
   "presets.archive_level": "압축 수준",
   "presets.archive_level.Store": "압축 안 함 (보관만)",
   "presets.archive_level.Fast": "빠르게",

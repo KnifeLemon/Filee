@@ -480,10 +480,21 @@
         <ComboBox ItemsSource="{Binding IsoFileSystems}" SelectedItem="{Binding IsoFileSystem}"
                   HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.iso_filesystem}" />
         <TextBlock Classes="label" Text="{DynamicResource presets.iso_label}" />
-        <TextBox x:Name="IsoVolumeLabelBox" Text="{Binding IsoVolumeLabel}" AutomationProperties.Name="{DynamicResource presets.iso_label}" />
-        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.iso_label_hint}" />
-        <TextBlock Classes="caption danger" TextWrapping="Wrap" Text="{Binding IsoLabelError}"
-                   IsVisible="{Binding IsoLabelError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBox x:Name="IsoVolumeLabelBox" Height="38" Text="{Binding IsoVolumeLabel}" AutomationProperties.Name="{DynamicResource presets.iso_label}" />
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding IsoLabelHint}" />
+          <TextBlock Grid.Column="1" Width="72" TextAlignment="Right" Classes="caption" Classes.danger="{Binding IsoLabelError, Converter={x:Static ObjectConverters.IsNotNull}}" Text="{Binding IsoLabelCounter}" />
+        </Grid>
+        <CheckBox x:Name="AskIsoVolumeLabel" Content="{DynamicResource presets.ask_pages}" IsChecked="{Binding AskIsoVolumeLabel}"
+                  ToolTip.Tip="{DynamicResource presets.ask_iso_label_hint}" />
+        <Grid>
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding IsoLabelLengthError}" Opacity="0"
+                     IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding IsoLabelCharactersError}" Opacity="0"
+                     IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw" />
+          <TextBlock Classes="caption danger" TextWrapping="Wrap" Text="{Binding IsoLabelError}"
+                     IsVisible="{Binding IsoLabelError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </Grid>
       </StackPanel>
     </Border>
 

@@ -326,6 +326,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
             ?? UpscaleModels.FirstOrDefault();
         _isoFileSystem = IsoFileSystems.First(v => v.Value == _edit.Archive.IsoFileSystem);
         _isoVolumeLabel = _edit.Archive.IsoVolumeLabel;
+        _askIsoVolumeLabel = _edit.Archive.AskIsoVolumeLabel;
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
         _saveEveryFrame = _edit.Media.SaveEveryFrame;
@@ -1056,11 +1057,16 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _caption;
     /// <summary>Language spoken in the audio for Whisper transcription (MediaOptions.SpokenLanguage).</summary>
     [ObservableProperty] private Choice<string> _spokenLanguage;
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(IsoLabelError), nameof(IsValid))] private Choice<IsoFileSystem> _isoFileSystem;
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(IsoLabelError), nameof(IsValid))] private string _isoVolumeLabel;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(IsoLabelError), nameof(IsValid), nameof(IsoLabelCounter), nameof(IsoLabelHint), nameof(IsoLabelLengthError))] private Choice<IsoFileSystem> _isoFileSystem;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(IsoLabelError), nameof(IsValid), nameof(IsoLabelCounter))] private string _isoVolumeLabel;
+    [ObservableProperty] private bool _askIsoVolumeLabel;
 
     /// <summary>A custom label must fit without being silently changed by either descriptor.</summary>
-    public string? IsoLabelError => ShowIso && IsoVolumeLabels.ErrorKey(IsoVolumeLabel, IsoFileSystem.Value) is { } key ? _loc[key] : null;
+    public string? IsoLabelError => ShowIso ? IsoLabelText.Error(IsoVolumeLabel, IsoFileSystem.Value, _loc) : null;
+    public string IsoLabelCounter => IsoLabelText.Counter(IsoVolumeLabel, IsoFileSystem.Value);
+    public string IsoLabelHint => IsoLabelText.Hint(IsoFileSystem.Value, _loc);
+    public string IsoLabelLengthError => _loc.Format("error.iso_label_length", IsoFileSystem.Value == Filee.Core.Presets.IsoFileSystem.Joliet ? "Joliet" : "UDF 2.01");
+    public string IsoLabelCharactersError => _loc["error.iso_label_characters"];
 
     partial void OnIsoFileSystemChanged(Choice<IsoFileSystem>? oldValue, Choice<IsoFileSystem> newValue) =>
         Choices.Restore(oldValue, newValue, value => IsoFileSystem = value);
@@ -1545,6 +1551,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         media.AskRingtonePart = ShowRingtone && AskRingtonePart;
         _original.Archive.IsoFileSystem = IsoFileSystem.Value;
         _original.Archive.IsoVolumeLabel = IsoVolumeLabel;
+        _original.Archive.AskIsoVolumeLabel = AskIsoVolumeLabel;
         _original.Archive.Level = ArchiveLevel.Value;
         _original.Archive.CombineIntoOne = TargetId != "iso" && CombineIntoOne;
         _original.Trace.Mode = TraceMode.Value;

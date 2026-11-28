@@ -1176,8 +1176,13 @@
   "presets.group.archive": "अभिलेख",
   "presets.iso_filesystem": "ISO फाइल प्रणाली",
   "presets.iso_label": "भोल्युम लेबल",
+  "presets.iso_label_joliet_hint": "बढीमा 16 BMP अक्षर। खाली भए स्रोतको नाम प्रयोग हुन्छ।",
+  "presets.iso_label_udf_hint": "बढीमा 30 Latin-1 अक्षर वा 15 UTF-16 एकाइ। खाली भए स्रोतको नाम प्रयोग हुन्छ।",
+  "error.iso_label_length": "भोल्युम लेबल {0} का लागि धेरै लामो छ।",
+  "error.iso_label_characters": "असमर्थित अक्षर वा सुरु/अन्त्यका खाली ठाउँ हटाउनुहोस्।",
 
   "presets.iso_label_hint": "खाली भए फोल्डर वा अभिलेखको नाम। Joliet: ठूला/साना अक्षर र हाइफन जस्ताको तस्तै, बढीमा 16 BMP Unicode वर्ण। UDF: 30 Latin-1 वर्ण वा 15 UTF-16 एकाइ।",
+  "presets.ask_iso_label_hint": "रूपान्तरणअघि हरेक इनपुटको भोल्युम लेबल छान्नुहोस्। माथिको लेबल पहिले नै भरिन्छ; खाली भए स्रोतको नाम प्रयोग हुन्छ। निगरानी गरिएका फोल्डर र कमान्ड लाइनले सोध्दैनन्।",
   "presets.archive_level": "सङ्कुचन (कम्प्रेसन)",
   "presets.archive_level.Store": "कुनै पनि छैन (केवल भण्डारण)",
   "presets.archive_level.Fast": "छिटो",

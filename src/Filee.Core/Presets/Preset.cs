@@ -1841,6 +1841,7 @@ public sealed class ArchiveOptions
     public IsoFileSystem IsoFileSystem { get; set; }
     /// <summary>Custom ISO volume label; empty uses the input name.</summary>
     public string IsoVolumeLabel { get; set; } = "";
+    public bool AskIsoVolumeLabel { get; set; }
     /// <summary>Put all dropped files into one archive instead of one archive per file.</summary>
     public bool CombineIntoOne { get; set; }
 

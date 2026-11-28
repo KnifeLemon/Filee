@@ -54,7 +54,8 @@ public sealed class IsoVolumeLabelTests
         foreach (var language in LocalizationService.Languages)
         {
             var strings = LocalizationService.LoadStrings(language.Code);
-            foreach (var key in new[] { "presets.iso_label", "presets.iso_label_hint", "error.iso_label" })
+            foreach (var key in new[] { "presets.iso_label", "presets.iso_label_hint", "error.iso_label", "presets.ask_iso_label_hint",
+                "presets.iso_label_joliet_hint", "presets.iso_label_udf_hint", "error.iso_label_length", "error.iso_label_characters" })
                 Assert.False(string.IsNullOrWhiteSpace(strings[key]), language.Code + ": " + key);
         }
     }

@@ -305,6 +305,7 @@ internal static class SharedPresetRules
         ("archive", Obj(
             ("isoFileSystem", Enum<IsoFileSystem>()),
             ("isoVolumeLabel", new StringRule(30)),
+            ("askIsoVolumeLabel", Flag),
             ("combineIntoOne", Flag),
             ("level", Enum<ArchiveLevel>()))),
         ("trace", Obj(

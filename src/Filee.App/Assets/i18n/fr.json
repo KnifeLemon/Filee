@@ -1191,8 +1191,13 @@
   "presets.group.archive": "Archive",
   "presets.iso_filesystem": "Système de fichiers ISO",
   "presets.iso_label": "Nom du volume",
+  "presets.iso_label_joliet_hint": "16 caractères BMP maximum. Vide : nom source.",
+  "presets.iso_label_udf_hint": "30 caractères Latin-1 ou 15 unités UTF-16 maximum. Vide : nom source.",
+  "error.iso_label_length": "Le nom de volume est trop long pour {0}.",
+  "error.iso_label_characters": "Retirer les caractères non pris en charge ou les espaces au début et à la fin.",
 
   "presets.iso_label_hint": "Vide : nom du dossier ou de l’archive. Joliet : 16 caractères Unicode BMP maximum, en conservant la casse et les tirets. UDF : 30 caractères Latin-1 ou 15 unités UTF-16.",
+  "presets.ask_iso_label_hint": "Choisir un nom de volume pour chaque entrée avant la conversion. Le nom ci-dessus est prérempli ; vide, le nom source est utilisé. Les dossiers surveillés et la ligne de commande ne demandent rien.",
   "presets.archive_level": "Compression",
   "presets.archive_level.Store": "Aucune (stockage seul)",
   "presets.archive_level.Fast": "Rapide",
