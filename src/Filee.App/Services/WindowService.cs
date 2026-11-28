@@ -13,6 +13,7 @@ using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
+using Filee.Engines.Media;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -252,6 +253,36 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             closed.TrySetResult();
         };
         _askPages = dialog;
+        dialog.Show();
+        dialog.Activate();
+        await closed.Task;
+        return dialog.Result;
+    }
+
+    private AskDvdWindow? _askDvd;
+
+    internal AskDvdWindow? AskDvd => _askDvd;
+
+    /// <summary>
+    /// "Choose the DVD title" for one DVD-Video disc image dropped on <paramref name="preset"/>, with its
+    /// <paramref name="titles"/> (DvdVideoIso.TitlesOf): the title and the audio and subtitle tracks to keep.
+    /// <paramref name="index"/> of <paramref name="total"/> discs dropped together. Null when cancelled.
+    /// </summary>
+    internal async Task<DvdChoice?> AskDvdAsync(string path, IReadOnlyList<DvdVideoIso.Title> titles, Preset preset, int index = 0, int total = 1)
+    {
+        _askDvd?.Close();
+        using var vm = new AskDvdViewModel(path, titles, (title, token) => DvdVideoIso.TracksAsync(path, title, token), loc,
+            preset.TargetFormat, index, total);
+        var dialog = new AskDvdWindow { DataContext = vm };
+        dialog.StartDvd.Content = loc.DisplayName(preset);
+        PrepareWindow(dialog);
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        dialog.Closed += (_, _) =>
+        {
+            if (_askDvd == dialog) _askDvd = null;
+            closed.TrySetResult();
+        };
+        _askDvd = dialog;
         dialog.Show();
         dialog.Activate();
         await closed.Task;

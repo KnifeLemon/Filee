@@ -1,0 +1,92 @@
+<!-- "Choose the DVD title": opens when a DVD-Video disc image is dropped on a video or audio preset (RadialController,
+     AskedDvd). The titles of the disc in a list that can be typed in (a number picks that title), the longest chosen to
+     start with; the audio and subtitle tracks of the title, all ticked. Enter starts it, Esc or closing the window
+     starts nothing. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.AskDvdWindow"
+        x:DataType="vm:AskDvdViewModel"
+        Title="{DynamicResource dvd.title}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="540" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterScreen">
+  <Window.Styles>
+    <!-- The tracks of one kind: a card with a border, as the compression window's estimate. -->
+    <Style Selector="Border.tracks">
+      <Setter Property="Padding" Value="14,10" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+    </Style>
+  </Window.Styles>
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" Padding="20,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SubtleBorderBrush}"
+            Background="{DynamicResource SurfaceBrush}">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button x:Name="CancelDvd" Content="{DynamicResource common.cancel}" Click="OnCancel" IsCancel="True" />
+        <Button x:Name="StartDvd" Classes="accent" Click="OnStart" IsDefault="True" IsEnabled="{Binding IsValid}" />
+      </StackPanel>
+    </Border>
+    <StackPanel Margin="20,18,20,16" Spacing="14">
+      <StackPanel Spacing="4">
+        <TextBlock Classes="h2" Text="{DynamicResource dvd.title}" />
+        <TextBlock x:Name="FileOfText" Classes="caption" Text="{Binding Position}" IsVisible="{Binding ShowsPosition}" />
+      </StackPanel>
+      <!-- The disc and how many titles it has. -->
+      <Border x:Name="DiscCard" Padding="14,10" CornerRadius="10" Background="{DynamicResource SurfaceAltBrush}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+          <PathIcon Width="18" Height="18" VerticalAlignment="Center" Data="{StaticResource Icon.File}"
+                    Foreground="{DynamicResource TextSecondaryBrush}" />
+          <StackPanel Grid.Column="1" Spacing="2">
+            <TextBlock x:Name="FileName" Text="{Binding FileName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="{Binding FileName}" />
+            <TextBlock x:Name="TitleCount" Classes="caption" Text="{Binding SummaryText}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Grid>
+      </Border>
+      <!-- The title: picked from the list or typed (its number). -->
+      <StackPanel>
+        <TextBlock Classes="label" Text="{DynamicResource dvd.title_label}" />
+        <ComboBox x:Name="TitleBox" IsEditable="True" HorizontalAlignment="Stretch" MaxDropDownHeight="320"
+                  ItemsSource="{Binding Titles}" SelectedItem="{Binding SelectedTitle}" Text="{Binding TitleText}"
+                  AutomationProperties.Name="{DynamicResource dvd.title_label}" />
+        <TextBlock x:Name="DvdStatus" Classes="caption danger" Margin="0,6,0,0" TextWrapping="Wrap" Text="{Binding Status}"
+                   IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </StackPanel>
+      <TextBlock x:Name="Reading" Classes="caption" Text="{DynamicResource dvd.reading}" IsVisible="{Binding IsReading}" />
+      <!-- The tracks of the title, all ticked to start with, each kind in a card (as the compression window's estimate). -->
+      <Grid x:Name="TrackColumns" ColumnDefinitions="*,*" ColumnSpacing="12" IsVisible="{Binding !IsReading}">
+        <Border x:Name="AudioColumn" Classes="tracks" Grid.ColumnSpan="{Binding ShowsSubtitles, Converter={x:Static vm:AskDvdViewModel.SpanWhenAlone}}">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="label" Text="{DynamicResource dvd.audio}" />
+            <ItemsControl x:Name="AudioList" ItemsSource="{Binding AudioTracks}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:DvdTrackChoice">
+                  <CheckBox IsChecked="{Binding Keep}" Content="{Binding Label}" AutomationProperties.Name="{Binding Label}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Classes="caption" Text="{DynamicResource dvd.none}" IsVisible="{Binding ShowsNoAudio}" />
+          </StackPanel>
+        </Border>
+        <Border x:Name="SubtitleColumn" Classes="tracks" Grid.Column="1" IsVisible="{Binding ShowsSubtitles}">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="label" Text="{DynamicResource dvd.subtitles}" />
+            <ItemsControl x:Name="SubtitleList" ItemsSource="{Binding SubtitleTracks}" IsEnabled="{Binding KeepsSubtitles}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:DvdTrackChoice">
+                  <CheckBox IsChecked="{Binding Keep}" Content="{Binding Label}" AutomationProperties.Name="{Binding Label}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Classes="caption" Text="{DynamicResource dvd.none}" IsVisible="{Binding ShowsNoSubtitles}" />
+            <!-- MP4, WebM, MOV …: a DVD's subtitles are pictures, only MKV holds them. -->
+            <TextBlock x:Name="MkvHint" Classes="caption" TextWrapping="Wrap" Text="{DynamicResource dvd.subtitles_mkv_only}"
+                       IsVisible="{Binding ShowsMkvHint}" />
+          </StackPanel>
+        </Border>
+      </Grid>
+    </StackPanel>
+  </DockPanel>
+</Window>

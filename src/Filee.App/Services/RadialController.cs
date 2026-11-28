@@ -29,6 +29,7 @@ using Filee.Core.Presets;
 using Filee.Core.Profiles;
 using Filee.Core.Settings;
 using Filee.Core.Web;
+using Filee.Engines.Media;
 using Microsoft.Extensions.Logging;
 
 namespace Filee.App.Services;
@@ -456,6 +457,16 @@ public sealed class RadialController(
             return;
         }
 
+        // "Choose the DVD title": a window per DVD-Video disc image dropped on a video or audio preset first, for its title
+        // and tracks; the toast shows the jobs, the donut has closed for the window.
+        if (AskedDvd.Asks(preset) && sources.Any(AskedDvd.IsDiscImage))
+        {
+            KeepKeyboard(); // for the title window
+            Close(animate: false);
+            _ = AskDvdThenConvertAsync(sources, preset, web, _toClipboard, _onJob);
+            return;
+        }
+
         // "Ask every time" for the compression (#1353): a small window for the files with a level to choose first, then
         // the save dialog when that asks too; the toast shows the job, the donut has closed for the window.
         if (AskedCompression.Asks(preset) && sources.Any(s => AskedCompression.KindOf(preset, s) is not null))
@@ -640,6 +651,63 @@ public sealed class RadialController(
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             log.LogError(ex, "Could not convert on the pages chosen");
+        }
+        finally
+        {
+            web?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// "Choose the DVD title": one window per DVD-Video disc image, in the order dropped. Cancelling any of them starts
+    /// nothing. Each disc converts with its own title and tracks; other files dropped with them, and disc images without
+    /// a DVD-Video title (refused by the conversion with its reason), convert as the preset says. Files from a browser are
+    /// saved first: the window reads the disc itself.
+    /// </summary>
+    private async Task AskDvdThenConvertAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard,
+        Action<ConversionJob>? onJob)
+    {
+        try
+        {
+            if (web is not null)
+            {
+                var drop = web;
+                web = null; // saving it disposes it
+                files = await conversions.SaveBrowserFilesAsync(drop, (placeholder, ex) =>
+                    log.LogWarning(ex, "Saving {File} from a browser for {Preset} failed", Path.GetFileName(placeholder), preset.Id));
+            }
+            var discs = new List<(string File, IReadOnlyList<DvdVideoIso.Title> Titles)>();
+            foreach (var file in files.Where(AskedDvd.IsDiscImage))
+            {
+                var titles = await Task.Run(() => DvdVideoIso.TitlesOf(file));
+                if (titles.Count > 0)
+                    discs.Add((file, titles));
+            }
+            var runs = new List<(IReadOnlyList<string> Files, Preset Preset)>();
+            for (var i = 0; i < discs.Count; i++)
+            {
+                if (await windows.AskDvdAsync(discs[i].File, discs[i].Titles, preset, i, discs.Count) is not { } choice)
+                {
+                    log.LogInformation("Choosing the DVD title for {Preset} was cancelled; nothing converts", preset.Id);
+                    return;
+                }
+                runs.Add(([discs[i].File], AskedDvd.Apply(preset, choice)));
+            }
+            var others = files.Where(file => discs.All(d => d.File != file)).ToList();
+            if (others.Count > 0)
+                runs.Insert(0, (others, preset));
+            log.LogInformation("Converting {Count} DVD(s) with preset {Preset} on the titles chosen", discs.Count, preset.Id);
+            foreach (var (runFiles, runPreset) in runs)
+            {
+                if (runPreset.Output.AskEveryTime)
+                    await AskThenConvertAsync(runFiles, runPreset, toClipboard, null, onJob);
+                else if (conversions.Start(runFiles, runPreset, toClipboard: toClipboard) is { } job)
+                    onJob?.Invoke(job.Job);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            log.LogError(ex, "Could not convert on the DVD titles chosen");
         }
         finally
         {

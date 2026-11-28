@@ -79,7 +79,8 @@ internal sealed record SubtitleStreamInfo(int Index, string? Codec, string? Lang
 /// <summary>An audio stream of a file.</summary>
 /// <param name="Codec">FFmpeg's codec name (<c>aac</c>, <c>opus</c>, …), null when unknown.</param>
 /// <param name="Ordinal">The audio track number in the file, including undecodable tracks (for <c>-map 0:a:Ordinal</c>).</param>
-internal sealed record AudioStreamInfo(int Channels, int SampleRate, string? Codec = null, int Ordinal = 0);
+/// <param name="Language">The language tag (<c>fre</c>, <c>eng</c>, …), null when the file doesn't say.</param>
+internal sealed record AudioStreamInfo(int Channels, int SampleRate, string? Codec = null, int Ordinal = 0, string? Language = null);
 
 /// <summary>Summary of a media file.</summary>
 /// <param name="Duration">Playing time, null when the container does not say (raw streams).</param>
@@ -119,7 +120,7 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
     {
         DashSegment.ThrowIfNeedsInitSegment(input);
         var result = await ProcessRunner.RunAsync(ffprobe,
-            ["-hide_banner", "-v", "error", "-print_format", "json", "-show_format", "-show_streams", "-show_data_hash", "MD5", input],
+            ["-hide_banner", "-v", "error", "-print_format", "json", "-show_format", "-show_streams", "-show_data_hash", "MD5", .. MediaInput.Open(input)],
             ProbeTimeout, cancellationToken);
         if (result.ExitCode != 0)
         {
@@ -190,7 +191,8 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
                         break;
                     case "audio":
                         var sound = new AudioStreamInfo((int)Number(stream, "channels"), (int)Number(stream, "sample_rate"),
-                            Text(stream, "codec_name"), audioOrdinal++);
+                            Text(stream, "codec_name"), audioOrdinal++,
+                            stream.TryGetProperty("tags", out var audioTags) ? Text(audioTags, "language") : null);
                         if (copy is null || !copyIsDefault && Disposition(stream, "default"))
                             (copy, copyIsDefault) = (sound, Disposition(stream, "default"));
                         if (decodable is null || sound.Codec is { } name && decodable.Contains(name))

@@ -90,6 +90,11 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             // one-frame picture of the video; it also beats going through an animated GIF or APNG (15 + 10).
             .. videos.Select(source => new ConversionEdge(source, "webp", 15)),
             .. from source in audios from target in MediaEncoding.AudioTargets.Keys select new ConversionEdge(source, target),
+            // A DVD-Video disc image is read as its main title (DvdVideoIso); a data disc is refused there and still
+            // unpacks as an archive. Its video and its sound only, never as a step of a longer route: a disc image isn't
+            // a source of pictures, documents or text subtitles (a DVD's subtitles are pictures, kept in MKV).
+            .. MediaEncoding.VideoTargets.Keys.Select(target => new ConversionEdge(DvdVideoIso.Format, target, DirectOnly: true)),
+            .. MediaEncoding.AudioTargets.Keys.Select(target => new ConversionEdge(DvdVideoIso.Format, target, DirectOnly: true, NotForImageSources: true)),
             .. MediaEncoding.PictureToVideoTargets.Select(target => new ConversionEdge("gif", target)),
             .. MediaEncoding.PictureToVideoTargets.Select(target => new ConversionEdge("apng", target, 11)),
             .. MediaEncoding.PictureToVideoTargets.Select(target => new ConversionEdge("png", target, 11)),
@@ -131,7 +136,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         var (ffmpeg, ffprobe) = _tools ?? Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
-        await RequireTrackerDemuxerAsync(ffmpeg, step.From);
+        await RequireDemuxerAsync(ffmpeg, step.From);
         if (step.MotionPhoto)
             return await ExtractMotionAsync(step, progress, cancellationToken);
         if (step.LivePhoto)
@@ -139,8 +144,11 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 progress, cancellationToken);
         if (step.To == "heic")
             return await HeicWriter.ConvertAsync(ffmpeg, step, progress, cancellationToken);
-        var input = MediaInput.For(step.InputPath, step.From, step.WorkDirectory, step.Notice);
+        var input = MediaInput.For(step.InputPath, step.From, step.WorkDirectory, step.Notice, step.Preset.Media.Dvd?.Title);
         var info = await MediaInfo.ProbeAsync(ffprobe, input, cancellationToken);
+        // The tracks chosen in the "Choose the DVD title" window; without a choice every track is kept.
+        if (step.Preset.Media.Dvd is { } dvd && MediaInput.IsDvdVideo(input))
+            info = DvdVideoIso.Keep(info, dvd);
         progress?.Report(0.02);
 
         if (step.FrameSequence)
@@ -361,7 +369,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             for (var i = 0; i < inputPaths.Count; i++)
             {
                 var clipFormat = FormatRegistry.Detect(inputPaths[i])?.Id;
-                await RequireTrackerDemuxerAsync(ffmpeg, clipFormat);
+                await RequireDemuxerAsync(ffmpeg, clipFormat);
                 var path = MediaInput.For(inputPaths[i], clipFormat, scratch);
                 clips.Add((path, await MediaInfo.ProbeAsync(ffprobe, path, cancellationToken)));
                 progress?.Report(0.05 * (i + 1) / inputPaths.Count);
@@ -848,12 +856,17 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         demuxers is null || demuxers.Contains("libopenmpt") || demuxers.Contains("libmodplug");
 
     /// <summary>
-    /// Refuses a tracker module with Filee's message before FFmpeg reports "Invalid data found when processing input".
+    /// Refuses a tracker module, or a DVD disc image, with Filee's message when this FFmpeg has no demuxer for it, before
+    /// FFmpeg reports "Invalid data found when processing input" or "Unknown input format".
     /// </summary>
-    private static async Task RequireTrackerDemuxerAsync(string ffmpeg, string? format)
+    private static async Task RequireDemuxerAsync(string ffmpeg, string? format)
     {
         if (format is not null && TrackerModules.Contains(format) && !ReadsTrackerModules(await DemuxersOfAsync(ffmpeg)))
             throw new ConversionRefusedException("error.tracker_needs_openmpt");
+        // A DVD-Video disc image is read by the dvdvideo demuxer (libdvdnav, libdvdread): Filee's Windows (gyan.dev full) and
+        // Linux (BtbN GPL) downloads have it, Homebrew's FFmpeg does not.
+        if (format == DvdVideoIso.Format && await DemuxersOfAsync(ffmpeg) is { } demuxers && !demuxers.Contains(DvdVideoIso.Demuxer))
+            throw new ConversionRefusedException("error.dvd_needs_dvdvideo");
     }
 
     private static async Task<IReadOnlySet<string>?> QueryOnceAsync(
