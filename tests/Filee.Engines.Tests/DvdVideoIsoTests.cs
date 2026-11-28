@@ -90,6 +90,33 @@ public sealed class DvdVideoIsoTests : IDisposable
         Assert.Throws<InvalidDataException>(() => MediaInput.For(iso));
     }
 
+    [Fact]
+    public void A_title_whose_ifo_offsets_point_past_2_gib_is_left_out()
+    {
+        // Title 1's chapter offset and title 2's program chain offset are 0x80000000 or more: read as int they'd be
+        // negative and pass the bounds checks. Only title 3 is left to choose.
+        var iso = Disc("offsets.iso",
+            new(1, 1, new TimeSpan(1, 30, 0)), new(2, 1, new TimeSpan(1, 20, 0)), new(3, 1, TimeSpan.FromMinutes(5)));
+        using (var file = File.Open(iso, FileMode.Open, FileAccess.ReadWrite))
+        {
+            var files = DvdVideoIso.Read(file);
+            Patch(file, files.Single(f => f.Name == "VTS_01_0.IFO").Start + Sector + 8, 0x80000000);
+            Patch(file, files.Single(f => f.Name == "VTS_02_0.IFO").Start + 2 * Sector + 8 + 4, 0xFFFFFFF0);
+        }
+
+        using (var file = File.OpenRead(iso))
+            Assert.Equal([3], DvdVideoIso.Titles(file, DvdVideoIso.Read(file)).Select(t => t.Number));
+        Assert.Equal($"dvdvideo:3:{iso}", MediaInput.For(iso));
+
+        static void Patch(FileStream file, long at, uint value)
+        {
+            var bytes = new byte[4];
+            BinaryPrimitives.WriteUInt32BigEndian(bytes, value);
+            file.Position = at;
+            file.Write(bytes);
+        }
+    }
+
     [Theory]
     [InlineData(new byte[] { 0x01, 0x23, 0x45, 0x10 }, 1, 23, 45, 400)]  // 25 fps (rate bits 01), frame 10
     [InlineData(new byte[] { 0x00, 0x00, 0x01, 0xD5 }, 0, 0, 1, 500)]    // 30 fps (rate bits 11), frame 15

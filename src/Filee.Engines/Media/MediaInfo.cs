@@ -79,7 +79,7 @@ internal sealed record SubtitleStreamInfo(int Index, string? Codec, string? Lang
 /// <summary>An audio stream of a file.</summary>
 /// <param name="Codec">FFmpeg's codec name (<c>aac</c>, <c>opus</c>, …), null when unknown.</param>
 /// <param name="Ordinal">The audio track number in the file, including undecodable tracks (for <c>-map 0:a:Ordinal</c>).</param>
-/// <param name="Language">The language tag (<c>fre</c>, <c>eng</c>, â€¦), null when the file doesn't say.</param>
+/// <param name="Language">The language tag (<c>fre</c>, <c>eng</c>, …), null when the file doesn't say.</param>
 internal sealed record AudioStreamInfo(int Channels, int SampleRate, string? Codec = null, int Ordinal = 0, string? Language = null);
 
 /// <summary>Summary of a media file.</summary>

@@ -197,15 +197,16 @@ internal static class DvdVideoIso
             || 8 + titleInSet * 4 > chapters.Length)
             return null;
         // The title's first chapter: its program chain number.
-        var at = (int)BinaryPrimitives.ReadUInt32BigEndian(chapters[(8 + (titleInSet - 1) * 4)..]);
-        if (at + 2 > chapters.Length)
+        // Offsets are unsigned: compared as long, a damaged one past 2 GiB is out of the table, not negative.
+        var at = BinaryPrimitives.ReadUInt32BigEndian(chapters[(8 + (titleInSet - 1) * 4)..]);
+        if (at + 2L > chapters.Length)
             return null;
-        var chain = BinaryPrimitives.ReadUInt16BigEndian(chapters[at..]);
+        var chain = BinaryPrimitives.ReadUInt16BigEndian(chapters[(int)at..]);
         if (chain < 1 || chain > BinaryPrimitives.ReadUInt16BigEndian(chains) || 8 + chain * 8 > chains.Length)
             return null;
-        var pgc = (int)BinaryPrimitives.ReadUInt32BigEndian(chains[(8 + (chain - 1) * 8 + 4)..]);
+        var pgc = BinaryPrimitives.ReadUInt32BigEndian(chains[(8 + (chain - 1) * 8 + 4)..]);
         // The program chain states its playing time at offset 4 (hours, minutes, seconds, frames in BCD).
-        return pgc + 8 > chains.Length ? null : PlayingTime(chains.Slice(pgc + 4, 4));
+        return pgc + 8L > chains.Length ? null : PlayingTime(chains.Slice((int)pgc + 4, 4));
     }
 
     /// <summary>A DVD playing time: BCD hours, minutes, seconds and frames, the frame rate in the top two bits.</summary>

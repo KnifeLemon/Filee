@@ -136,7 +136,7 @@ public sealed partial class AskDvdViewModel : ObservableObject, IDisposable
         else if (!string.IsNullOrWhiteSpace(value))
         {
             SelectedTitle = null;
-            Status = _loc.Format("dvd.no_such_title", Titles.Count);
+            Status = _loc.Format("dvd.no_such_title", Titles.Max(t => t.Number));
         }
     }
 
