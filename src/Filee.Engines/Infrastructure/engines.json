@@ -146,10 +146,10 @@
           "kind": "tar.gz"
         },
         "ffmpeg": {
-          "version": "9.0.2",
-          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n9.0.2-17-g2a571b6068-linux64-gpl-9.0.tar.xz",
-          "sha256": "68EE646831ADAAE2495618346F3BBA94FF207FF83BBD34D643E7004730D66269",
-          "size": 151017172,
+          "version": "9.1",
+          "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-28-13-45/ffmpeg-n9.1-6-gb2efecda3d-linux64-gpl-9.1.tar.xz",
+          "sha256": "7D20703621DCE99B9CF62C5594C0DAC6DD7D9D026B82F56FF44182333D633ED0",
+          "size": 64470932,
           "kind": "tar.xz"
         },
         "calibre": {
@@ -199,10 +199,10 @@
           "kind": "tar.gz"
         },
         "ffmpeg": {
-          "version": "9.0.2",
-          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n9.0.2-17-g2a571b6068-linuxarm64-gpl-9.0.tar.xz",
-          "sha256": "91AFCD7695D4BBBB9E0057AA10BAAF9875EC4E1A97303F9059EC971336A2AB46",
-          "size": 127445692,
+          "version": "9.1",
+          "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-28-13-45/ffmpeg-n9.1-6-gb2efecda3d-linuxarm64-gpl-9.1.tar.xz",
+          "sha256": "ABC61917184B0DBEFC50962D36BBE211E60B0F3407C80BD12502C17B1544402E",
+          "size": 54381880,
           "kind": "tar.xz"
         },
         "calibre": {
