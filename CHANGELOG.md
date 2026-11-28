@@ -82,6 +82,11 @@ ko: 명령줄에서 --to=jpg처럼 쓸 수 있고, 값 자리에 옵션이 오�
 en: The command line takes --to=jpg and says when an option's value is missing
 -->
 
+- **Portable copies on Windows update themselves** (#1605). **Update** in Settings → About now downloads the new
+  portable zip, checks it against the signed checksum list like the Setup update, and replaces the app files in
+  place. The `data` folder and `filee.portable` stay as they are, and the old files are kept in `.backup-<pid>`
+  until the new version has started.
+
 - **Keep Ctrl for copying during a drag** (#1863). A drag gesture also opens the donut when its modifier keys are
   pressed after the drag started, so pressing Ctrl in the middle of a drag to copy in File Explorer opened the donut
   instead. In **Settings → Shortcuts**, turn off **Also open when the keys are pressed during a drag** on that

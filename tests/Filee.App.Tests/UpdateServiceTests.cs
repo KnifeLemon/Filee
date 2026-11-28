@@ -218,6 +218,19 @@ public class UpdateServiceTests
         Assert.Equal("Filee-9.9.9-linux-arm64-SHA256SUMS.txt", checksums?.Name);
     }
 
+    [Theory]
+    [InlineData("win-portable", "Filee-9.9.9-win-Portable.zip", "Filee-9.9.9-SHA256SUMS.txt")]
+    [InlineData("win-arm64-portable", "Filee-9.9.9-win-arm64-Portable.zip", "Filee-9.9.9-SHA256SUMS.txt")]
+    public void Windows_portable_takes_portable_zip_and_shared_windows_checksums(string target, string expectedInstaller, string expectedSums)
+    {
+        using var release = ReleaseWithEveryPlatform();
+
+        var (installer, checksums) = UpdateService.FindFiles(release.RootElement, target);
+
+        Assert.Equal(expectedInstaller, installer?.Name);
+        Assert.Equal(expectedSums, checksums?.Name);
+    }
+
     [Fact]
     public void Arm64_windows_does_not_fall_back_to_the_x64_setup_of_an_older_release()
     {
@@ -832,6 +845,94 @@ public class UpdateServiceTests
         Assert.False(shutdownRequested, "Application shutdown must not be requested when helper fails to start");
     }
 
+    [AvaloniaFact]
+    public async Task UpdateAsync_on_windows_portable_downloads_extracts_and_spawns_swap_helper()
+    {
+        var zipBytes = CreateZip(archive =>
+        {
+            AddZipEntry(archive, "Filee.exe", "exe");
+            AddZipEntry(archive, "filee.portable", "");
+        });
+        var hash = Sha256(zipBytes);
+        var network = new FakeArchiveRelease(zipBytes, hash, "Filee-9.9.9-win-Portable.zip", "Filee-9.9.9-SHA256SUMS.txt");
+
+        var mockInstallDir = TempFolder();
+
+        var updates = new UpdateService(NullLogger<UpdateService>.Instance, network)
+        {
+            InstallsItself = true,
+            TargetPlatform = "win-portable",
+            WindowsInstallDirectoryOverride = mockInstallDir,
+        };
+        updates.UseRelease(
+            new UpdateService.ReleaseFile("Filee-9.9.9-win-Portable.zip", Base + "Filee-9.9.9-win-Portable.zip", zipBytes.Length),
+            new UpdateService.ReleaseFile("Filee-9.9.9-SHA256SUMS.txt", Base + "Filee-9.9.9-SHA256SUMS.txt", 100));
+
+        var processes = new List<ProcessStartInfo>();
+        var shutdownRequested = false;
+        updates.RequestApplicationShutdown = () => shutdownRequested = true;
+        updates.StartProcess = psi =>
+        {
+            processes.Add(psi);
+            return null;
+        };
+
+        await updates.UpdateAsync();
+
+        Assert.Equal(UpdateStep.Installing, updates.Step);
+        Assert.Single(processes);
+
+        var helperPsi = processes[0];
+        Assert.EndsWith("Filee.exe", helperPsi.FileName);
+        Assert.Equal("--update-swap", helperPsi.ArgumentList[0]);
+        Assert.Equal(Environment.ProcessId.ToString(), helperPsi.ArgumentList[1]);
+        Assert.Equal(mockInstallDir, helperPsi.ArgumentList[2]);
+        Assert.EndsWith(".log", helperPsi.ArgumentList[3]);
+        Assert.EndsWith(".update-failed", helperPsi.ArgumentList[4]);
+        Assert.EndsWith("payload", helperPsi.ArgumentList[5]);
+        Assert.True(shutdownRequested, "Application shutdown must be requested before portable file swap");
+    }
+
+    [AvaloniaFact]
+    public async Task UpdateAsync_on_windows_portable_handles_helper_start_failure()
+    {
+        var zipBytes = CreateZip(archive =>
+        {
+            AddZipEntry(archive, "Filee.exe", "exe");
+            AddZipEntry(archive, "filee.portable", "");
+        });
+        var hash = Sha256(zipBytes);
+        var network = new FakeArchiveRelease(zipBytes, hash, "Filee-9.9.9-win-Portable.zip", "Filee-9.9.9-SHA256SUMS.txt");
+
+        var mockInstallDir = TempFolder();
+
+        var updates = new UpdateService(NullLogger<UpdateService>.Instance, network)
+        {
+            InstallsItself = true,
+            TargetPlatform = "win-portable",
+            WindowsInstallDirectoryOverride = mockInstallDir,
+        };
+        updates.UseRelease(
+            new UpdateService.ReleaseFile("Filee-9.9.9-win-Portable.zip", Base + "Filee-9.9.9-win-Portable.zip", zipBytes.Length),
+            new UpdateService.ReleaseFile("Filee-9.9.9-SHA256SUMS.txt", Base + "Filee-9.9.9-SHA256SUMS.txt", 100));
+
+        var failedCount = 0;
+        updates.UpdateFailed += (_, _) => failedCount++;
+
+        var shutdownRequested = false;
+        updates.RequestApplicationShutdown = () => shutdownRequested = true;
+
+        updates.StartProcess = psi => throw new Win32Exception("Cannot spawn helper");
+
+        await updates.UpdateAsync();
+
+        Assert.Equal(UpdateStep.Failed, updates.Step);
+        Assert.Equal(1, failedCount);
+        Assert.NotNull(updates.LastError);
+        Assert.Contains("Cannot spawn helper", updates.LastError.Message);
+        Assert.False(shutdownRequested, "Application shutdown must not be requested when helper fails to start");
+    }
+
     [Fact]
     public void ExtractLinuxArchive_rejects_symlink_component_traversal()
     {
@@ -874,6 +975,474 @@ public class UpdateServiceTests
         File.WriteAllBytes(archiveFile, tarBytes);
 
         Assert.Throws<InvalidDataException>(() => UpdateService.ExtractLinuxArchive(archiveFile, destFolder));
+    }
+
+    [Fact]
+    public void ExtractZipArchive_valid_payload_extracts_and_returns_folder()
+    {
+        var folder = TempFolder();
+        var archiveFile = Path.Combine(folder, "package.zip");
+        var destFolder = Path.Combine(folder, "extracted");
+
+        var zipBytes = CreateZip(archive =>
+        {
+            AddZipEntry(archive, "Filee.exe", "fake exe");
+            AddZipEntry(archive, "filee.portable", "");
+            AddZipEntry(archive, "sub/helper.dll", "dll");
+        });
+        File.WriteAllBytes(archiveFile, zipBytes);
+
+        var payloadDir = UpdateService.ExtractZipArchive(archiveFile, destFolder);
+
+        Assert.Equal(destFolder, payloadDir);
+        Assert.True(File.Exists(Path.Combine(payloadDir, "Filee.exe")));
+        Assert.True(File.Exists(Path.Combine(payloadDir, "sub", "helper.dll")));
+    }
+
+    [Fact]
+    public void ExtractZipArchive_nested_payload_extracts_and_returns_nested_folder()
+    {
+        var folder = TempFolder();
+        var archiveFile = Path.Combine(folder, "package.zip");
+        var destFolder = Path.Combine(folder, "extracted");
+
+        var zipBytes = CreateZip(archive =>
+        {
+            AddZipEntry(archive, "Filee-1.0.0-win-Portable/Filee.exe", "fake exe");
+            AddZipEntry(archive, "Filee-1.0.0-win-Portable/filee.portable", "");
+        });
+        File.WriteAllBytes(archiveFile, zipBytes);
+
+        var payloadDir = UpdateService.ExtractZipArchive(archiveFile, destFolder);
+
+        Assert.Equal(Path.Combine(destFolder, "Filee-1.0.0-win-Portable"), payloadDir);
+        Assert.True(File.Exists(Path.Combine(payloadDir, "Filee.exe")));
+    }
+
+    [Fact]
+    public void ExtractZipArchive_rejects_path_traversal()
+    {
+        var folder = TempFolder();
+        var archiveFile = Path.Combine(folder, "traversal.zip");
+        var destFolder = Path.Combine(folder, "extracted");
+
+        var zipBytes = CreateZip(archive =>
+        {
+            AddZipEntry(archive, "../evil.exe", "fake");
+        });
+        File.WriteAllBytes(archiveFile, zipBytes);
+
+        Assert.Throws<InvalidDataException>(() => UpdateService.ExtractZipArchive(archiveFile, destFolder));
+    }
+
+    [Fact]
+    public void ExtractZipArchive_rejects_missing_filee_exe()
+    {
+        var folder = TempFolder();
+        var archiveFile = Path.Combine(folder, "missing.zip");
+        var destFolder = Path.Combine(folder, "extracted");
+
+        var zipBytes = CreateZip(archive =>
+        {
+            AddZipEntry(archive, "other.exe", "fake");
+        });
+        File.WriteAllBytes(archiveFile, zipBytes);
+
+        Assert.Throws<InvalidDataException>(() => UpdateService.ExtractZipArchive(archiveFile, destFolder));
+    }
+
+    [Fact]
+    public void PortableUpdateHelper_Run_performs_clean_swap_and_preserves_data_and_portable_marker()
+    {
+        var targetDir = TempFolder();
+        var stagingDir = TempFolder();
+        var logFile = Path.Combine(TempFolder(), "update.log");
+        var markerFile = Path.Combine(TempFolder(), ".update-failed");
+
+        File.WriteAllText(Path.Combine(targetDir, "Filee.exe"), "old_exe");
+        File.WriteAllText(Path.Combine(targetDir, "old_obsolete.dll"), "obsolete");
+        File.WriteAllText(Path.Combine(targetDir, "user_notes.txt"), "keep_user_file");
+        var userSubDir = Path.Combine(targetDir, "user_folder");
+        Directory.CreateDirectory(userSubDir);
+        File.WriteAllText(Path.Combine(userSubDir, "photo.jpg"), "keep_user_photo");
+        File.WriteAllText(Path.Combine(targetDir, "filee.portable"), "");
+        var dataDir = Path.Combine(targetDir, "data");
+        Directory.CreateDirectory(dataDir);
+        File.WriteAllText(Path.Combine(dataDir, "settings.json"), "{\"keep\": true}");
+
+        File.WriteAllText(Path.Combine(stagingDir, "Filee.exe"), "new_exe");
+        File.WriteAllText(Path.Combine(stagingDir, "new_feature.dll"), "feature");
+        File.WriteAllText(Path.Combine(stagingDir, "filee.portable"), "");
+
+        ProcessStartInfo? startedPsi = null;
+        var exitCode = PortableUpdateHelper.Run(
+            new UpdateSwapOptions(
+                TargetPid: 9999999,
+                TargetDir: targetDir,
+                LogFile: logFile,
+                MarkerFile: markerFile,
+                StagingDir: stagingDir),
+            psi =>
+            {
+                startedPsi = psi;
+                return true;
+            },
+            processPath: Path.Combine(stagingDir, "Filee.exe"));
+
+        var backupDir = Path.Combine(targetDir, ".backup-9999999");
+        Assert.Equal(0, exitCode);
+        Assert.Equal("new_exe", File.ReadAllText(Path.Combine(targetDir, "Filee.exe")));
+        Assert.Equal("feature", File.ReadAllText(Path.Combine(targetDir, "new_feature.dll")));
+        Assert.Equal("obsolete", File.ReadAllText(Path.Combine(targetDir, "old_obsolete.dll")));
+        Assert.Equal("keep_user_file", File.ReadAllText(Path.Combine(targetDir, "user_notes.txt")));
+        Assert.Equal("keep_user_photo", File.ReadAllText(Path.Combine(userSubDir, "photo.jpg")));
+        Assert.True(File.Exists(Path.Combine(targetDir, "filee.portable")));
+        Assert.True(File.Exists(Path.Combine(dataDir, "settings.json")), "User data directory must be untouched");
+        Assert.Equal("{\"keep\": true}", File.ReadAllText(Path.Combine(dataDir, "settings.json")));
+        Assert.True(Directory.Exists(backupDir), "Backup must be kept until the new version starts");
+        Assert.Equal("old_exe", File.ReadAllText(Path.Combine(backupDir, "Filee.exe")));
+        Assert.False(File.Exists(Path.Combine(backupDir, "user_notes.txt")));
+        Assert.False(Directory.Exists(Path.Combine(backupDir, "user_folder")));
+        Assert.False(File.Exists(markerFile));
+        Assert.NotNull(startedPsi);
+        Assert.Equal(Path.Combine(targetDir, "Filee.exe"), startedPsi.FileName);
+        Assert.Equal(["--background", "--whats-new"], startedPsi.ArgumentList);
+    }
+
+    [Fact]
+    public void PortableUpdateHelper_Run_rolls_back_on_error_and_writes_failure_marker()
+    {
+        var targetDir = TempFolder();
+        var stagingDir = TempFolder();
+        var logFile = Path.Combine(TempFolder(), "update.log");
+        var markerFile = Path.Combine(TempFolder(), ".update-failed");
+
+        File.WriteAllText(Path.Combine(targetDir, "Filee.exe"), "original_exe");
+        File.WriteAllText(Path.Combine(targetDir, "original.dll"), "keep_me");
+        File.WriteAllText(Path.Combine(targetDir, "filee.portable"), "");
+        var dataDir = Path.Combine(targetDir, "data");
+        Directory.CreateDirectory(dataDir);
+        File.WriteAllText(Path.Combine(dataDir, "settings.json"), "{\"preserved\": true}");
+
+        File.WriteAllText(Path.Combine(stagingDir, "Filee.exe"), "new_exe");
+
+        ProcessStartInfo? restartedPsi = null;
+        var launchAttempt = 0;
+        var exitCode = PortableUpdateHelper.Run(
+            new UpdateSwapOptions(
+                TargetPid: 9999999,
+                TargetDir: targetDir,
+                LogFile: logFile,
+                MarkerFile: markerFile,
+                StagingDir: stagingDir),
+            psi =>
+            {
+                launchAttempt++;
+                if (launchAttempt == 1)
+                    throw new InvalidOperationException("Failed to start new version");
+                restartedPsi = psi;
+                return true;
+            },
+            processPath: Path.Combine(stagingDir, "Filee.exe"));
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("original_exe", File.ReadAllText(Path.Combine(targetDir, "Filee.exe")));
+        Assert.Equal("keep_me", File.ReadAllText(Path.Combine(targetDir, "original.dll")));
+        Assert.Equal("{\"preserved\": true}", File.ReadAllText(Path.Combine(dataDir, "settings.json")));
+        Assert.Empty(Directory.GetDirectories(targetDir, ".backup-*"));
+        Assert.True(File.Exists(markerFile), "Failure marker must be written on update failure");
+        Assert.Equal(logFile, File.ReadAllText(markerFile).Trim());
+        Assert.True(File.Exists(logFile));
+        Assert.Contains("Update failed:", File.ReadAllText(logFile));
+        Assert.NotNull(restartedPsi);
+        Assert.Equal(Path.Combine(targetDir, "Filee.exe"), restartedPsi.FileName);
+        Assert.Equal(["--background"], restartedPsi.ArgumentList);
+    }
+
+    [Fact]
+    public void PortableUpdateHelper_Run_rejects_helper_outside_staging_directory()
+    {
+        var targetDir = TempFolder();
+        var stagingDir = TempFolder();
+        var outsideDir = TempFolder();
+        var logFile = Path.Combine(TempFolder(), "update.log");
+        var markerFile = Path.Combine(TempFolder(), ".update-failed");
+
+        File.WriteAllText(Path.Combine(targetDir, "Filee.exe"), "original_exe");
+        File.WriteAllText(Path.Combine(targetDir, "filee.portable"), "");
+        File.WriteAllText(Path.Combine(stagingDir, "Filee.exe"), "new_exe");
+
+        var exitCode = PortableUpdateHelper.Run(
+            new UpdateSwapOptions(
+                TargetPid: 9999999,
+                TargetDir: targetDir,
+                LogFile: logFile,
+                MarkerFile: markerFile,
+                StagingDir: stagingDir),
+            _ => true,
+            processPath: Path.Combine(outsideDir, "Filee.exe"));
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("original_exe", File.ReadAllText(Path.Combine(targetDir, "Filee.exe")));
+        Assert.Empty(Directory.GetDirectories(targetDir, ".backup-*"));
+        Assert.False(File.Exists(markerFile));
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void PortableUpdateHelper_Run_rejects_target_without_portable_marker_and_exe(bool hasExe, bool hasPortableMarker)
+    {
+        var targetDir = TempFolder();
+        var stagingDir = TempFolder();
+        var logFile = Path.Combine(TempFolder(), "update.log");
+        var markerFile = Path.Combine(TempFolder(), ".update-failed");
+
+        if (hasExe)
+            File.WriteAllText(Path.Combine(targetDir, "Filee.exe"), "original_exe");
+        if (hasPortableMarker)
+            File.WriteAllText(Path.Combine(targetDir, "filee.portable"), "");
+        File.WriteAllText(Path.Combine(targetDir, "unrelated.txt"), "keep_me");
+        File.WriteAllText(Path.Combine(stagingDir, "Filee.exe"), "new_exe");
+
+        var exitCode = PortableUpdateHelper.Run(
+            new UpdateSwapOptions(
+                TargetPid: 9999999,
+                TargetDir: targetDir,
+                LogFile: logFile,
+                MarkerFile: markerFile,
+                StagingDir: stagingDir),
+            _ => true,
+            processPath: Path.Combine(stagingDir, "Filee.exe"));
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("keep_me", File.ReadAllText(Path.Combine(targetDir, "unrelated.txt")));
+        Assert.Empty(Directory.GetDirectories(targetDir, ".backup-*"));
+    }
+
+    [Fact]
+    public void PortableUpdateHelper_Run_partial_move_failure_preserves_unmoved_files()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var targetDir = TempFolder();
+        var stagingDir = TempFolder();
+        var logFile = Path.Combine(TempFolder(), "update.log");
+        var markerFile = Path.Combine(TempFolder(), ".update-failed");
+
+        File.WriteAllText(Path.Combine(targetDir, "Filee.exe"), "original_exe");
+        File.WriteAllText(Path.Combine(targetDir, "filee.portable"), "");
+        var lockedPath = Path.Combine(targetDir, "z_locked.dll");
+        File.WriteAllText(lockedPath, "locked_content");
+        var unmovedSubDir = Path.Combine(targetDir, "z_subdir");
+        Directory.CreateDirectory(unmovedSubDir);
+        File.WriteAllText(Path.Combine(unmovedSubDir, "inside.txt"), "still_here");
+
+        File.WriteAllText(Path.Combine(stagingDir, "Filee.exe"), "new_exe");
+        File.WriteAllText(Path.Combine(stagingDir, "z_locked.dll"), "new_locked");
+        var stagingSubDir = Path.Combine(stagingDir, "z_subdir");
+        Directory.CreateDirectory(stagingSubDir);
+        File.WriteAllText(Path.Combine(stagingSubDir, "inside.txt"), "new_inside");
+
+        using (new FileStream(lockedPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            var exitCode = PortableUpdateHelper.Run(
+                new UpdateSwapOptions(
+                    TargetPid: 9999999,
+                    TargetDir: targetDir,
+                    LogFile: logFile,
+                    MarkerFile: markerFile,
+                    StagingDir: stagingDir),
+                _ => true,
+                processPath: Path.Combine(stagingDir, "Filee.exe"));
+
+            Assert.Equal(1, exitCode);
+        }
+
+        Assert.Equal("original_exe", File.ReadAllText(Path.Combine(targetDir, "Filee.exe")));
+        Assert.True(File.Exists(Path.Combine(targetDir, "filee.portable")));
+        Assert.Equal("locked_content", File.ReadAllText(lockedPath));
+        Assert.Equal("still_here", File.ReadAllText(Path.Combine(unmovedSubDir, "inside.txt")));
+        Assert.Empty(Directory.GetDirectories(targetDir, ".backup-*"));
+    }
+
+    [Fact]
+    public void PortableUpdateHelper_Run_partial_copy_failure_removes_only_copied_files_and_restores_backup()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var targetDir = TempFolder();
+        var stagingDir = TempFolder();
+        var logFile = Path.Combine(TempFolder(), "update.log");
+        var markerFile = Path.Combine(TempFolder(), ".update-failed");
+
+        File.WriteAllText(Path.Combine(targetDir, "Filee.exe"), "original_exe");
+        File.WriteAllText(Path.Combine(targetDir, "filee.portable"), "");
+
+        File.WriteAllText(Path.Combine(stagingDir, "Filee.exe"), "new_exe");
+        var newSubDir = Path.Combine(stagingDir, "new_sub");
+        Directory.CreateDirectory(newSubDir);
+        File.WriteAllText(Path.Combine(newSubDir, "a_copied.dll"), "copied");
+        var lockedSource = Path.Combine(stagingDir, "z_locked_source.dll");
+        File.WriteAllText(lockedSource, "cannot_read");
+
+        using (new FileStream(lockedSource, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            var exitCode = PortableUpdateHelper.Run(
+                new UpdateSwapOptions(
+                    TargetPid: 9999999,
+                    TargetDir: targetDir,
+                    LogFile: logFile,
+                    MarkerFile: markerFile,
+                    StagingDir: stagingDir),
+                _ => true,
+                processPath: Path.Combine(stagingDir, "Filee.exe"));
+
+            Assert.Equal(1, exitCode);
+        }
+
+        Assert.Equal("original_exe", File.ReadAllText(Path.Combine(targetDir, "Filee.exe")));
+        Assert.True(File.Exists(Path.Combine(targetDir, "filee.portable")));
+        Assert.False(Directory.Exists(Path.Combine(targetDir, "new_sub")));
+        Assert.False(File.Exists(Path.Combine(targetDir, "z_locked_source.dll")));
+        Assert.Empty(Directory.GetDirectories(targetDir, ".backup-*"));
+    }
+
+    [Fact]
+    public void PortableUpdateHelper_Run_rollback_continues_when_one_restore_fails()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var targetDir = TempFolder();
+        var stagingDir = TempFolder();
+        var logFile = Path.Combine(TempFolder(), "update.log");
+        var markerFile = Path.Combine(TempFolder(), ".update-failed");
+
+        File.WriteAllText(Path.Combine(targetDir, "Filee.exe"), "original_exe");
+        File.WriteAllText(Path.Combine(targetDir, "filee.portable"), "");
+        File.WriteAllText(Path.Combine(targetDir, "a_locked_restore.dll"), "orig_a");
+        File.WriteAllText(Path.Combine(targetDir, "b_ok_restore.dll"), "orig_b");
+
+        File.WriteAllText(Path.Combine(stagingDir, "Filee.exe"), "new_exe");
+        File.WriteAllText(Path.Combine(stagingDir, "a_locked_restore.dll"), "new_a");
+        File.WriteAllText(Path.Combine(stagingDir, "b_ok_restore.dll"), "new_b");
+
+        FileStream? lockedStream = null;
+        ProcessStartInfo? restartedPsi = null;
+        var launchAttempt = 0;
+        int exitCode;
+        try
+        {
+            exitCode = PortableUpdateHelper.Run(
+                new UpdateSwapOptions(
+                    TargetPid: 9999999,
+                    TargetDir: targetDir,
+                    LogFile: logFile,
+                    MarkerFile: markerFile,
+                    StagingDir: stagingDir),
+                psi =>
+                {
+                    launchAttempt++;
+                    if (launchAttempt == 1)
+                    {
+                        lockedStream = new FileStream(
+                            Path.Combine(targetDir, "a_locked_restore.dll"),
+                            FileMode.Open,
+                            FileAccess.ReadWrite,
+                            FileShare.None);
+                        throw new InvalidOperationException("Failed to start new version");
+                    }
+
+                    restartedPsi = psi;
+                    return true;
+                },
+                processPath: Path.Combine(stagingDir, "Filee.exe"));
+        }
+        finally
+        {
+            lockedStream?.Dispose();
+        }
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("original_exe", File.ReadAllText(Path.Combine(targetDir, "Filee.exe")));
+        Assert.Equal("orig_b", File.ReadAllText(Path.Combine(targetDir, "b_ok_restore.dll")));
+        Assert.True(File.Exists(markerFile));
+        Assert.Contains("Rollback failed to restore file", File.ReadAllText(logFile));
+        Assert.NotNull(restartedPsi);
+        Assert.Equal(["--background"], restartedPsi.ArgumentList);
+    }
+
+    [Fact]
+    public void TryParseUpdateSwap_does_not_require_existing_directories()
+    {
+        var parsed = CommandLine.TryParseUpdateSwap(
+            ["--update-swap", "42", @"C:\nonexistent\target", @"C:\nonexistent\update.log", @"C:\nonexistent\marker", @"C:\nonexistent\staging"],
+            out var options);
+
+        Assert.True(parsed);
+        Assert.NotNull(options);
+        Assert.Equal(42, options.TargetPid);
+        Assert.Equal(@"C:\nonexistent\target", options.TargetDir);
+        Assert.Equal(@"C:\nonexistent\staging", options.StagingDir);
+    }
+
+    [Fact]
+    public void Program_Main_with_invalid_update_swap_args_logs_and_returns_1_without_starting_app()
+    {
+        var logFile = Path.Combine(TempFolder(), "swap-invalid.log");
+
+        var exitCode = Program.Main(["--update-swap", "not-a-pid", "target", logFile, "marker", "staging"]);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("invalid --update-swap arguments", File.ReadAllText(logFile));
+
+        var missingArgsExit = Program.Main(["--update-swap"]);
+        Assert.Equal(1, missingArgsExit);
+
+        var missingDirsExit = Program.Main(["--update-swap", "42", Path.Combine(TempFolder(), "missing-target"), logFile, "marker", Path.Combine(TempFolder(), "missing-staging")]);
+        Assert.Equal(1, missingDirsExit);
+        Assert.Contains("target or staging directory does not exist", File.ReadAllText(logFile));
+    }
+
+    [Fact]
+    public void CleanupPortableUpdateArtifacts_removes_dead_pid_backup_and_workspace_and_preserves_active()
+    {
+        var installDir = TempFolder();
+        var workspaceRoot = TempFolder();
+        var token1 = "0123456789abcdef0123456789abcdef";
+        var token2 = "abcdef0123456789abcdef0123456789";
+
+        var deadPid = 999999;
+        while (UpdateService.IsProcessAlive(deadPid))
+            deadPid++;
+
+        var deadBackup = Path.Combine(installDir, $".backup-{deadPid}");
+        var activeBackup = Path.Combine(installDir, $".backup-{Environment.ProcessId}");
+        var foreignBackup = Path.Combine(installDir, ".backup-keep");
+        Directory.CreateDirectory(deadBackup);
+        File.WriteAllText(Path.Combine(deadBackup, "old.exe"), "old");
+        Directory.CreateDirectory(activeBackup);
+        Directory.CreateDirectory(foreignBackup);
+
+        var deadWorkspace = Path.Combine(workspaceRoot, $".update-{deadPid}-{token1}");
+        var activeWorkspace = Path.Combine(workspaceRoot, $".update-{Environment.ProcessId}-{token2}");
+        var foreignWorkspace = Path.Combine(workspaceRoot, ".update-custom");
+        Directory.CreateDirectory(deadWorkspace);
+        File.WriteAllText(Path.Combine(deadWorkspace, "payload.zip"), "zip");
+        Directory.CreateDirectory(activeWorkspace);
+        Directory.CreateDirectory(foreignWorkspace);
+
+        UpdateService.CleanupPortableUpdateArtifacts(installDir, workspaceRoot);
+
+        Assert.False(Directory.Exists(deadBackup));
+        Assert.True(Directory.Exists(activeBackup));
+        Assert.True(Directory.Exists(foreignBackup));
+        Assert.False(Directory.Exists(deadWorkspace));
+        Assert.True(Directory.Exists(activeWorkspace));
+        Assert.True(Directory.Exists(foreignWorkspace));
     }
 
     [Fact]
@@ -1268,6 +1837,68 @@ public class UpdateServiceTests
             LinkName = target,
         };
         writer.WriteEntry(entry);
+    }
+
+    private static byte[] CreateZip(Action<ZipArchive> populate)
+    {
+        using var mem = new MemoryStream();
+        using (var archive = new ZipArchive(mem, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            populate(archive);
+        }
+        return mem.ToArray();
+    }
+
+    private static void AddZipEntry(ZipArchive archive, string name, string content)
+    {
+        var entry = archive.CreateEntry(name);
+        using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
+        writer.Write(content);
+    }
+
+    private sealed class FakeArchiveRelease(
+        byte[] archive,
+        string hash,
+        string assetName,
+        string sumsFileName,
+        string version = "9.9.9") : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var url = request.RequestUri!.ToString();
+            if (url.EndsWith("/releases/latest", StringComparison.Ordinal))
+            {
+                var json = $$"""
+                    {"tag_name":"v{{version}}","assets":[
+                      {"name":"{{assetName}}","browser_download_url":"{{Base}}{{assetName}}","size":{{archive.Length}}},
+                      {"name":"{{sumsFileName}}","browser_download_url":"{{Base}}{{sumsFileName}}","size":100}]}
+                    """;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json"),
+                });
+            }
+            if (url.Contains("/releases?per_page=", StringComparison.Ordinal) || url.EndsWith("/releases", StringComparison.Ordinal))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("[]", Encoding.UTF8, "application/json"),
+                });
+            }
+            if (url.EndsWith(sumsFileName, StringComparison.Ordinal))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent($"{hash}  {assetName}\n", Encoding.ASCII),
+                });
+            }
+            if (url.EndsWith(assetName, StringComparison.Ordinal))
+            {
+                Assert.Contains("application/octet-stream", request.Headers.Accept.ToString());
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(archive) });
+            }
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+        }
     }
 
     private sealed class FakeLinuxRelease(byte[] archive, string hash, string sumsArtifact = "Filee-9.9.9-linux-x64.tar.gz", string version = "9.9.9") : HttpMessageHandler

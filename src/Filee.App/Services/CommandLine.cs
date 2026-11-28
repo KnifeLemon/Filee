@@ -8,6 +8,8 @@
 //   Filee.exe --convert a b ...        open the donut for these files (Explorer context menu / Send To)
 //   Filee.exe --convert-list <file>    same, with one path per line in a UTF-8 file (Windows 11 Explorer menu, for
 //                                      selections too long for a command line); the app deletes the file afterwards
+//   Filee.exe --update-swap <pid> <targetDir> <logFile> <markerFile> <stagingDir>
+//                                      run as detached helper to swap portable files after <pid> exits
 // Used by the installer (src/Filee.Setup, Installer.LaunchArguments):
 //   Filee.exe --install-engines=a,b    download these engine packages (EngineDownloads ids) in the engine window;
 //                                      an empty list means the user chose none, so the first-run choice is skipped
@@ -20,6 +22,9 @@
 using System.Text;
 
 namespace Filee.App.Services;
+
+/// <summary>Arguments for in-place portable update file swapping helper.</summary>
+public sealed record UpdateSwapOptions(int TargetPid, string TargetDir, string LogFile, string MarkerFile, string StagingDir);
 
 /// <summary>Parsed command line.</summary>
 /// <param name="ListFile">The <c>--convert-list</c> file, if any (see <see cref="DeleteListFile"/>).</param>
@@ -190,5 +195,19 @@ public sealed record CommandLine(
         {
             return false;
         }
+    }
+
+    /// <summary>Checks whether this launch was invoked as the portable update helper to swap application files.</summary>
+    public static bool TryParseUpdateSwap(IReadOnlyList<string> args, out UpdateSwapOptions? options)
+    {
+        options = null;
+        if (args.Count < 6 || args[0] != "--update-swap")
+            return false;
+
+        if (!int.TryParse(args[1], out var pid) || pid <= 0)
+            return false;
+
+        options = new UpdateSwapOptions(pid, args[2], args[3], args[4], args[5]);
+        return true;
     }
 }

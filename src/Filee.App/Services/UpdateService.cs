@@ -127,6 +127,14 @@ public sealed partial class UpdateService : ObservableObject
     /// </summary>
     public static bool IsInstalled => !PortableMode.IsEnabled && InstalledCopy;
 
+    /// <summary>
+    /// Whether Filee can update itself in-place: installed Windows (Setup), portable Windows (marked with filee.portable),
+    /// or installed Linux (install.sh).
+    /// </summary>
+    public static bool CanSelfUpdate =>
+        (OperatingSystem.IsWindows() && (IsInstalled || PortableMode.IsEnabled))
+        || (OperatingSystem.IsLinux() && IsLinuxInstalled(AppContext.BaseDirectory));
+
     internal static bool IsInstalledIn(string folder) =>
         File.Exists(Path.Combine(folder, "uninstall.exe")) || File.Exists(Path.Combine(folder, "unins000.exe"));
 
@@ -162,17 +170,31 @@ public sealed partial class UpdateService : ObservableObject
     /// </summary>
     internal static string GetWindowsTarget(Architecture architecture) => architecture == Architecture.Arm64 ? "win-arm64" : "win";
 
-    private static bool IsWindowsTarget(string target) => target is "win" or "win-arm64";
+    private static bool IsWindowsTarget(string target) =>
+        target is "win" or "win-arm64" or "win-portable" or "win-arm64-portable";
+
+    private static bool IsWindowsPortable(string target) =>
+        target is "win-portable" or "win-arm64-portable";
+
+    private static bool IsLinuxTarget(string target) =>
+        target.StartsWith("linux-", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Target platform for release assets ("win", "win-arm64", "linux-x64", "linux-arm64"). Tests can override this.
+    /// Target platform for release assets ("win", "win-arm64", "win-portable", "win-arm64-portable", "linux-x64", "linux-arm64"). Tests can override this.
     /// </summary>
     internal string TargetPlatform { get; set; } = DefaultTargetPlatform();
 
     private static string DefaultTargetPlatform()
     {
         if (OperatingSystem.IsWindows())
-            return GetWindowsTarget(RuntimeInformation.ProcessArchitecture);
+        {
+            var arch = GetWindowsTarget(RuntimeInformation.ProcessArchitecture);
+            if (PortableMode.IsEnabled)
+                return $"{arch}-portable";
+            if (InstalledCopy)
+                return arch;
+            return "unsupported";
+        }
         if (OperatingSystem.IsLinux())
         {
             try
@@ -196,14 +218,17 @@ public sealed partial class UpdateService : ObservableObject
     /// <summary>Allows tests to redirect Linux installation target directory to an isolated temporary folder.</summary>
     internal string? LinuxInstallDirectoryOverride { get; set; }
 
+    /// <summary>Allows tests to redirect Windows portable target directory to an isolated temporary folder.</summary>
+    internal string? WindowsInstallDirectoryOverride { get; set; }
+
     /// <summary>Allows tests to redirect update failure marker path to an isolated temporary location.</summary>
     internal string? FailureMarkerPathOverride { get; set; }
 
     /// <summary>The log file path recorded in the update failure marker from the previous run, if any.</summary>
     internal string? LastFailureLogPath { get; private set; }
 
-    /// <summary>Whether <see cref="UpdateAsync"/> installs by itself (<see cref="IsInstalled"/>; tests set it).</summary>
-    internal bool InstallsItself { get; init; } = IsInstalled;
+    /// <summary>Whether <see cref="UpdateAsync"/> installs by itself (<see cref="CanSelfUpdate"/>; tests set it).</summary>
+    internal bool InstallsItself { get; init; } = CanSelfUpdate;
 
     /// <summary>
     /// Who signed a program, if Windows trusts the signature (<see cref="Authenticode.TrustedSigner"/>; the flag also
@@ -409,6 +434,83 @@ public sealed partial class UpdateService : ObservableObject
 
         if (IsWindowsTarget(TargetPlatform))
         {
+            if (IsWindowsPortable(TargetPlatform))
+            {
+                string? workspace = null;
+                string archive;
+                try
+                {
+                    workspace = CreateSecureWorkspace();
+                    var progress = new Progress<int>(percent => DownloadPercent = percent);
+                    archive = await DownloadInstallerAsync(workspace, progress);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException
+                                               or InvalidDataException or UnauthorizedAccessException)
+                {
+                    DeleteSecureWorkspace(workspace);
+                    Fail("download", ex);
+                    return;
+                }
+
+                var stagingDir = Path.Combine(workspace, "payload");
+                string payloadDir;
+                try
+                {
+                    Directory.CreateDirectory(stagingDir);
+                    payloadDir = ExtractZipArchive(archive, stagingDir);
+                    var newFileeExe = Path.Combine(payloadDir, "Filee.exe");
+                    if (ExpectedPublisher is not null)
+                    {
+                        await Task.Run(() => CheckPublisher(newFileeExe));
+                    }
+                }
+                catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException
+                                               or UpdateVerificationException)
+                {
+                    DeleteSecureWorkspace(workspace);
+                    Fail("extract", ex);
+                    return;
+                }
+
+                var targetInstallDir = WindowsInstallDirectoryOverride ?? AppContext.BaseDirectory;
+                var stagingExe = Path.Combine(payloadDir, "Filee.exe");
+                var currentPid = Environment.ProcessId;
+                var logDir = Path.Combine(UserDataStore.DefaultDirectory, "logs");
+                Directory.CreateDirectory(logDir);
+                var logFile = Path.Combine(logDir, $"filee-{DateTime.Now:yyyyMMdd}.log");
+                var markerFile = FailureMarkerPathOverride ?? Path.Combine(UserDataStore.DefaultDirectory, ".update-failed");
+
+                Process? helper;
+                try
+                {
+                    var startInfo = new ProcessStartInfo(stagingExe)
+                    {
+                        WorkingDirectory = payloadDir,
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                    };
+                    startInfo.ArgumentList.Add("--update-swap");
+                    startInfo.ArgumentList.Add(currentPid.ToString());
+                    startInfo.ArgumentList.Add(targetInstallDir);
+                    startInfo.ArgumentList.Add(logFile);
+                    startInfo.ArgumentList.Add(markerFile);
+                    startInfo.ArgumentList.Add(payloadDir);
+
+                    helper = StartProcess(startInfo);
+                }
+                catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+                {
+                    DeleteSecureWorkspace(workspace);
+                    Fail("start", ex);
+                    return;
+                }
+
+                _log.LogInformation("Started Windows portable update helper for {Version}, exiting current process", LatestVersion);
+                Step = UpdateStep.Installing;
+                RequestApplicationShutdown?.Invoke();
+                return;
+            }
+
             var folder = Path.Combine(Path.GetTempPath(), "Filee-update");
             string installer;
             try
@@ -454,7 +556,7 @@ public sealed partial class UpdateService : ObservableObject
             return;
         }
 
-        if (TargetPlatform.StartsWith("linux-", StringComparison.OrdinalIgnoreCase))
+        if (IsLinuxTarget(TargetPlatform))
         {
             string? workspace = null;
             string installer;
@@ -879,12 +981,28 @@ public sealed partial class UpdateService : ObservableObject
         if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
             return (null, null);
 
-        // Windows has one checksum file for x64 and ARM64, Filee-<v>-SHA256SUMS.txt: Filee 2.4.0 and older take the
-        // last file ending in -SHA256SUMS.txt that isn't Linux or macOS, so an ARM64 one next to it would break their
-        // updates. The x64 Setup is Filee-<v>-win-Setup.exe, the ARM64 one Filee-<v>-win-arm64-Setup.exe.
         var isLinux = target.StartsWith("linux-", StringComparison.OrdinalIgnoreCase);
-        var expectedInstallerSuffix = isLinux ? $"-{target}.tar.gz" : $"-{target}-Setup.exe";
-        var expectedChecksumsSuffix = isLinux ? $"-{target}-SHA256SUMS.txt" : "-SHA256SUMS.txt";
+        var isWinPortable = target is "win-portable" or "win-arm64-portable";
+
+        string expectedInstallerSuffix;
+        string expectedChecksumsSuffix;
+
+        if (isLinux)
+        {
+            expectedInstallerSuffix = $"-{target}.tar.gz";
+            expectedChecksumsSuffix = $"-{target}-SHA256SUMS.txt";
+        }
+        else if (isWinPortable)
+        {
+            var archPart = target == "win-arm64-portable" ? "-win-arm64-Portable.zip" : "-win-Portable.zip";
+            expectedInstallerSuffix = archPart;
+            expectedChecksumsSuffix = "-SHA256SUMS.txt";
+        }
+        else
+        {
+            expectedInstallerSuffix = $"-{target}-Setup.exe";
+            expectedChecksumsSuffix = "-SHA256SUMS.txt";
+        }
 
         foreach (var asset in assets.EnumerateArray())
         {
@@ -900,7 +1018,7 @@ public sealed partial class UpdateService : ObservableObject
             }
             else if (name.EndsWith(expectedChecksumsSuffix, StringComparison.OrdinalIgnoreCase))
             {
-                // The other platforms' checksum files end in -SHA256SUMS.txt too (-linux-x64-, -osx-arm64-), and so does
+                // The other platforms' checksum files end in -SHA256SUMS.txt too (-linux-x64-), and so does
                 // the ARM64 build's own one (CI's package), should one ever be attached.
                 if (!isLinux && (name.Contains("-linux-", StringComparison.OrdinalIgnoreCase)
                                  || name.Contains("-osx-", StringComparison.OrdinalIgnoreCase)
@@ -1112,6 +1230,95 @@ public sealed partial class UpdateService : ObservableObject
             var uninstall = Path.Combine(payloadDir, "uninstall.sh");
             if (File.Exists(uninstall))
                 EnsureExecutable(uninstall);
+        }
+
+        return payloadDir;
+    }
+
+    /// <summary>
+    /// Extracts a Windows portable zip archive into <paramref name="destinationDirectory"/> with security validation
+    /// (rejecting path traversal, absolute paths, empty entry names, and escaping symlinks/reparse points).
+    /// Returns the directory path containing <c>Filee.exe</c>.
+    /// </summary>
+    internal static string ExtractZipArchive(string archivePath, string destinationDirectory)
+    {
+        if (!File.Exists(archivePath))
+            throw new FileNotFoundException("Archive file not found", archivePath);
+
+        var fullDestRoot = Path.GetFullPath(destinationDirectory);
+        if (!fullDestRoot.EndsWith(Path.DirectorySeparatorChar))
+            fullDestRoot += Path.DirectorySeparatorChar;
+
+        Directory.CreateDirectory(fullDestRoot);
+
+        using (var zipStream = File.OpenRead(archivePath))
+        using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Read))
+        {
+            foreach (var entry in archive.Entries)
+            {
+                if (string.IsNullOrWhiteSpace(entry.FullName))
+                    throw new InvalidDataException("Archive contains an entry with an empty name.");
+
+                var entryName = entry.FullName.Replace('\\', '/');
+                if (Path.IsPathRooted(entryName) || entryName.StartsWith('/') || entry.FullName.Contains(':'))
+                    throw new InvalidDataException($"Archive entry '{entry.FullName}' has an invalid or rooted path.");
+
+                var destinationPath = Path.GetFullPath(Path.Combine(fullDestRoot, entry.FullName));
+                if (!destinationPath.StartsWith(fullDestRoot, StringComparison.Ordinal))
+                    throw new InvalidDataException($"Archive entry '{entry.FullName}' attempts path traversal outside destination.");
+
+                ValidateNoSymlinkComponents(fullDestRoot, destinationPath);
+
+                if (entryName.EndsWith('/'))
+                {
+                    if (Path.Exists(destinationPath))
+                    {
+                        var info = new DirectoryInfo(destinationPath);
+                        if (info.LinkTarget is not null || info.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                            throw new InvalidDataException($"Archive entry '{entry.FullName}' conflicts with an existing symbolic link.");
+                    }
+                    Directory.CreateDirectory(destinationPath);
+                }
+                else
+                {
+                    if (Directory.Exists(destinationPath))
+                        throw new InvalidDataException($"Archive entry '{entry.FullName}' conflicts with an existing directory.");
+
+                    var parentDir = Path.GetDirectoryName(destinationPath);
+                    if (!string.IsNullOrEmpty(parentDir))
+                        Directory.CreateDirectory(parentDir);
+
+                    if (Path.Exists(destinationPath))
+                    {
+                        var existingInfo = new FileInfo(destinationPath);
+                        if (existingInfo.LinkTarget is not null || existingInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                            File.Delete(destinationPath);
+                    }
+
+                    entry.ExtractToFile(destinationPath, overwrite: true);
+                }
+            }
+        }
+
+        var rootTrimmed = Path.TrimEndingDirectorySeparator(fullDestRoot);
+        string payloadDir;
+        if (File.Exists(Path.Combine(rootTrimmed, "Filee.exe")))
+        {
+            payloadDir = rootTrimmed;
+        }
+        else
+        {
+            var candidates = Directory.GetDirectories(rootTrimmed)
+                .Where(d => File.Exists(Path.Combine(d, "Filee.exe")))
+                .ToList();
+            if (candidates.Count == 1)
+            {
+                payloadDir = candidates[0];
+            }
+            else
+            {
+                throw new InvalidDataException("Archive does not contain a single valid Filee payload with Filee.exe.");
+            }
         }
 
         return payloadDir;
@@ -1360,6 +1567,93 @@ public sealed partial class UpdateService : ObservableObject
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             log?.LogWarning(ex, "Failed to enumerate update workspaces in {Root}", root);
+        }
+    }
+
+    /// <summary>
+    /// Checks whether <paramref name="name"/> matches <c>.backup-&lt;pid&gt;</c> and extracts the positive PID.
+    /// </summary>
+    internal static bool TryParseBackupDirectoryName(string name, out int pid)
+    {
+        pid = 0;
+        const string prefix = ".backup-";
+        if (!name.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+
+        var pidPart = name[prefix.Length..];
+        if (pidPart.Length == 0 || !pidPart.All(char.IsAsciiDigit) || !int.TryParse(pidPart, out var parsedPid) || parsedPid <= 0)
+            return false;
+
+        pid = parsedPid;
+        return true;
+    }
+
+    /// <summary>
+    /// Removes leftover portable update backups (<c>.backup-&lt;pid&gt;</c> in the install folder) and
+    /// staged workspaces (<c>.update-&lt;pid&gt;-&lt;token&gt;</c> in <c>%TEMP%</c>) once the new version starts.
+    /// Active PIDs, symlinks, and foreign directories are never touched.
+    /// </summary>
+    public static void CleanupPortableUpdateArtifacts(string? installDir = null, string? workspaceRoot = null, ILogger? log = null)
+    {
+        if (installDir is null && workspaceRoot is null && !OperatingSystem.IsWindows())
+            return;
+
+        var targetInstallDir = installDir ?? AppContext.BaseDirectory;
+        var targetWorkspaceRoot = workspaceRoot ?? Path.GetTempPath();
+
+        DeleteOwnedDirectories(
+            targetInstallDir,
+            ".backup-*",
+            name => TryParseBackupDirectoryName(name, out var pid) ? pid : 0,
+            "portable update backup",
+            log);
+
+        DeleteOwnedDirectories(
+            targetWorkspaceRoot,
+            ".update-*",
+            name => TryParseWorkspaceName(name, out var pid) ? pid : 0,
+            "portable update workspace",
+            log);
+    }
+
+    private static void DeleteOwnedDirectories(
+        string root,
+        string searchPattern,
+        Func<string, int> parsePid,
+        string label,
+        ILogger? log)
+    {
+        try
+        {
+            var dirInfo = new DirectoryInfo(root);
+            if (!dirInfo.Exists || dirInfo.LinkTarget is not null || dirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                return;
+
+            foreach (var folder in dirInfo.EnumerateDirectories(searchPattern))
+            {
+                if (folder.LinkTarget is not null || folder.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                    continue;
+
+                var pid = parsePid(folder.Name);
+                if (pid <= 0 || IsProcessAlive(pid))
+                    continue;
+
+                // The update helper may still be finishing its exit right as the new Filee process starts.
+                for (var attempt = 0; attempt < 5; attempt++)
+                {
+                    DeleteSecureWorkspace(folder.FullName);
+                    if (!Directory.Exists(folder.FullName))
+                    {
+                        log?.LogInformation("Deleted {Label} {Path}", label, folder.FullName);
+                        break;
+                    }
+                    Thread.Sleep(200);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log?.LogWarning(ex, "Failed to enumerate {Label} directories in {Root}", label, root);
         }
     }
 

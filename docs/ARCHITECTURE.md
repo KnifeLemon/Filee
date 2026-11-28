@@ -831,11 +831,17 @@ have no semibold) instead of the app's embedded Noto fonts.
   Inno Setup's: 0 done, 1 could not start, 2 cancelled before installing (also a declined UAC prompt), 4 failed.
 - **In-app updates** (`UpdateService`): an installed copy downloads `Filee-<v>-SHA256SUMS.txt`, its `.sig` and
   `Filee-<v>-win[-arm64]-Setup.exe` from the GitHub release, checks the signature with the update key, the Setup's
-  SHA-256 and its Authenticode publisher, and runs it with `/SILENT /NORESTART`. A file GitHub doesn't hand out (an
-  HTTP error, a timeout, a cut connection) is taken from the download mirror, `https://dl.filee.sh/<v>/<file name>`
-  (`UpdateService.MirrorRoot`, filled by `build/sign-release.ps1`); after one GitHub failure, the update's other files
-  try the mirror first. The checks don't depend on the source. A file that arrived and was refused is not fetched
-  again from the other source. Linux and macOS files aren't on the mirror.
+  SHA-256 and its Authenticode publisher, and runs it with `/SILENT /NORESTART`. Portable Windows copies
+  (`win-portable`, `win-arm64-portable`) marked with `filee.portable` download `Filee-<v>-win[-arm64]-Portable.zip`,
+  verify its SHA-256 (and `.sig`), safely extract the archive with path traversal checks, and delegate file
+  replacement to the staged `Filee.exe --update-swap` helper. The helper waits for the parent process to exit, moves
+  aside only the top-level files and folders that the new payload also has into `.backup-<pid>` (leaving `data`,
+  `filee.portable`, and any other files in place), copies the new files in, keeps `.backup-<pid>` until the new version
+  starts and cleans it up, and restarts Filee with `--background --whats-new` (or rolls back from `.backup-<pid>` on
+  failure). A file GitHub doesn't hand out (an HTTP error, a timeout, a cut connection) is taken from the download
+  mirror, `https://dl.filee.sh/<v>/<file name>` (`UpdateService.MirrorRoot`, filled by `build/sign-release.ps1`); after
+  one GitHub failure, the update's other files try the mirror first. The checks don't depend on the source. A file that
+  arrived and was refused is not fetched again from the other source. Linux and macOS files aren't on the mirror.
 - **Testing**: `Filee.Setup.Tests` runs installs, updates (also over a simulated 1.x installation) and uninstalls
   against `MemoryRegistry`, a fake `ISetupSystem` and scratch folders, and renders every page. `/SANDBOX=<folder>`
   runs the real Setup with a registry file and all folders inside `<folder>`; `build-installer.ps1 -CheckOnly` (CI)
