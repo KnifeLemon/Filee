@@ -80,7 +80,15 @@ ko: CSV의 NaN, Infinity, 앞뒤에 공백이 있는 값, +007 같은 코드가 
 en: CSV cells like NaN, Infinity, " 007" or +007 stay as written instead of turning into numbers
 ko: 명령줄에서 --to=jpg처럼 쓸 수 있고, 값 자리에 옵션이 오면 값이 빠졌다고 알려 줘요
 en: The command line takes --to=jpg and says when an option's value is missing
+ko: HEIC 사진을 PDF로 바꾸거나 PDF 합치기로 묶으면 JPEG로 들어가서 PDF가 훨씬 작아져요
+en: HEIC photos merged or converted into a PDF keep their small size
 -->
+
+- **HEIC photos make small PDFs** (#1873). Converting HEIC (or HEIF) photos to PDF, or putting them into one with
+  **Merge PDF**, stored each photo losslessly, so a 1.7 MB phone photo made a PDF of about 13 MB that looked no
+  better. HEIC photos now go into the PDF as JPEG at high quality, like JPG photos already did, so the PDF stays close
+  to the photos' own size. A photo with transparency is still stored losslessly; AVIF and WebP pictures go in as
+  before.
 
 - **Keep Ctrl for copying during a drag** (#1863). A drag gesture also opens the donut when its modifier keys are
   pressed after the drag started, so pressing Ctrl in the middle of a drag to copy in File Explorer opened the donut

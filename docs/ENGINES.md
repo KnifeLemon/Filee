@@ -382,9 +382,13 @@ so a separate ARM64 one would break their updates.
 - **LIVP** (an iPhone Live Photo as iCloud downloads it: a ZIP of the photo, HEIC or JPEG, and its MOV) is read as its
   photo, taken out of the package in memory (`LivePhotoSource.ReadStill`, at most 64 MB); its video is FFmpeg's (see
   Live / Motion Photos there).
+- **Pictures → PDF** (`PdfSharpConverter.ImageToPdf`, also each picture of *Merge PDF*): lossy photos, JPEG and HEIC
+  (.heic, .heif, .hif), go in as JPEG at the preset's quality, never below 85 (#1873: a HEIC stored losslessly made a
+  PDF many times its size and looked no better). Every other picture, and a photo with transparency, goes in
+  losslessly as PNG. AVIF and WebP can be lossless, so they stay PNG.
 - **CMYK pictures → PDF** (#1027, #1055): print work keeps its colours. PDFsharp's image import takes grey and RGB
   only, so `Pdf/CmykPictures.cs` writes the image itself: CMYK, with the picture's own ICC profile as an ICCBased
-  colour space (else DeviceCMYK); a JPEG source as JPEG data (ImageMagick writes CMYK JPEGs inverted with Adobe's
+  colour space (else DeviceCMYK); a JPEG or HEIC source as JPEG data (ImageMagick writes CMYK JPEGs inverted with Adobe's
   APP14 marker, undone with a Decode array), others as their samples compressed losslessly; transparency as a soft
   mask. Grey and RGB pictures go in through PDFsharp as before.
 - **KRA** (Krita's own file, a ZIP of the layers) is read as the merged picture Krita stores at its top for other
