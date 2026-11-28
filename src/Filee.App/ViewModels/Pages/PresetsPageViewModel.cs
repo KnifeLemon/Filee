@@ -56,10 +56,10 @@ public sealed partial class PresetsPageViewModel : ObservableObject, IFitsWindow
         VisiblePresets = new FilteredList<PresetListItem>(Presets, p => [p.Name, p.Target, p.Preset.TargetFormat]);
         var off = store.Settings.TurnedOffFieldSet();
         // Groups and tools convert nothing: they live on the donut only (Settings → Toolbar).
-        foreach (var preset in store.Presets.Where(p => !p.IsGroup && (!p.IsTool || p.IsUpscaleTool) && FormatFields.IsShown(p.TargetFormat, off)))
+        foreach (var preset in store.Presets.Where(p => !p.IsGroup && (!p.IsTool || p.IsUpscaleTool) && FormatFields.IsShown(p, off)))
             Presets.Add(new PresetListItem(preset, loc));
         SelectedPreset = Presets.FirstOrDefault();
-        PlacePresets = [.. BuiltInData.PlacePresets().Where(p => FormatFields.IsShown(p.TargetFormat, off))
+        PlacePresets = [.. BuiltInData.PlacePresets().Where(p => FormatFields.IsShown(p, off))
             .Select(p => new PresetListItem(p, loc))];
     }
 

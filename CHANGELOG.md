@@ -80,6 +80,8 @@ ko: CSV의 NaN, Infinity, 앞뒤에 공백이 있는 값, +007 같은 코드가 
 en: CSV cells like NaN, Infinity, " 007" or +007 stay as written instead of turning into numbers
 ko: 명령줄에서 --to=jpg처럼 쓸 수 있고, 값 자리에 옵션이 오면 값이 빠졌다고 알려 줘요
 en: The command line takes --to=jpg and says when an option's value is missing
+ko: 단일 밴드 GeoTIFF와 SRTM 고도 타일(.hgt)을 고도·값 색상표 PNG로 미리 볼 수 있어요
+en: Single-band GeoTIFF and SRTM .hgt rasters convert to colour-mapped PNG previews with transparent no-data cells
 -->
 
 - **Keep Ctrl for copying during a drag** (#1863). A drag gesture also opens the donut when its modifier keys are
@@ -353,6 +355,12 @@ en: The command line takes --to=jpg and says when an option's value is missing
   another option instead of its value, such as `-o --json`, now says it needs a value instead of saving into a folder
   named `--json`. Everything after `--` is a file to convert, even if it starts with `-`. The examples in
   `filee help` use Windows paths on Windows and `~/` paths on macOS and Linux.
+
+- **Colour previews of elevation and index rasters** (#155). Drop a single-band GeoTIFF (including 8-bit classified or
+  index rasters) or an SRTM `.hgt` elevation tile onto **Elevation colours** or **Value colours** to get a colour-mapped
+  PNG stretched across its valid data range, with `GDAL_NODATA`, NaN and SRTM void cells left transparent. Both presets
+  belong to the Maps field (off by default in Settings → Fields), and any PNG preset can pick the colour ramp in its
+  editor while Maps is on.
 
 ## 2.5.0
 

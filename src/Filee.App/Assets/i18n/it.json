@@ -188,6 +188,8 @@
 "error.exe_no_icon": "Questo file non ha un'icona propria (Windows gli mostra un'icona standard)",
 "error.comic_no_pictures": "Questo archivio non contiene immagini, quindi non può diventare un fumetto (CBZ o CBR)",
 "error.comic_password": "Questo archivio è protetto da password, quindi i lettori di fumetti non possono aprirlo",
+"error.raster_not_geotiff": "Questo TIFF non è un raster GeoTIFF, quindi non può avere un'anteprima a colori",
+"error.raster_needs_one_band": "Le anteprime a colori richiedono un raster con una sola banda, come un modello di elevazione",
 "notice.pdf_not_smaller": "Impossibile ridurlo, quindi è stato copiato così com'è",
 "notice.nov_recordings_left_out": "Questa esportazione contiene più registrazioni (altre telecamere o parti separate da interruzioni): è stata convertita solo la più grande",
 "notice.under_min_size": "Salvato, ma più piccolo della dimensione minima del file",
@@ -1995,5 +1997,12 @@
   "gallery.export_none": "Spunta almeno un preset o scegli una barra donut.",
   "gallery.export_warnings": "La galleria mostrerà questi avvisi:",
   "gallery.only_my_language": "Solo nella mia lingua",
-  "gallery.written_in": "Scritto in {0}"
+  "gallery.written_in": "Scritto in {0}",
+  "preset.geo_colours_terrain": "Colori di elevazione",
+  "preset.geo_colours_viridis": "Colori dei valori",
+  "presets.raster_colours": "Colori",
+  "presets.raster_colours.Off": "Disattivato",
+  "presets.raster_colours.Terrain": "Elevazione",
+  "presets.raster_colours.Viridis": "Valori",
+  "presets.raster_colours_hint": "Colora i raster GeoTIFF a banda singola e SRTM .hgt lungo il loro intervallo di dati, rendendo trasparenti le celle senza dati."
 }

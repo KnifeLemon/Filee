@@ -195,6 +195,8 @@
   "error.exe_no_icon": "此文件没有自己的图标（Windows 会为它显示标准图标）",
   "error.comic_no_pictures": "此压缩文件中没有图片，因此无法变成漫画（CBZ 或 CBR）",
   "error.comic_password": "此压缩文件受密码保护，漫画阅读器无法打开",
+  "error.raster_not_geotiff": "此 TIFF 不是 GeoTIFF 栅格，无法生成彩色预览",
+  "error.raster_needs_one_band": "彩色预览需要单波段栅格，例如高程模型",
   "notice.pdf_not_smaller": "无法再缩小，已原样复制",
   "notice.nov_recordings_left_out": "此导出文件包含多段录像（其他摄像机或中断分开的片段）：只转换了最大的一段",
   "notice.under_min_size": "已保存，但小于最小文件大小",
@@ -2018,5 +2020,12 @@
   "gallery.export_none": "请至少勾选一个预设或选择一个环形工具栏。",
   "gallery.export_warnings": "预设广场将显示以下提醒：",
   "gallery.only_my_language": "只看我的语言",
-  "gallery.written_in": "使用{0}撰写"
+  "gallery.written_in": "使用{0}撰写",
+  "preset.geo_colours_terrain": "高程配色",
+  "preset.geo_colours_viridis": "数值配色",
+  "presets.raster_colours": "配色",
+  "presets.raster_colours.Off": "关闭",
+  "presets.raster_colours.Terrain": "高程",
+  "presets.raster_colours.Viridis": "数值",
+  "presets.raster_colours_hint": "按数据范围为单波段 GeoTIFF 和 SRTM .hgt 栅格着色，无数据像元设为透明。"
 }

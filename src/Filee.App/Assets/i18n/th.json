@@ -189,6 +189,8 @@
   "error.exe_no_icon": "ไฟล์นี้ไม่มีไอคอนของตัวเอง (Windows จะแสดงไอคอนมาตรฐานให้)",
   "error.comic_no_pictures": "ไฟล์บีบอัดนี้ไม่มีรูปภาพ จึงทำเป็นการ์ตูน (CBZ หรือ CBR) ไม่ได้",
   "error.comic_password": "ไฟล์บีบอัดนี้ป้องกันด้วยรหัสผ่าน โปรแกรมอ่านการ์ตูนจึงเปิดไม่ได้",
+  "error.raster_not_geotiff": "ไฟล์ TIFF นี้ไม่ใช่แรสเตอร์ GeoTIFF จึงไม่สามารถสร้างตัวอย่างแบบสีได้",
+  "error.raster_needs_one_band": "ตัวอย่างแบบสีต้องใช้แรสเตอร์ที่มีแบนด์เดียว เช่น แบบจำลองระดับความสูง",
   "notice.pdf_not_smaller": "ไม่สามารถบีบอัดให้เล็กลงได้ จึงคัดลอกไฟล์ตามเดิม",
   "notice.nov_recordings_left_out": "ไฟล์ส่งออกนี้มีการบันทึกหลายรายการ (กล้องอื่นหรือช่วงที่ขาดตอน): แปลงเฉพาะรายการที่ใหญ่ที่สุด",
   "notice.under_min_size": "บันทึกแล้ว แต่เล็กกว่าขนาดไฟล์ขั้นต่ำ",
@@ -1998,5 +2000,12 @@
   "gallery.export_none": "เลือกพรีเซ็ตอย่างน้อยหนึ่งรายการหรือเลือกแถบโดนัท",
   "gallery.export_warnings": "แกลเลอรีจะแสดงคำเตือนต่อไปนี้:",
   "gallery.only_my_language": "เฉพาะภาษาของฉัน",
-  "gallery.written_in": "เขียนเป็นภาษา {0}"
+  "gallery.written_in": "เขียนเป็นภาษา {0}",
+  "preset.geo_colours_terrain": "สีระดับความสูง",
+  "preset.geo_colours_viridis": "สีตามค่าข้อมูล",
+  "presets.raster_colours": "สี",
+  "presets.raster_colours.Off": "ปิด",
+  "presets.raster_colours.Terrain": "ความสูง",
+  "presets.raster_colours.Viridis": "ค่าข้อมูล",
+  "presets.raster_colours_hint": "ระบายสีแรสเตอร์ GeoTIFF แบนด์เดียวและ SRTM .hgt ตามช่วงข้อมูล โดยช่องที่ไม่มีข้อมูลจะโปร่งใส"
 }

@@ -195,6 +195,8 @@
   "error.exe_no_icon": "Ten plik nie ma własnej ikony (Windows pokazuje dla niego ikonę standardową)",
   "error.comic_no_pictures": "To archiwum nie zawiera obrazów, więc nie może stać się komiksem (CBZ ani CBR)",
   "error.comic_password": "To archiwum jest chronione hasłem, więc czytniki komiksów nie mogą go otworzyć",
+  "error.raster_not_geotiff": "Ten plik TIFF nie jest rastrem GeoTIFF, więc nie można utworzyć jego kolorowego podglądu",
+  "error.raster_needs_one_band": "Kolorowy podgląd wymaga rastra z jednym pasmem, na przykład modelu wysokości",
   "notice.pdf_not_smaller": "Nie udało się zmniejszyć pliku, więc skopiowano go bez zmian",
   "notice.nov_recordings_left_out": "Ten eksport zawiera kilka nagrań (z innych kamer lub części rozdzielonych przerwami): przekonwertowano tylko największe",
   "notice.under_min_size": "Zapisano, ale plik jest mniejszy niż minimalny rozmiar",
@@ -2018,5 +2020,12 @@
   "gallery.export_none": "Zaznacz co najmniej jedno ustawienie lub wybierz pasek-pierścień.",
   "gallery.export_warnings": "Galeria pokaże te ostrzeżenia:",
   "gallery.only_my_language": "Tylko w moim języku",
-  "gallery.written_in": "Język: {0}"
+  "gallery.written_in": "Język: {0}",
+  "preset.geo_colours_terrain": "Kolory wysokości",
+  "preset.geo_colours_viridis": "Kolory wartości",
+  "presets.raster_colours": "Kolory",
+  "presets.raster_colours.Off": "Wyłączone",
+  "presets.raster_colours.Terrain": "Wysokość",
+  "presets.raster_colours.Viridis": "Wartości",
+  "presets.raster_colours_hint": "Koloruje jednopasmowe rastry GeoTIFF i SRTM .hgt w całym zakresie danych, pozostawiając komórki bez danych przezroczyste."
 }

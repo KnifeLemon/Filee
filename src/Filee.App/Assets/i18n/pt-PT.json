@@ -195,6 +195,8 @@
   "error.exe_no_icon": "Este ficheiro não tem ícone próprio (o Windows mostra-lhe um ícone predefinido)",
   "error.comic_no_pictures": "Este ficheiro comprimido não contém imagens, por isso não pode tornar-se uma banda desenhada (CBZ ou CBR)",
   "error.comic_password": "Este ficheiro comprimido está protegido por palavra-passe, por isso os leitores de banda desenhada não o conseguem abrir",
+  "error.raster_not_geotiff": "Este TIFF não é um raster GeoTIFF, por isso não pode ter uma pré-visualização a cores",
+  "error.raster_needs_one_band": "As pré-visualizações a cores precisam de um raster com uma banda, como um modelo de elevação",
   "notice.pdf_not_smaller": "Não foi possível reduzir o tamanho, pelo que o ficheiro foi copiado sem alterações",
   "notice.nov_recordings_left_out": "Esta exportação contém várias gravações (outras câmaras ou partes separadas por interrupções): só a maior foi convertida",
   "notice.under_min_size": "Guardado, mas mais pequeno do que o tamanho mínimo do ficheiro",
@@ -2018,5 +2020,12 @@
   "gallery.export_none": "Marca pelo menos uma predefinição ou escolhe uma barra circular.",
   "gallery.export_warnings": "A galeria vai mostrar estes avisos:",
   "gallery.only_my_language": "Só no meu idioma",
-  "gallery.written_in": "Escrito em {0}"
+  "gallery.written_in": "Escrito em {0}",
+  "preset.geo_colours_terrain": "Cores de elevação",
+  "preset.geo_colours_viridis": "Cores de valores",
+  "presets.raster_colours": "Cores",
+  "presets.raster_colours.Off": "Desativado",
+  "presets.raster_colours.Terrain": "Elevação",
+  "presets.raster_colours.Viridis": "Valores",
+  "presets.raster_colours_hint": "Colore rasters GeoTIFF de banda única e SRTM .hgt segundo o intervalo de dados, deixando transparentes as células sem dados."
 }

@@ -189,6 +189,8 @@
   "error.exe_no_icon": "इस फ़ाइल का अपना कोई आइकन नहीं है (Windows इसके लिए एक मानक आइकन दिखाता है)",
   "error.comic_no_pictures": "इस आर्काइव में कोई चित्र नहीं है, इसलिए यह कॉमिक (CBZ या CBR) नहीं बन सकता",
   "error.comic_password": "यह आर्काइव पासवर्ड से सुरक्षित है, इसलिए कॉमिक रीडर इसे नहीं खोल सकते",
+  "error.raster_not_geotiff": "यह TIFF कोई GeoTIFF रास्टर नहीं है, इसलिए इसका रंगीन प्रीव्यू नहीं बन सकता",
+  "error.raster_needs_one_band": "रंगीन प्रीव्यू के लिए एक बैंड वाला रास्टर चाहिए, जैसे ऊँचाई मॉडल",
   "notice.pdf_not_smaller": "इसे छोटा नहीं किया जा सका, इसलिए जैसा है वैसा ही कॉपी कर दिया गया",
   "notice.nov_recordings_left_out": "इस एक्सपोर्ट में कई रिकॉर्डिंग हैं (दूसरे कैमरे या बीच में रुकावट वाले हिस्से): केवल सबसे बड़ी रिकॉर्डिंग बदली गई",
   "notice.under_min_size": "सहेजा गया, लेकिन न्यूनतम फ़ाइल आकार से छोटा है",
@@ -1998,5 +2000,12 @@
   "gallery.export_none": "कम से कम एक प्रीसेट चुनें या एक डोनट टूलबार चुनें।",
   "gallery.export_warnings": "गैलरी ये चेतावनियाँ दिखाएगी:",
   "gallery.only_my_language": "सिर्फ़ मेरी भाषा में",
-  "gallery.written_in": "{0} में लिखा गया"
+  "gallery.written_in": "{0} में लिखा गया",
+  "preset.geo_colours_terrain": "ऊँचाई के रंग",
+  "preset.geo_colours_viridis": "मान के रंग",
+  "presets.raster_colours": "रंग",
+  "presets.raster_colours.Off": "बंद",
+  "presets.raster_colours.Terrain": "ऊँचाई",
+  "presets.raster_colours.Viridis": "मान",
+  "presets.raster_colours_hint": "सिंगल-बैंड GeoTIFF और SRTM .hgt रास्टर को उनके डेटा रेंज के अनुसार रंगता है, और बिना डेटा वाले सेल पारदर्शी रहते हैं।"
 }

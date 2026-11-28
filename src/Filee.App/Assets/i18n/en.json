@@ -195,6 +195,8 @@
   "error.exe_no_icon": "This file has no icon of its own (Windows shows a standard one for it)",
   "error.comic_no_pictures": "This archive holds no pictures, so it can't become a comic (CBZ or CBR)",
   "error.comic_password": "This archive is protected with a password, so comic readers can't open it",
+  "error.raster_not_geotiff": "This TIFF isn't a GeoTIFF raster, so it can't get a colour preview",
+  "error.raster_needs_one_band": "Colour previews need a raster with one band, such as an elevation model",
   "notice.pdf_not_smaller": "Couldn't make it smaller, so it was copied as it is",
   "notice.nov_recordings_left_out": "This export holds several recordings (other cameras or pieces with gaps): only the largest was converted",
   "notice.under_min_size": "Saved, but smaller than the minimum file size",
@@ -2018,5 +2020,12 @@
   "gallery.export_none": "Tick at least one preset or choose a donut.",
   "gallery.export_warnings": "The gallery will show these warnings:",
   "gallery.only_my_language": "Only in my language",
-  "gallery.written_in": "Written in {0}"
+  "gallery.written_in": "Written in {0}",
+  "preset.geo_colours_terrain": "Elevation colours",
+  "preset.geo_colours_viridis": "Value colours",
+  "presets.raster_colours": "Colours",
+  "presets.raster_colours.Off": "Off",
+  "presets.raster_colours.Terrain": "Elevation",
+  "presets.raster_colours.Viridis": "Value",
+  "presets.raster_colours_hint": "Colours single-band GeoTIFF and SRTM .hgt rasters across their data range, with no-data cells transparent."
 }

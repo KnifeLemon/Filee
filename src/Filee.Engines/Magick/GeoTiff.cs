@@ -18,6 +18,16 @@ using ImageMagick;
 
 namespace Filee.Engines.Magick;
 
+/// <summary>Decoded GeoTIFF raster bands, with no-data and non-finite samples stored as <see cref="float.NaN"/>.</summary>
+internal sealed record GeoRaster(
+    int Width,
+    int Height,
+    int SamplesPerPixel,
+    float[][] Bands,
+    double[] Mins,
+    double[] Maxs,
+    bool[] HasValid);
+
 /// <summary>Reads 16/32-bit integer and 32/64-bit float GeoTIFF rasters into stretched 8-bit pictures.</summary>
 internal static class GeoTiff
 {
@@ -86,6 +96,30 @@ internal static class GeoTiff
     /// corrupt or exceed the memory budget.
     /// </exception>
     public static MagickImage? TryRead(string path, CancellationToken cancellationToken = default)
+    {
+        var raster = TryReadBands(path, acceptEightBit: false, cancellationToken, onlyPreviewBands: true);
+        return raster is null
+            ? null
+            : Render(raster.Width, raster.Height, raster.Bands.Length, raster.Bands, raster.Mins, raster.Maxs, raster.HasValid, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the first IFD of a GeoTIFF and returns its decoded <see cref="float"/> bands (with <c>GDAL_NODATA</c> and
+    /// non-finite samples normalized to <see cref="float.NaN"/>), or returns <c>null</c> when the file is not a classic
+    /// GeoTIFF or uses a layout this reader does not handle.
+    /// </summary>
+    /// <param name="acceptEightBit">
+    /// When <c>false</c>, ordinary 8-bit unsigned GeoTIFFs return <c>null</c> so they stay on ImageMagick; when
+    /// <c>true</c>, 8-bit unsigned bands are decoded too (for single-band colour previews).
+    /// </param>
+    /// <param name="onlyPreviewBands">
+    /// When <c>true</c>, reads only band 1 (for 1–2 bands) or bands 1–3 (for 3+ bands) for grey/RGB preview rendering.
+    /// </param>
+    internal static GeoRaster? TryReadBands(
+        string path,
+        bool acceptEightBit,
+        CancellationToken cancellationToken = default,
+        bool onlyPreviewBands = false)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
         var fileLength = stream.Length;
@@ -185,11 +219,11 @@ internal static class GeoTiff
             }
         }
 
-        // Ordinary 8-bit unsigned GeoTIFFs (e.g. RGB orthophotos) stay on the ImageMagick path.
-        if (sampleFormat == SampleFormatUInt && bitsPerSample == 8)
+        // Ordinary 8-bit unsigned GeoTIFFs (e.g. RGB orthophotos) stay on ImageMagick unless explicitly requested.
+        if (!acceptEightBit && sampleFormat == SampleFormatUInt && bitsPerSample == 8)
             return null;
 
-        if (!IsSupportedSampleFormat(sampleFormat, bitsPerSample))
+        if (!IsSupportedSampleFormat(sampleFormat, bitsPerSample, acceptEightBit))
             return null;
 
         if (predictor == PredictorFloatingPoint && sampleFormat != SampleFormatFloat)
@@ -218,7 +252,7 @@ internal static class GeoTiff
         if (!isTiled && !isStriped)
             throw Refuse("GeoTIFF has neither strip nor tile data offsets");
 
-        var outputBands = samplesPerPixel >= 3 ? 3 : 1;
+        var outputBands = onlyPreviewBands ? (samplesPerPixel >= 3 ? 3 : 1) : samplesPerPixel;
         var bands = new float[outputBands][];
         for (var b = 0; b < outputBands; b++)
             bands[b] = new float[pixelCount];
@@ -242,7 +276,7 @@ internal static class GeoTiff
                 hasNoData, noDataValue, bands, mins, maxs, hasValid, cancellationToken);
         }
 
-        return Render(width, height, outputBands, bands, mins, maxs, hasValid, cancellationToken);
+        return new GeoRaster(width, height, samplesPerPixel, bands, mins, maxs, hasValid);
     }
 
     private static void ReadStriped(
@@ -768,6 +802,7 @@ internal static class GeoTiff
     private static double ReadSample(ReadOnlySpan<byte> bytes, ushort sampleFormat, int bitsPerSample, bool bigEndian) =>
         (sampleFormat, bitsPerSample) switch
         {
+            (SampleFormatUInt, 8) => bytes[0],
             (SampleFormatUInt, 16) => ReadUInt16(bytes, bigEndian),
             (SampleFormatUInt, 32) => ReadUInt32(bytes, bigEndian),
             (SampleFormatInt, 8) => unchecked((sbyte)bytes[0]),
@@ -866,9 +901,10 @@ internal static class GeoTiff
         return 128;
     }
 
-    private static bool IsSupportedSampleFormat(ushort sampleFormat, ushort bitsPerSample) =>
+    private static bool IsSupportedSampleFormat(ushort sampleFormat, ushort bitsPerSample, bool acceptEightBit) =>
         (sampleFormat, bitsPerSample) switch
         {
+            (SampleFormatUInt, 8) => acceptEightBit,
             (SampleFormatUInt, 16 or 32) => true,
             (SampleFormatInt, 8 or 16 or 32) => true,
             (SampleFormatFloat, 32 or 64) => true,

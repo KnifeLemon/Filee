@@ -203,6 +203,8 @@
   "error.exe_no_icon": "این فایل آیکون مخصوص به خود ندارد (Windows برای آن یک آیکون استاندارد نشان می‌دهد)",
   "error.comic_no_pictures": "این آرشیو هیچ تصویری ندارد، پس نمی‌تواند به کمیک (CBZ یا CBR) تبدیل شود",
   "error.comic_password": "این آرشیو با گذرواژه محافظت شده است، پس کمیک‌خوان‌ها نمی‌توانند آن را باز کنند",
+  "error.raster_not_geotiff": "این فایل TIFF یک رستر GeoTIFF نیست، پس نمی‌توان پیش‌نمایش رنگی برای آن ساخت",
+  "error.raster_needs_one_band": "پیش‌نمایش‌های رنگی به یک رستر تک‌باند نیاز دارند، مانند مدل ارتفاع",
   "notice.pdf_not_smaller": "امکان کوچک‌تر کردن فایل نبود، بنابراین همان‌طور که بود کپی شد",
   "notice.nov_recordings_left_out": "این خروجی چند ضبط دارد (دوربین‌های دیگر یا تکه‌هایی با فاصله): فقط بزرگ‌ترین آن‌ها تبدیل شد",
   "notice.under_min_size": "ذخیره شد، اما از حداقل اندازه فایل کوچک‌تر است",
@@ -1994,5 +1996,12 @@
   "gallery.export_none": "دست‌کم یک پیش‌تنظیم را علامت بزنید یا یک نوار ابزار دونات انتخاب کنید.",
   "gallery.export_warnings": "گالری این هشدارها را نشان می‌دهد:",
   "gallery.only_my_language": "فقط به زبان من",
-  "gallery.written_in": "نوشته‌شده به {0}"
+  "gallery.written_in": "نوشته‌شده به {0}",
+  "preset.geo_colours_terrain": "رنگ‌های ارتفاع",
+  "preset.geo_colours_viridis": "رنگ‌های مقدار",
+  "presets.raster_colours": "رنگ‌ها",
+  "presets.raster_colours.Off": "خاموش",
+  "presets.raster_colours.Terrain": "ارتفاع",
+  "presets.raster_colours.Viridis": "مقدار",
+  "presets.raster_colours_hint": "فایل‌های رستر تک‌باند GeoTIFF و SRTM .hgt را بر اساس بازه داده‌ها رنگ‌آمیزی می‌کند و سلول‌های بدون داده را شفاف می‌گذارد."
 }

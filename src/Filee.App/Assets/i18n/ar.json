@@ -189,6 +189,8 @@
   "error.exe_no_icon": "لا يحتوي هذا الملف على أيقونة خاصة به (يعرض Windows له أيقونة قياسية)",
   "error.comic_no_pictures": "لا يحتوي هذا الأرشيف على صور، لذا لا يمكن أن يصبح قصة مصورة (CBZ أو CBR)",
   "error.comic_password": "هذا الأرشيف محمي بكلمة مرور، لذا لا تستطيع برامج قراءة القصص المصورة فتحه",
+  "error.raster_not_geotiff": "ملف TIFF هذا ليس راستر GeoTIFF، لذا لا يمكن إنشاء معاينة ملونة له",
+  "error.raster_needs_one_band": "تتطلب المعاينات الملونة راستر بنطاق واحد، مثل نموذج ارتفاع",
   "notice.pdf_not_smaller": "تعذّر تقليل الحجم، لذا نُسخ الملف كما هو",
   "notice.nov_recordings_left_out": "يحتوي هذا التصدير على عدة تسجيلات (كاميرات أخرى أو أجزاء تفصل بينها فجوات): تم تحويل الأكبر فقط",
   "notice.under_min_size": "تم الحفظ، لكنه أصغر من الحد الأدنى لحجم الملف",
@@ -1997,5 +1999,12 @@
   "gallery.export_none": "حدّد إعدادًا مسبقًا واحدًا على الأقل أو اختر شريطًا دائريًا.",
   "gallery.export_warnings": "سيعرض المعرض هذه التحذيرات:",
   "gallery.only_my_language": "بلغتي فقط",
-  "gallery.written_in": "مكتوب بـ {0}"
+  "gallery.written_in": "مكتوب بـ {0}",
+  "preset.geo_colours_terrain": "ألوان الارتفاع",
+  "preset.geo_colours_viridis": "ألوان القيم",
+  "presets.raster_colours": "الألوان",
+  "presets.raster_colours.Off": "إيقاف",
+  "presets.raster_colours.Terrain": "الارتفاع",
+  "presets.raster_colours.Viridis": "القيم",
+  "presets.raster_colours_hint": "يلوّن ملفات GeoTIFF أحادية النطاق وملفات SRTM .hgt وفق نطاق بياناتها، مع جعل خلايا البيانات المفقودة شفافة."
 }

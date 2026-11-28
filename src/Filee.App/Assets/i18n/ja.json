@@ -189,6 +189,8 @@
   "error.exe_no_icon": "このファイルには独自のアイコンがありません（Windows では標準のアイコンが表示されます）",
   "error.comic_no_pictures": "このアーカイブには画像が入っていないため、コミック（CBZ または CBR）にできません",
   "error.comic_password": "このアーカイブはパスワードで保護されているため、コミックリーダーで開けません",
+  "error.raster_not_geotiff": "この TIFF は GeoTIFF ラスターではないため、カラープレビューを作成できません",
+  "error.raster_needs_one_band": "カラープレビューには、標高モデルのような単一バンドのラスターが必要です",
   "notice.pdf_not_smaller": "サイズを小さくできなかったため、元のままコピーしました",
   "notice.nov_recordings_left_out": "このエクスポートには複数の録画（別のカメラや途切れた部分）が含まれています。最も大きいものだけを変換しました",
   "notice.under_min_size": "保存しましたが、最小ファイルサイズより小さいです",
@@ -1998,5 +2000,12 @@
   "gallery.export_none": "プリセットを 1 つ以上選ぶか、ドーナツメニューを選んでください。",
   "gallery.export_warnings": "ギャラリーには次の注意が表示されます:",
   "gallery.only_my_language": "自分の言語のみ",
-  "gallery.written_in": "{0}で書かれています"
+  "gallery.written_in": "{0}で書かれています",
+  "preset.geo_colours_terrain": "標高カラー",
+  "preset.geo_colours_viridis": "値カラー",
+  "presets.raster_colours": "カラー",
+  "presets.raster_colours.Off": "オフ",
+  "presets.raster_colours.Terrain": "標高",
+  "presets.raster_colours.Viridis": "値",
+  "presets.raster_colours_hint": "単一バンドの GeoTIFF や SRTM .hgt ラスターをデータ範囲に合わせて着色し、データ欠損セルを透明にします。"
 }

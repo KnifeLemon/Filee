@@ -189,6 +189,8 @@
   "error.exe_no_icon": "File ini tidak punya ikon sendiri (Windows menampilkan ikon standar untuknya)",
   "error.comic_no_pictures": "Arsip ini tidak berisi gambar, jadi tidak bisa menjadi komik (CBZ atau CBR)",
   "error.comic_password": "Arsip ini dilindungi kata sandi, jadi pembaca komik tidak bisa membukanya",
+  "error.raster_not_geotiff": "TIFF ini bukan raster GeoTIFF, jadi tidak bisa dibuat pratinjau warnanya",
+  "error.raster_needs_one_band": "Pratinjau warna membutuhkan raster satu pita, seperti model elevasi",
   "notice.pdf_not_smaller": "Ukuran tidak dapat diperkecil lagi, sehingga disalin apa adanya",
   "notice.nov_recordings_left_out": "Ekspor ini berisi beberapa rekaman (kamera lain atau potongan yang terputus): hanya yang terbesar yang dikonversi",
   "notice.under_min_size": "Disimpan, tetapi lebih kecil dari ukuran file minimum",
@@ -1996,5 +1998,12 @@
   "gallery.export_none": "Centang setidaknya satu preset atau pilih toolbar donut.",
   "gallery.export_warnings": "Galeri akan menampilkan peringatan berikut:",
   "gallery.only_my_language": "Hanya dalam bahasa saya",
-  "gallery.written_in": "Ditulis dalam {0}"
+  "gallery.written_in": "Ditulis dalam {0}",
+  "preset.geo_colours_terrain": "Warna elevasi",
+  "preset.geo_colours_viridis": "Warna nilai",
+  "presets.raster_colours": "Warna",
+  "presets.raster_colours.Off": "Mati",
+  "presets.raster_colours.Terrain": "Elevasi",
+  "presets.raster_colours.Viridis": "Nilai",
+  "presets.raster_colours_hint": "Mewarnai raster GeoTIFF satu pita dan SRTM .hgt sesuai rentang datanya, dengan sel tanpa data dibuat transparan."
 }

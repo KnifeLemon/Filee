@@ -243,6 +243,12 @@ public sealed class PresetAvailability
         if (preset.Image.TrimTransparent
             && formats.All(f => !Filee.Engines.Magick.ImageEncoder.HoldsAlpha(preset.TargetFormat == BuiltInData.SameAsSource ? f.Id : preset.TargetFormat)))
             return new(PresetUse.Unusable, _loc["error.no_transparency"]);
+
+        // Colour-mapped raster preview (#155): only GeoTIFF and SRTM .hgt carry raster elevation/index bands.
+        if (preset.Image.RasterColours != RasterColours.Off && preset.TargetFormat == "png")
+            return formats.Any(f => f.Id is "tiff" or "hgt")
+                ? new(PresetUse.Usable, null)
+                : new(PresetUse.Unusable, _loc["error.unsupported_source"]);
         // "Merge images": ImageMagick reads most pictures as they are; others need a route into PNG first.
         if (preset.JoinsImages)
         {

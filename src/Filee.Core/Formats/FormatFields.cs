@@ -4,6 +4,8 @@
 // belongs to a field that can be turned off, give it an Overlaps row. A new output format graded specialist or legacy
 // belongs only to fields that can be turned off and are off by default.
 
+using Filee.Core.Presets;
+
 namespace Filee.Core.Formats;
 
 /// <summary>
@@ -182,6 +184,19 @@ public static class FormatFields
         if (FormatRegistry.FindById(formatId) is not { } format || format.Id == FormatRegistry.Folder)
             return true;
         return Of(format).Any(field => !field.CanTurnOff || !turnedOff.Contains(field.Id, StringComparer.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Whether a preset is shown when the given fields are turned off: both its target format and any extra field its
+    /// options tie it to (<see cref="Preset.FieldId"/>) must be shown.
+    /// </summary>
+    public static bool IsShown(Preset preset, IReadOnlySet<string> turnedOff)
+    {
+        if (!IsShown(preset.TargetFormat, turnedOff))
+            return false;
+        if (preset.FieldId is { } fieldId && FieldsById.TryGetValue(fieldId, out var field))
+            return !field.CanTurnOff || !turnedOff.Contains(field.Id, StringComparer.OrdinalIgnoreCase);
+        return true;
     }
 
     private static Dictionary<string, FormatGrade> BuildGrades((FormatGrade Grade, string[] Ids)[] lists)

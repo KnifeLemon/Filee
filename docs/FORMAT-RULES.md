@@ -52,6 +52,8 @@ A hidden format is left out of:
 - the slots that convert into it, on any donut (`to-<format>`);
 - the preset editor's target list and the other settings lists (toolbar editor palette, preset library).
 
+A preset whose option makes it a Maps feature (raster colours) follows the Maps field the same way, even though its target is PNG.
+
 Nothing else changes: Filee still recognizes the file, the presets themselves stay, and the CLI converts to every
 format.
 

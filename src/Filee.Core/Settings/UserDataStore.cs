@@ -1243,6 +1243,14 @@ internal static class SettingsMigrations
         // v106: "CBR" (a RAR of pictures copied as a comic, #1482) joins the palette after "CBZ", not a donut.
         if (from < 106 && presets.All(p => p.Id != "to-cbr"))
             changed |= AddLikeNewLibrary(presets, "to-cbr");
+        // v107: Colour-mapped PNG previews of single-band rasters (#155) join the palette after the geospatial presets,
+        //       not a donut.
+        if (from < 107)
+        {
+            foreach (var id in new[] { "geo-colours-terrain", "geo-colours-viridis" })
+                if (presets.All(p => p.Id != id))
+                    changed |= AddLikeNewLibrary(presets, id);
+        }
         return changed;
     }
 

@@ -189,6 +189,8 @@
   "error.exe_no_icon": "Diese Datei hat kein eigenes Symbol (Windows zeigt für sie ein Standardsymbol)",
   "error.comic_no_pictures": "Dieses Archiv enthält keine Bilder und kann daher kein Comic (CBZ oder CBR) werden",
   "error.comic_password": "Dieses Archiv ist mit einem Passwort geschützt, daher können Comic-Reader es nicht öffnen",
+  "error.raster_not_geotiff": "Diese TIFF-Datei ist kein GeoTIFF-Raster und kann daher keine Farbvorschau erhalten",
+  "error.raster_needs_one_band": "Farbvorschauen benötigen ein Raster mit einem Kanal, zum Beispiel ein Höhenmodell",
   "notice.pdf_not_smaller": "Die Datei ließ sich nicht verkleinern und wurde unverändert kopiert",
   "notice.nov_recordings_left_out": "Dieser Export enthält mehrere Aufnahmen (andere Kameras oder durch Lücken getrennte Teile): nur die größte wurde umgewandelt",
   "notice.under_min_size": "Gespeichert, aber kleiner als die Mindestdateigröße",
@@ -1996,5 +1998,12 @@
   "gallery.export_none": "Hake mindestens eine Vorlage an oder wähle ein Ringmenü.",
   "gallery.export_warnings": "Die Galerie zeigt diese Warnungen:",
   "gallery.only_my_language": "Nur in meiner Sprache",
-  "gallery.written_in": "Auf {0} geschrieben"
+  "gallery.written_in": "Auf {0} geschrieben",
+  "preset.geo_colours_terrain": "Höhenfarben",
+  "preset.geo_colours_viridis": "Wertefarben",
+  "presets.raster_colours": "Farben",
+  "presets.raster_colours.Off": "Aus",
+  "presets.raster_colours.Terrain": "Höhe",
+  "presets.raster_colours.Viridis": "Werte",
+  "presets.raster_colours_hint": "Färbt Einkanal-GeoTIFF- und SRTM-.hgt-Raster über ihren Wertebereich ein; No-Data-Zellen werden transparent."
 }

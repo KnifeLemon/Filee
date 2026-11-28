@@ -177,6 +177,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         }
         TiffCompressions = Enum.GetValues<TiffCompression>().Select(v => new Choice<TiffCompression>(v, v.ToString().ToUpperInvariant())).ToList();
         FitsTiffModes = Enum.GetValues<FitsTiffMode>().Select(v => new Choice<FitsTiffMode>(v, loc[$"presets.fits_tiff.{v}"])).ToList();
+        RasterColourModes = Enum.GetValues<RasterColours>().Select(v => new Choice<RasterColours>(v, loc[$"presets.raster_colours.{v}"])).ToList();
         MediaQualities = Enum.GetValues<MediaQuality>().Select(v => new Choice<MediaQuality>(v, loc[$"presets.media_quality.{v}"])).ToList();
         MaxHeights = Steps(MaxHeightSteps, _edit.Media.MaxHeight, h => h == 0 ? loc["presets.max_height.original"] : $"{h}p");
         // A ratio set outside the editor (a hand-edited preset file) is offered too, instead of being lost.
@@ -218,6 +219,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         GcodeViews = Enum.GetValues<GcodeView>().Select(v => new Choice<GcodeView>(v, loc[$"presets.gcode_view.{v}"])).ToList();
         // G-code belongs to the 3D and CAD fields only: with both off, its card is left out like its files' slots.
         _gcodeShown = turnedOff is null || FormatFields.IsShown("gcode", turnedOff);
+        // Colour-mapped raster previews belong to the Maps field: hidden while Maps is off unless already chosen.
+        _geoShown = turnedOff is null || !turnedOff.Contains("geo", StringComparer.OrdinalIgnoreCase);
         // A speed set outside the editor (a hand-edited preset file) is offered too, instead of being lost.
         AnimationSpeeds = [.. ImageOptions.AnimationSpeeds.Append(_edit.Image.PlaybackSpeed).Distinct().Order()
             .Select(s => new Choice<double>(s, s == 1 ? loc["presets.animation_speed.original"] : SpeedLabel(s)))];
@@ -261,6 +264,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _tiffCompression = TiffCompressions.First(t => t.Value == _edit.Image.TiffCompression);
         _fitsTiffMode = FitsTiffModes.FirstOrDefault(m => m.Value == _edit.Image.FitsTiff) ?? FitsTiffModes[0];
         _fitsDebayer = _edit.Image.FitsDebayer;
+        _rasterColours = RasterColourModes.FirstOrDefault(m => m.Value == _edit.Image.RasterColours) ?? RasterColourModes[0];
         _mediaQuality = MediaQualities.First(q => q.Value == _edit.Media.Quality);
         _maxHeight = MaxHeights.First(h => h.Value == _edit.Media.MaxHeight);
         _cropFrame = CropFrames.FirstOrDefault(c => c.Value == _edit.Media.CropFrame) ?? CropFrames[0];
@@ -504,6 +508,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     /// <summary>FITS → TIFF: the data as it is, or stretched (ImageOptions.FitsTiff).</summary>
     public IReadOnlyList<Choice<FitsTiffMode>> FitsTiffModes { get; }
+
+    /// <summary>Single-band GeoTIFF / SRTM .hgt → PNG: colour ramp or off (ImageOptions.RasterColours).</summary>
+    public IReadOnlyList<Choice<RasterColours>> RasterColourModes { get; }
     public IReadOnlyList<Choice<MediaQuality>> MediaQualities { get; }
     public IReadOnlyList<Choice<int>> MaxHeights { get; }
     /// <summary>"Crop video": the picture inside the black bars, or a ratio.</summary>
@@ -538,6 +545,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public IReadOnlyList<Choice<GcodeView>> GcodeViews { get; }
 
     private readonly bool _gcodeShown;
+    private readonly bool _geoShown;
 
     /// <summary>Playback speeds of animations, 0.25× to 4× (ImageOptions.AnimationSpeed).</summary>
     public IReadOnlyList<Choice<double>> AnimationSpeeds { get; }
@@ -552,7 +560,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowTurnForPdf), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
-        nameof(ShowFitsTiff), nameof(ShowFitsDebayer),
+        nameof(ShowFitsTiff), nameof(ShowFitsDebayer), nameof(ShowRasterColours),
         nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowSourceBookmarks), nameof(ShowMergePaper), nameof(ShowMergePaperSettings),
         nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCombine),
         nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowAskCompressionImage), nameof(ShowAskCompressionMedia), nameof(ShowAskCompressionPdf),
@@ -732,6 +740,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     /// <summary>FITS → other pictures: debayer a colour camera's raw frame (ImageOptions.FitsDebayer).</summary>
     [ObservableProperty] private bool _fitsDebayer;
+    [ObservableProperty] private Choice<RasterColours> _rasterColours;
     [ObservableProperty] private int _quality;
 
     /// <summary>A picture's size range (#553, #662) in <see cref="ImageSizeUnit"/>; 0 or empty = none.</summary>
@@ -1139,6 +1148,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         Choices.Restore(oldValue, newValue, v => TiffCompression = v);
     partial void OnFitsTiffModeChanged(Choice<FitsTiffMode>? oldValue, Choice<FitsTiffMode> newValue) =>
         Choices.Restore(oldValue, newValue, v => FitsTiffMode = v);
+    partial void OnRasterColoursChanged(Choice<RasterColours>? oldValue, Choice<RasterColours> newValue) =>
+        Choices.Restore(oldValue, newValue, v => RasterColours = v);
     partial void OnMediaQualityChanged(Choice<MediaQuality>? oldValue, Choice<MediaQuality> newValue) => Choices.Restore(oldValue, newValue, v => MediaQuality = v);
     partial void OnMaxHeightChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => MaxHeight = v);
     partial void OnCropFrameChanged(Choice<string>? oldValue, Choice<string> newValue) => Choices.Restore(oldValue, newValue, v => CropFrame = v);
@@ -1195,6 +1206,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowFitsTiff => !IsTool && TargetId is "tiff";
     /// <summary>FITS → any other picture is stretched; a colour camera's raw frame can be debayered or kept mono.</summary>
     public bool ShowFitsDebayer => !IsTool && TargetCategory == FormatCategory.Image && TargetId != "tiff";
+    /// <summary>Colour-mapped PNG preview for single-band GeoTIFF / .hgt rasters (#155): shown when PNG and Maps is on (or already set).</summary>
+    public bool ShowRasterColours => !IsTool && TargetId == "png" && (_geoShown || _edit.Image.RasterColours != Core.Presets.RasterColours.Off);
     public bool ShowIco => TargetId == "ico";
     /// <summary>PDF options (also used when a PDF source becomes images) mean nothing for media, archive, font, subtitle, data, e-mail, 3D and geospatial targets.</summary>
     public bool ShowPdf => !IsTool && !IsLivePhoto && TargetCategory is not (FormatCategory.Video or FormatCategory.Audio or FormatCategory.Archive or FormatCategory.Font
@@ -1416,6 +1429,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         image.MultiPageTiff = MultiPageTiff;
         image.FitsTiff = FitsTiffMode.Value;
         image.FitsDebayer = FitsDebayer;
+        image.RasterColours = ShowRasterColours ? RasterColours.Value : Core.Presets.RasterColours.Off;
         image.IcoSizes = IcoSizes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(s => int.TryParse(s, out var v) ? v : 0)
             .Where(v => v is > 0 and <= 256)

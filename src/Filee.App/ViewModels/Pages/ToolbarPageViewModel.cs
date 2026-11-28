@@ -231,6 +231,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     {
         if (preset.IsTool || preset.TargetFormat == BuiltInData.SameAsSource)
             return PaletteTab.Edit;
+        if (string.Equals(preset.FieldId, "geo", StringComparison.OrdinalIgnoreCase))
+            return PaletteTab.Map;
         var category = FormatRegistry.FindById(preset.TargetFormat)?.Category;
         return category is { } value
             ? TabDefinitions.First(t => t.Categories.Contains(value)).Id
@@ -397,7 +399,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     private List<RingGroupChoice> RingGroupsOf(ToolbarProfile profile)
     {
         var off = RadialViewModel.TurnedOffBesides(_store.Settings.TurnedOffFields, RadialViewModel.PreviewFormats(profile));
-        var fans = _store.Presets.Where(p => FormatFields.IsShown(p.TargetFormat, off)).Select(p => p.Id).ToHashSet();
+        var fans = _store.Presets.Where(p => FormatFields.IsShown(p, off)).Select(p => p.Id).ToHashSet();
         return Groups(profile.PresetIds, false).Concat(Groups(profile.BackPresetIds ?? [], true)).ToList();
 
         IEnumerable<RingGroupChoice> Groups(IEnumerable<string> ids, bool back) => ids
@@ -1214,7 +1216,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     private IEnumerable<Preset> ShownPresets()
     {
         var off = _store.Settings.TurnedOffFieldSet();
-        return _store.Presets.Where(p => FormatFields.IsShown(p.TargetFormat, off));
+        return _store.Presets.Where(p => FormatFields.IsShown(p, off));
     }
 
     private void RefreshVisiblePalette()

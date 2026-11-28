@@ -446,7 +446,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         var presets = presetIds
             .Select(store.FindPreset)
             .OfType<Preset>()
-            .Where(p => FormatFields.IsShown(p.TargetFormat, off))
+            .Where(p => FormatFields.IsShown(p, off))
             .ToList();
 
         var subPresets = presets
@@ -460,7 +460,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         for (var i = presets.Count - 1; i >= 0; i--)
         {
             var children = subPresets[i];
-            subPresets[i] = children.Where(p => FormatFields.IsShown(p.TargetFormat, off)).ToList();
+            subPresets[i] = children.Where(p => FormatFields.IsShown(p, off)).ToList();
             if (presets[i].IsGroup && children.Count > 0 && subPresets[i].Count == 0)
             {
                 presets.RemoveAt(i);

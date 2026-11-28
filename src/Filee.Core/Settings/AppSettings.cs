@@ -186,7 +186,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 106;
+    public const int CurrentSchemaVersion = 107;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -373,7 +373,7 @@ public sealed class AppSettings
     /// </summary>
     public List<string> TurnedOffFields { get; set; } = [];
 
-    /// <summary><see cref="TurnedOffFields"/> as a set that ignores case, for <see cref="Formats.FormatFields.IsShown"/>.</summary>
+    /// <summary><see cref="TurnedOffFields"/> as a set that ignores case, for <see cref="Formats.FormatFields.IsShown(string, IReadOnlySet{string})"/>.</summary>
     public IReadOnlySet<string> TurnedOffFieldSet() => TurnedOffFields.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>

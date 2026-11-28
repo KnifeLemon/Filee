@@ -195,6 +195,8 @@
   "error.exe_no_icon": "У этого файла нет собственного значка (Windows показывает для него стандартный)",
   "error.comic_no_pictures": "В этом архиве нет изображений, поэтому из него не получится комикс (CBZ или CBR)",
   "error.comic_password": "Этот архив защищён паролем, поэтому программы для чтения комиксов не смогут его открыть",
+  "error.raster_not_geotiff": "Этот TIFF не является растром GeoTIFF, поэтому для него нельзя создать цветной предпросмотр",
+  "error.raster_needs_one_band": "Для цветного предпросмотра нужен растр с одним каналом, например модель высот",
   "notice.pdf_not_smaller": "Уменьшить не получилось, файл скопирован как есть",
   "notice.nov_recordings_left_out": "В этом экспорте несколько записей (другие камеры или части с разрывами): преобразована только самая большая",
   "notice.under_min_size": "Сохранено, но меньше минимального размера файла",
@@ -2018,5 +2020,12 @@
   "gallery.export_none": "Отметьте хотя бы один пресет или выберите круговое меню.",
   "gallery.export_warnings": "В галерее будут показаны такие предупреждения:",
   "gallery.only_my_language": "Только на моём языке",
-  "gallery.written_in": "Язык: {0}"
+  "gallery.written_in": "Язык: {0}",
+  "preset.geo_colours_terrain": "Цвета высот",
+  "preset.geo_colours_viridis": "Цвета значений",
+  "presets.raster_colours": "Цвета",
+  "presets.raster_colours.Off": "Выкл.",
+  "presets.raster_colours.Terrain": "Высота",
+  "presets.raster_colours.Viridis": "Значения",
+  "presets.raster_colours_hint": "Окрашивает одноканальные растры GeoTIFF и SRTM .hgt по диапазону значений, делая ячейки без данных прозрачными."
 }

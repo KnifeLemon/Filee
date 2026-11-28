@@ -195,6 +195,8 @@
   "error.exe_no_icon": "Tệp này không có biểu tượng riêng (Windows hiển thị biểu tượng mặc định cho nó)",
   "error.comic_no_pictures": "Tệp nén này không có hình ảnh nào nên không thể thành truyện tranh (CBZ hoặc CBR)",
   "error.comic_password": "Tệp nén này được bảo vệ bằng mật khẩu nên trình đọc truyện tranh không mở được",
+  "error.raster_not_geotiff": "Tệp TIFF này không phải raster GeoTIFF nên không thể tạo bản xem trước màu",
+  "error.raster_needs_one_band": "Bản xem trước màu cần raster một kênh, chẳng hạn như mô hình độ cao",
   "notice.pdf_not_smaller": "Không thể làm nhỏ hơn nên đã sao chép nguyên trạng",
   "notice.nov_recordings_left_out": "Bản xuất này có nhiều bản ghi (camera khác hoặc các đoạn bị ngắt quãng): chỉ bản lớn nhất được chuyển đổi",
   "notice.under_min_size": "Đã lưu, nhưng nhỏ hơn kích thước tệp tối thiểu",
@@ -2018,5 +2020,12 @@
   "gallery.export_none": "Hãy đánh dấu ít nhất một cấu hình sẵn hoặc chọn một thanh công cụ vòng tròn.",
   "gallery.export_warnings": "Thư viện sẽ hiện các cảnh báo này:",
   "gallery.only_my_language": "Chỉ bằng ngôn ngữ của tôi",
-  "gallery.written_in": "Viết bằng {0}"
+  "gallery.written_in": "Viết bằng {0}",
+  "preset.geo_colours_terrain": "Màu độ cao",
+  "preset.geo_colours_viridis": "Màu giá trị",
+  "presets.raster_colours": "Màu sắc",
+  "presets.raster_colours.Off": "Tắt",
+  "presets.raster_colours.Terrain": "Độ cao",
+  "presets.raster_colours.Viridis": "Giá trị",
+  "presets.raster_colours_hint": "Tô màu raster GeoTIFF đơn kênh và SRTM .hgt theo khoảng dữ liệu, ô không có dữ liệu sẽ trong suốt."
 }

@@ -371,8 +371,15 @@ so a separate ARM64 one would break their updates.
     `(0, 0)` to `(lon, lat + 1)`, and `GeoKeyDirectoryTag` 34735 for WGS 84 geographic `EPSG:4326` with
     `PixelIsPoint`). Uncompressed, LZW or Deflate follows the preset's TIFF compression.
   - **PNG and every other picture target**: valid elevations stretched linearly from min..max to 8-bit grayscale with
-    voids in black. HGT → TIFF costs a little more than other edges so multi-step routes use the stretched picture.
-- **GeoTIFF** (`Magick/GeoTiff.cs`): 16/32-bit integer and 32/64-bit float GeoTIFF bands are read by Filee and stretched linearly to grayscale (1–2 bands) or RGB (3+ bands) pictures, with `GDAL_NODATA` and NaN cells drawn black; ordinary 8-bit TIFFs stay on ImageMagick.
+    voids in black, or colour-mapped RGBA PNG with voids transparent when `ImageOptions.RasterColours` is set
+    (`Magick/RasterColouring.cs`). HGT → TIFF costs a little more than other edges so multi-step routes use the
+    stretched picture.
+- **GeoTIFF** (`Magick/GeoTiff.cs`, `Magick/RasterColouring.cs`): 16/32-bit integer and 32/64-bit float GeoTIFF bands
+  are read by Filee and stretched linearly to grayscale (1–2 bands) or RGB (3+ bands) pictures, with `GDAL_NODATA` and
+  NaN cells drawn black; ordinary 8-bit TIFFs stay on ImageMagick. With `ImageOptions.RasterColours` (`Terrain` or
+  `Viridis`, built-in **Elevation colours** and **Value colours** presets in the Maps field) and a PNG target,
+  single-band GeoTIFFs (including 8-bit unsigned) and SRTM `.hgt` tiles render onto a 5-stop sRGB colour ramp with
+  no-data / NaN cells transparent (multi-band TIFFs and other formats are refused).
 - **Fujifilm HEIF** (`.hif`) is read as HEIC.
 - **Rotate and flip** happen after the EXIF orientation is applied, in the one step of a route that turns images
   (`IImageTransformer`). There is no lossless JPEG rotation: a turned JPEG is re-encoded, at its own estimated quality
@@ -1779,7 +1786,9 @@ parsed in the tests from the specification, not read back with the engine. `GeoR
 truncated at several lengths and with random bytes changed; `GeoHostileInputTests` keeps each input that once crashed the
 process, took minutes or used gigabytes.
 
-Not here yet: raster data (GeoTIFF, bands), GeoPackage, zipped Shapefiles as input, datum shifts, more projections.
+GeoTIFF rasters can be read into stretched pictures and colour-mapped single-band PNG previews (`Magick/GeoTiff.cs`,
+`Magick/RasterColouring.cs`). Not here yet: GeoTIFF band splitting and stacking, GeoPackage, zipped Shapefiles as
+input, datum shifts, more projections.
 
 ## HWPX reader
 

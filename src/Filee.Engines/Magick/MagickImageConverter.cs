@@ -106,6 +106,9 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
             // SRTM .hgt → TIFF keeps signed 16-bit elevations, voids and GeoTIFF placement, which the Q8 build can't.
             if (step.From == "hgt" && step.To == "tiff")
                 return Hgt.WriteTiff(step, progress, cancellationToken);
+            // Colour-mapped PNG preview of a single-band GeoTIFF or SRTM .hgt raster (#155).
+            if (step.Preset.Image.RasterColours != Filee.Core.Presets.RasterColours.Off && step.To == "png")
+                return RasterColouring.WritePng(step, progress, cancellationToken);
             // A program's icon as ICO is the icon itself, with the sizes drawn for it, unless the preset changes it.
             if (step.From == FormatRegistry.Program && step.To == "ico" && ProgramIcon.KeptAsItIs(step.Preset.Image))
                 return ProgramIcon.Save(step, progress);

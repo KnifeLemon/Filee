@@ -155,7 +155,7 @@ public sealed partial class GroupEditorViewModel : ObservableObject
         var taken = Members.Select(m => m.PresetId).ToHashSet();
         var off = _store.Settings.TurnedOffFieldSet();
         Available.Clear();
-        foreach (var preset in _store.Presets.Where(p => !p.IsGroup && (!_folderInput || BuiltInData.AcceptsFolders(p) || p.IsCopyToFolder) && !taken.Contains(p.Id) && FormatFields.IsShown(p.TargetFormat, off)))
+        foreach (var preset in _store.Presets.Where(p => !p.IsGroup && (!_folderInput || BuiltInData.AcceptsFolders(p) || p.IsCopyToFolder) && !taken.Contains(p.Id) && FormatFields.IsShown(p, off)))
             Available.Add(new Choice<string>(preset.Id, _loc.DisplayName(preset), CaptionOf(preset)));
         OnPropertyChanged(nameof(IsFull));
         OnPropertyChanged(nameof(IsEmpty));
