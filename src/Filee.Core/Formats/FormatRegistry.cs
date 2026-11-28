@@ -89,7 +89,8 @@ public static class FormatRegistry
         new("svgz", "SVGZ", FormatCategory.Vector, ["svgz"]),
         new("eps", "EPS", FormatCategory.Vector, ["eps", "epsf", "epsi"]),
         new("ps", "PS", FormatCategory.Vector, ["ps"]),
-        new("ai", "AI", FormatCategory.Vector, ["ai"], Writable: false),
+        // Illustrator templates (.ait, #1726) have the same PDF/PostScript structure as .ai.
+        new("ai", "AI", FormatCategory.Vector, ["ai", "ait"], Writable: false),
         new("emf", "EMF", FormatCategory.Vector, ["emf"]),
         new("wmf", "WMF", FormatCategory.Vector, ["wmf"]),
         new("cdr", "CDR", FormatCategory.Vector, ["cdr"], Writable: false),

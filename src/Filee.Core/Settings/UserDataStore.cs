@@ -1243,6 +1243,10 @@ internal static class SettingsMigrations
         // v106: "CBR" (a RAR of pictures copied as a comic, #1482) joins the palette after "CBZ", not a donut.
         if (from < 106 && presets.All(p => p.Id != "to-cbr"))
             changed |= AddLikeNewLibrary(presets, "to-cbr");
+        // v107: Adobe Illustrator templates (.ait, #1726) learn the vector donut; custom claims stay put. (Schema 107
+        //       may be renumbered if another change takes it first.)
+        if (from < 107)
+            changed |= LearnExtensions(profiles, out _, ["ait"]);
         return changed;
     }
 

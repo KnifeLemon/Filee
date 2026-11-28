@@ -4,6 +4,7 @@
 using System.IO.Compression;
 using System.Text;
 using Filee.Core.Conversion;
+using Filee.Core.Formats;
 using Filee.Core.Presets;
 using Filee.Engines.Icns;
 using Filee.Engines.Magick;
@@ -666,6 +667,27 @@ public class GraphicsTests(EngineFixture fx) : IClassFixture<EngineFixture>
         AssertDone(toPdf);
         AssertDone(toPng);
         Assert.Equal(File.ReadAllBytes(ai), File.ReadAllBytes(toPdf.Outputs.Single()));
+        using var png = new MagickImage(toPng.Outputs.Single());
+        Assert.Equal((400u, 200u), (png.Width, png.Height));
+    }
+
+    [Fact]
+    public async Task Illustrator_templates_convert_like_illustrator_files()
+    {
+        var dir = fx.NewFolder();
+        var svg = Write(dir, "art.svg", GraphicsBuilders.Svg);
+        var pdf = (await fx.ConvertAsync([svg], new Preset { TargetFormat = "pdf" })).Outputs.Single();
+        var ait = Path.Combine(dir, "template.ait");
+        File.Copy(pdf, ait);
+
+        Assert.Same(FormatRegistry.Get("ai"), FormatRegistry.Detect(ait));
+
+        var toPdf = await fx.ConvertAsync([ait], new Preset { TargetFormat = "pdf" });
+        var toPng = await fx.ConvertAsync([ait], new Preset { TargetFormat = "png", Pdf = { RenderDpi = 96 } });
+
+        AssertDone(toPdf);
+        AssertDone(toPng);
+        Assert.Equal(File.ReadAllBytes(ait), File.ReadAllBytes(toPdf.Outputs.Single()));
         using var png = new MagickImage(toPng.Outputs.Single());
         Assert.Equal((400u, 200u), (png.Width, png.Height));
     }
