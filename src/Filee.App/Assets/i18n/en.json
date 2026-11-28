@@ -195,6 +195,8 @@
   "error.exe_no_icon": "This file has no icon of its own (Windows shows a standard one for it)",
   "error.comic_no_pictures": "This archive holds no pictures, so it can't become a comic (CBZ or CBR)",
   "error.comic_password": "This archive is protected with a password, so comic readers can't open it",
+  "error.raster_not_geotiff": "This TIFF isn't a GeoTIFF raster, so it can't get a colour preview",
+  "error.raster_needs_one_band": "Colour previews need a raster with one band, such as an elevation model",
   "notice.pdf_not_smaller": "Couldn't make it smaller, so it was copied as it is",
   "notice.nov_recordings_left_out": "This export holds several recordings (other cameras or pieces with gaps): only the largest was converted",
   "notice.under_min_size": "Saved, but smaller than the minimum file size",

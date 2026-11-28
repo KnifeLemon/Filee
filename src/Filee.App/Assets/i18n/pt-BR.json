@@ -195,6 +195,8 @@
   "error.exe_no_icon": "Este arquivo não tem ícone próprio (o Windows mostra um ícone padrão para ele)",
   "error.comic_no_pictures": "Este arquivo compactado não tem imagens, então não pode virar um quadrinho (CBZ ou CBR)",
   "error.comic_password": "Este arquivo compactado é protegido por senha, então os leitores de quadrinhos não conseguem abri-lo",
+  "error.raster_not_geotiff": "Este TIFF não é um raster GeoTIFF, então não pode receber uma prévia colorida",
+  "error.raster_needs_one_band": "Prévias coloridas precisam de um raster com uma banda, como um modelo de elevação",
   "notice.pdf_not_smaller": "Não deu para deixar menor, então foi copiado como está",
   "notice.nov_recordings_left_out": "Esta exportação contém várias gravações (outras câmeras ou partes separadas por interrupções): só a maior foi convertida",
   "notice.under_min_size": "Salvo, mas menor que o tamanho mínimo do arquivo",

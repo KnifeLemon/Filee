@@ -189,6 +189,8 @@
   "error.exe_no_icon": "このファイルには独自のアイコンがありません（Windows では標準のアイコンが表示されます）",
   "error.comic_no_pictures": "このアーカイブには画像が入っていないため、コミック（CBZ または CBR）にできません",
   "error.comic_password": "このアーカイブはパスワードで保護されているため、コミックリーダーで開けません",
+  "error.raster_not_geotiff": "この TIFF は GeoTIFF ラスターではないため、カラープレビューを作成できません",
+  "error.raster_needs_one_band": "カラープレビューには、標高モデルのような単一バンドのラスターが必要です",
   "notice.pdf_not_smaller": "サイズを小さくできなかったため、元のままコピーしました",
   "notice.nov_recordings_left_out": "このエクスポートには複数の録画（別のカメラや途切れた部分）が含まれています。最も大きいものだけを変換しました",
   "notice.under_min_size": "保存しましたが、最小ファイルサイズより小さいです",

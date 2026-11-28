@@ -2,6 +2,7 @@
 // from min..max onto a 5-stop sRGB colour ramp (Terrain for elevation, Viridis for general scalar/index values);
 // flat rasters map to the ramp midpoint (t = 0.5) and no-data / NaN cells become fully transparent.
 
+using System.Globalization;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using ImageMagick;
@@ -99,13 +100,16 @@ internal static class RasterColouring
         }
 
         if (format != "tiff")
-            throw Refuse($"Colour preview supports single-band GeoTIFF and SRTM .hgt rasters, not {format}");
+            throw new ConversionRefusedException("error.unsupported_source", format);
 
         var raster = GeoTiff.TryReadBands(path, acceptEightBit: true, cancellationToken, onlyPreviewBands: true);
         if (raster is null)
-            throw Refuse("This TIFF cannot be read as a GeoTIFF raster for colour preview");
+            throw new ConversionRefusedException("error.raster_not_geotiff");
         if (raster.SamplesPerPixel != 1 || raster.Bands.Length != 1)
-            throw Refuse($"Colour preview requires a single-band raster (found {raster.SamplesPerPixel} bands)");
+        {
+            var bandCount = Math.Max(raster.SamplesPerPixel, raster.Bands.Length);
+            throw new ConversionRefusedException("error.raster_needs_one_band", bandCount.ToString(CultureInfo.InvariantCulture));
+        }
 
         return (raster.Width, raster.Height, raster.Bands[0], raster.Mins[0], raster.Maxs[0], raster.HasValid[0]);
     }
@@ -184,7 +188,4 @@ internal static class RasterColouring
             (byte)Math.Clamp(Math.Round(a.G + (b.G - a.G) * frac), 0, 255),
             (byte)Math.Clamp(Math.Round(a.B + (b.B - a.B) * frac), 0, 255));
     }
-
-    private static ConversionRefusedException Refuse(string reason) =>
-        new("error.unsupported_source", reason);
 }

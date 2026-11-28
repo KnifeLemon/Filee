@@ -185,7 +185,9 @@ public class RasterColouringTests(EngineFixture fx) : IClassFixture<EngineFixtur
 
         var rgbJob = await fx.ConvertAsync([rgbGeo], ColourPreset(RasterColours.Terrain));
         Assert.Equal(JobState.Failed, rgbJob.State);
-        Assert.Equal("error.unsupported_source", Assert.Single(rgbJob.Files).ErrorKey);
+        var rgbFile = Assert.Single(rgbJob.Files);
+        Assert.Equal("error.raster_needs_one_band", rgbFile.ErrorKey);
+        Assert.Equal("3", rgbFile.ErrorDetail);
 
         var jpg = EngineFixture.MakeImage(fx.NewFolder(), "photo.jpg", MagickFormat.Jpeg);
         var jpgJob = await fx.ConvertAsync([jpg], ColourPreset(RasterColours.Viridis));
@@ -201,7 +203,9 @@ public class RasterColouringTests(EngineFixture fx) : IClassFixture<EngineFixtur
         }
         var jpegTiffJob = await fx.ConvertAsync([jpegTiff], ColourPreset(RasterColours.Terrain));
         Assert.Equal(JobState.Failed, jpegTiffJob.State);
-        Assert.Equal("error.unsupported_source", Assert.Single(jpegTiffJob.Files).ErrorKey);
+        var jpegTiffFile = Assert.Single(jpegTiffJob.Files);
+        Assert.Equal("error.raster_not_geotiff", jpegTiffFile.ErrorKey);
+        Assert.Null(jpegTiffFile.ErrorDetail);
     }
 
     [Fact]
@@ -219,7 +223,9 @@ public class RasterColouringTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var job = await fx.ConvertAsync([rgbGeo], ColourPreset(RasterColours.Terrain, ConflictPolicy.Overwrite));
 
         Assert.Equal(JobState.Failed, job.State);
-        Assert.Equal("error.unsupported_source", Assert.Single(job.Files).ErrorKey);
+        var file = Assert.Single(job.Files);
+        Assert.Equal("error.raster_needs_one_band", file.ErrorKey);
+        Assert.Equal("3", file.ErrorDetail);
         Assert.True(File.Exists(existing));
         Assert.Equal(sentinel, File.ReadAllBytes(existing));
         Assert.Empty(Directory.GetFiles(folder, "*.tmp"));

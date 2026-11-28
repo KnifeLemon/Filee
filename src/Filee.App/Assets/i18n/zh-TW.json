@@ -195,6 +195,8 @@
   "error.exe_no_icon": "此檔案沒有自己的圖示（Windows 會為它顯示標準圖示）",
   "error.comic_no_pictures": "此壓縮檔中沒有圖片，因此無法變成漫畫（CBZ 或 CBR）",
   "error.comic_password": "此壓縮檔受密碼保護，漫畫閱讀器無法開啟",
+  "error.raster_not_geotiff": "此 TIFF 不是 GeoTIFF 網格，無法產生彩色預覽",
+  "error.raster_needs_one_band": "彩色預覽需要單波段網格，例如高程模型",
   "notice.pdf_not_smaller": "無法再縮小，已原樣複製",
   "notice.nov_recordings_left_out": "此匯出檔包含多段錄影（其他攝影機或中斷分開的片段）：只轉換了最大的一段",
   "notice.under_min_size": "已儲存，但小於最小檔案大小",

@@ -195,6 +195,8 @@
   "error.exe_no_icon": "此文件没有自己的图标（Windows 会为它显示标准图标）",
   "error.comic_no_pictures": "此压缩文件中没有图片，因此无法变成漫画（CBZ 或 CBR）",
   "error.comic_password": "此压缩文件受密码保护，漫画阅读器无法打开",
+  "error.raster_not_geotiff": "此 TIFF 不是 GeoTIFF 栅格，无法生成彩色预览",
+  "error.raster_needs_one_band": "彩色预览需要单波段栅格，例如高程模型",
   "notice.pdf_not_smaller": "无法再缩小，已原样复制",
   "notice.nov_recordings_left_out": "此导出文件包含多段录像（其他摄像机或中断分开的片段）：只转换了最大的一段",
   "notice.under_min_size": "已保存，但小于最小文件大小",

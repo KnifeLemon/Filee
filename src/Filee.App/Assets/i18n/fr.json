@@ -195,6 +195,8 @@
   "error.exe_no_icon": "Ce fichier n'a pas d'icône propre (Windows lui affiche une icône standard)",
   "error.comic_no_pictures": "Cette archive ne contient aucune image, elle ne peut donc pas devenir une BD (CBZ ou CBR)",
   "error.comic_password": "Cette archive est protégée par un mot de passe, les lecteurs de BD ne peuvent donc pas l'ouvrir",
+  "error.raster_not_geotiff": "Ce fichier TIFF n'est pas un raster GeoTIFF, il ne peut donc pas avoir d'aperçu en couleur",
+  "error.raster_needs_one_band": "Les aperçus en couleur nécessitent un raster à une seule bande, comme un modèle d'altitude",
   "notice.pdf_not_smaller": "Impossible de réduire sa taille : le fichier a été copié tel quel",
   "notice.nov_recordings_left_out": "Cet export contient plusieurs enregistrements (d'autres caméras ou des morceaux séparés par des coupures) : seul le plus gros a été converti",
   "notice.under_min_size": "Enregistré, mais plus petit que la taille de fichier minimale",

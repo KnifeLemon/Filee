@@ -189,6 +189,8 @@
   "error.exe_no_icon": "Bu dosyanın kendi simgesi yok (Windows onun için standart bir simge gösterir)",
   "error.comic_no_pictures": "Bu arşivde resim yok, bu yüzden çizgi romana (CBZ veya CBR) dönüştürülemez",
   "error.comic_password": "Bu arşiv parolayla korunuyor, bu yüzden çizgi roman okuyucuları onu açamaz",
+  "error.raster_not_geotiff": "Bu TIFF bir GeoTIFF rasterı değil, bu yüzden renkli önizleme oluşturulamaz",
+  "error.raster_needs_one_band": "Renkli önizlemeler, yükseklik modeli gibi tek bantlı bir raster gerektirir",
   "notice.pdf_not_smaller": "Küçültülemediği için olduğu gibi kopyalandı",
   "notice.nov_recordings_left_out": "Bu dışa aktarmada birden çok kayıt var (başka kameralar ya da boşluklarla ayrılmış parçalar): yalnızca en büyüğü dönüştürüldü",
   "notice.under_min_size": "Kaydedildi, ancak en küçük dosya boyutundan küçük",
