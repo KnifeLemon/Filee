@@ -2003,7 +2003,7 @@
   "gallery.warning.uses_translate_model": "使用特定的 AI 模型翻译，可能需要先在 Ollama 中下载该模型。",
   "gallery.accept_risk": "我了解此预设可能会替换、移动或覆盖我的文件。",
   "presets.from_gallery": "从预设广场安装（{0}），保留分享时的设置。",
-  "gallery.export": "导出到预设广场…",
+  "gallery.export": "分享…",
   "gallery.export_title": "导出到预设广场",
   "gallery.export_lead": "勾选要分享的预设，也可以选择一个环形工具栏。文件会按预设广场的方式检查。保存后，通过表单连同 1 到 4 张图片一起提交。",
   "gallery.export_presets": "预设",

@@ -2003,7 +2003,7 @@
   "gallery.warning.uses_translate_model": "使用特定的 AI 模型翻譯，可能需要先在 Ollama 中下載該模型。",
   "gallery.accept_risk": "我了解此預設可能會取代、移動或覆寫我的檔案。",
   "presets.from_gallery": "從預設廣場安裝（{0}），保留分享時的設定。",
-  "gallery.export": "匯出到預設廣場…",
+  "gallery.export": "分享…",
   "gallery.export_title": "匯出到預設廣場",
   "gallery.export_lead": "勾選要分享的預設，也可以選擇一個環形工具列。檔案會依預設廣場的方式檢查。儲存後，透過表單連同 1 到 4 張圖片一起提交。",
   "gallery.export_presets": "預設",
