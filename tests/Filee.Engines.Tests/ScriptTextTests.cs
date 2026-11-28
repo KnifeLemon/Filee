@@ -1,5 +1,5 @@
-// Lua scripts, CSS style sheets, DBML database schemas and Java source files (issues #388, #368, #854, #1176) become a PDF
-// of their text, never run, compiled or translated.
+// Lua scripts, CSS style sheets, DBML database schemas, Java source files and JavaServer Pages templates (issues #388,
+// #368, #854, #1176, #1789) become a PDF of their text, never run, compiled or translated.
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -15,6 +15,7 @@ public class ScriptTextTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("shop.dbml", "Table customers { id integer [primary key] }")]
     [InlineData("Hello.java", "class Hello { }")]
     [InlineData("Blink.ino", "void setup() { pinMode(LED_BUILTIN, OUTPUT); }")]
+    [InlineData("index.jsp", "<%@ page contentType=\"text/html\" %> <%= greeting %>")]
     public async Task The_code_becomes_a_pdf_of_its_text(string name, string code)
     {
         var available = fx.Converters.Where(c => fx.Catalog.StatusOf(c).IsAvailable).Select(c => c.Id).ToHashSet();
@@ -71,6 +72,28 @@ public class ScriptTextTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
         var output = Assert.Single(job.Outputs);
         Assert.Equal("Hello.txt", Path.GetFileName(output));
+        var text = await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken);
+        Assert.Equal(source.ReplaceLineEndings(), text.ReplaceLineEndings().TrimEnd());
+    }
+
+    [Fact]
+    public async Task A_jsp_file_becomes_text_as_it_was_written()
+    {
+        // #1789: the page is read as source text; nothing compiles or runs it.
+        const string source = """
+            <%@ page contentType="text/html; charset=UTF-8" %>
+            <html>
+              <body><%= "Hello, " + request.getParameter("name") %></body>
+            </html>
+            """;
+        var path = Path.Combine(fx.NewFolder(), "index.jsp");
+        await File.WriteAllTextAsync(path, source, TestContext.Current.CancellationToken);
+
+        var job = await fx.ConvertAsync([path], new Preset { TargetFormat = "txt" });
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var output = Assert.Single(job.Outputs);
+        Assert.Equal("index.txt", Path.GetFileName(output));
         var text = await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken);
         Assert.Equal(source.ReplaceLineEndings(), text.ReplaceLineEndings().TrimEnd());
     }

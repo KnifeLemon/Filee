@@ -1,6 +1,6 @@
 // Built-in vector graphics: SVG/SVGZ → PDF (vector) and → raster images with Svg.Skia and SkiaSharp, SVG ↔ SVGZ,
 // SVG → DXF (ACadSharp), raster images → SVG (tracing), Illustrator files → PDF, and Obsidian's boards (JSON Canvas)
-// → SVG and Markdown; embroidery (DST), plot (HP-GL) and Gerber PCB files are drawn as SVG first. Other vector formats
+// → SVG and Markdown; embroidery (DST, JEF), plot (HP-GL) and Gerber PCB files are drawn as SVG first. Other vector formats
 // reach PNG, JPG, … through PDF and PDFium.
 
 using System.IO.Compression;
@@ -44,8 +44,9 @@ public sealed class VectorConverter : IConverter, IImageTransformer
         new("svgz", "dxf"),
         // Illustrator files are PDF inside (or PostScript, see ConvertIllustratorAsync).
         new("ai", "pdf"),
-        // Embroidery designs: their stitches as lines (DstEmbroidery), PNG / PDF / ... from there.
+        // Embroidery designs (DST, JEF): their stitches as lines (EmbroiderySvg), PNG / PDF / ... from there.
         new("dst", "svg"),
+        new("jef", "svg"),
         // HP-GL plot files: their pen moves as lines (HpglPlot), PDF / PNG / ... from there.
         new("plt", "svg"),
         // Gerber PCB layers: drawn in the layer's colour (GerberSvg), PDF / PNG / DXF / ... from there.
@@ -67,7 +68,8 @@ public sealed class VectorConverter : IConverter, IImageTransformer
             ("ai", "pdf") => await ConvertIllustratorAsync(step, progress, cancellationToken),
             ("svg", "svgz") => await Task.Run(() => Compress(step), cancellationToken),
             ("svgz", "svg") => await Task.Run(() => Decompress(step), cancellationToken),
-            ("dst", "svg") => await Task.Run(() => Embroidery(step), cancellationToken),
+            ("dst", "svg") => await Task.Run(() => Embroidery(step, DstEmbroidery.ToSvg), cancellationToken),
+            ("jef", "svg") => await Task.Run(() => Embroidery(step, JefEmbroidery.ToSvg), cancellationToken),
             ("plt", "svg") => await Task.Run(() => Plot(step), cancellationToken),
             ("gerber", "svg") => await Task.Run(() => PcbLayer(step, cancellationToken), cancellationToken),
             ("canvas", "svg") => await Task.Run(() => CanvasDrawing(step, cancellationToken), cancellationToken),
@@ -81,9 +83,9 @@ public sealed class VectorConverter : IConverter, IImageTransformer
         return written;
     }
 
-    private static IReadOnlyList<string> Embroidery(ConversionStep step)
+    private static IReadOnlyList<string> Embroidery(ConversionStep step, Func<byte[], string> toSvg)
     {
-        var svg = DstEmbroidery.ToSvg(File.ReadAllBytes(step.InputPath));
+        var svg = toSvg(File.ReadAllBytes(step.InputPath));
         var output = step.Output.Allocate("svg");
         if (output is null)
             return [];

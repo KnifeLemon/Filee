@@ -211,7 +211,7 @@ public class GroupEditorTests
         }
         using var frame = window.CaptureRenderedFrame();
         Assert.NotNull(frame);
-        using (var stream = File.Create(Path.Combine(TestServices.ScreenshotDirectory, $"group-editor-{language}.png")))
+        using (var stream = File.Create(TestServices.ScreenshotPath($"group-editor-{language}.png")))
             frame.Save(stream, new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
         window.Close();
     }

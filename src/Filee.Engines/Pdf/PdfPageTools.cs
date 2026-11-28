@@ -138,6 +138,7 @@ public static class PdfPageTools
                     throw new InvalidDataException($"Page {item.PageIndex + 1} no longer exists in {Path.GetFileName(item.Path)}.");
                 var original = source.Pages[item.PageIndex];
                 var page = output.AddPage(original);
+                structure.Label(source, item.PageIndex, cancellationToken);
                 // PDFsharp maps a repeated source page to its last import; destinations use our first occurrence.
                 maps[source].TryAdd(original.Reference!.ObjectID, page);
                 occurrences.Add((source, original, page));

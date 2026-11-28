@@ -78,7 +78,62 @@
     <Style Selector="Button.preset-pill:pressed">
       <Setter Property="RenderTransform" Value="scale(0.96)" />
     </Style>
+    <!-- Appearance buttons (System / Light / Dark): the pill follows the Softness slider; the selected one is accent-tinted. -->
+    <Style Selector="Button.mode-btn">
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusPill}" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.18" />
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.18" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <!-- A button that is off gets the theme's normal hover (grey border). The theme paints the button's template on
+         hover, so the selected one is styled on the template too and keeps its accent look when hovered or pressed. -->
+    <Style Selector="Button.mode-btn.selected">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="Button.mode-btn.selected /template/ ContentPresenter#PART_ContentPresenter,
+                     Button.mode-btn.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter,
+                     Button.mode-btn.selected:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="Button.mode-btn TextBlock.mode-text">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    </Style>
+    <Style Selector="Button.mode-btn Path.mode-icon">
+      <Setter Property="Stroke" Value="{DynamicResource TextSecondaryBrush}" />
+      <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
+    </Style>
+    <Style Selector="Button.mode-btn:pointerover TextBlock.mode-text">
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="Button.mode-btn:pointerover Path.mode-icon">
+      <Setter Property="Stroke" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="Button.mode-btn.selected TextBlock.mode-text">
+      <Setter Property="Foreground" Value="{DynamicResource AccentStrongBrush}" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="Button.mode-btn.selected Path.mode-icon">
+      <Setter Property="Stroke" Value="{DynamicResource AccentStrongBrush}" />
+      <Setter Property="Fill" Value="{DynamicResource AccentStrongBrush}" />
+    </Style>
     <Style Selector=":is(TopLevel).reduced-motion Button.choice-card,
+                   :is(TopLevel).reduced-motion Button.mode-btn,
                    :is(TopLevel).reduced-motion Button.preset-pill">
       <Setter Property="Transitions" Value="{x:Null}" />
       <Setter Property="RenderTransform" Value="none" />
@@ -140,11 +195,58 @@
           </StackPanel>
         </Border>
 
-        <!-- Appearance Mode: System / Light / Dark -->
+        <!-- Appearance Mode: System / Light / Dark, three separate buttons across the card. Their corners follow the
+             Softness slider (SoftRadiusPill), and the one that is on takes the accent. -->
         <Border Classes="card">
-          <StackPanel Spacing="8">
+          <StackPanel Spacing="12">
             <TextBlock Classes="label" Text="{DynamicResource theme.mode}" />
-            <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding Mode}" MinWidth="220" AutomationProperties.Name="{DynamicResource theme.mode}" />
+            <Grid ColumnDefinitions="*,10,*,10,*" AutomationProperties.Name="{DynamicResource theme.mode}">
+              <Button Grid.Column="0" Classes="mode-btn"
+                      Classes.selected="{Binding IsModeSystem}"
+                      Command="{Binding SetModeCommand}"
+                      CommandParameter="{x:Static settings:ThemeMode.System}"
+                      AutomationProperties.Name="{DynamicResource theme.mode.System}">
+                <Grid ColumnDefinitions="Auto,*" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Viewbox Width="18" Height="18" VerticalAlignment="Center">
+                    <Canvas Width="24" Height="24">
+                      <Path Classes="mode-icon" Data="{StaticResource Icon.ThemeSystem}" StrokeThickness="2" StrokeLineCap="Round" StrokeJoin="Round" />
+                    </Canvas>
+                  </Viewbox>
+                  <TextBlock Grid.Column="1" Classes="mode-text" Margin="8,0,0,0" Text="{DynamicResource theme.mode.System}"
+                             TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+              <Button Grid.Column="2" Classes="mode-btn"
+                      Classes.selected="{Binding IsModeLight}"
+                      Command="{Binding SetModeCommand}"
+                      CommandParameter="{x:Static settings:ThemeMode.Light}"
+                      AutomationProperties.Name="{DynamicResource theme.mode.Light}">
+                <Grid ColumnDefinitions="Auto,*" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Viewbox Width="18" Height="18" VerticalAlignment="Center">
+                    <Canvas Width="24" Height="24">
+                      <Path Classes="mode-icon" Data="{StaticResource Icon.ThemeLight}" StrokeThickness="2" StrokeLineCap="Round" StrokeJoin="Round" />
+                    </Canvas>
+                  </Viewbox>
+                  <TextBlock Grid.Column="1" Classes="mode-text" Margin="8,0,0,0" Text="{DynamicResource theme.mode.Light}"
+                             TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+              <Button Grid.Column="4" Classes="mode-btn"
+                      Classes.selected="{Binding IsModeDark}"
+                      Command="{Binding SetModeCommand}"
+                      CommandParameter="{x:Static settings:ThemeMode.Dark}"
+                      AutomationProperties.Name="{DynamicResource theme.mode.Dark}">
+                <Grid ColumnDefinitions="Auto,*" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Viewbox Width="18" Height="18" VerticalAlignment="Center">
+                    <Canvas Width="24" Height="24">
+                      <Path Classes="mode-icon" Data="{StaticResource Icon.ThemeDark}" StrokeThickness="2" StrokeLineCap="Round" StrokeJoin="Round" />
+                    </Canvas>
+                  </Viewbox>
+                  <TextBlock Grid.Column="1" Classes="mode-text" Margin="8,0,0,0" Text="{DynamicResource theme.mode.Dark}"
+                             TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+            </Grid>
           </StackPanel>
         </Border>
 
@@ -291,75 +393,88 @@
             <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.progress_ring_hint}" />
           </StackPanel>
         </Border>
+      </StackPanel>
 
-        <!-- The system's UI font instead of the embedded Noto fonts, which still draw the scripts it lacks (#1065). -->
+      <StackPanel Grid.Row="1" Grid.Column="2" Spacing="16" VerticalAlignment="Top">
+        <!-- Live preview -->
         <Border Classes="card">
-          <StackPanel Spacing="4">
-            <CheckBox Content="{DynamicResource theme.system_font}" IsChecked="{Binding UseSystemFont}" FontWeight="SemiBold" />
-            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.system_font_hint}" Margin="28,0,0,0" />
-          </StackPanel>
-        </Border>
-
-        <!-- Reduced Motion -->
-        <Border Classes="card">
-          <StackPanel Spacing="4">
-            <CheckBox Content="{DynamicResource theme.reduce_motion}" IsChecked="{Binding ReduceMotion}" FontWeight="SemiBold" />
-            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.reduce_motion_hint}" Margin="28,0,0,0" />
-          </StackPanel>
-        </Border>
-        <!-- Window size: the zoom of every Filee window (UiZoom), saved by itself. Ctrl + wheel and the keys change it too. -->
-        <Border Classes="card">
-          <StackPanel Spacing="8">
-            <TextBlock Classes="label" Text="{DynamicResource theme.window_size}" />
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <Button x:Name="ZoomOutButton" Classes="icon" Command="{Binding ZoomOutCommand}"
-                      ToolTip.Tip="{DynamicResource theme.window_size_smaller}"
-                      AutomationProperties.Name="{DynamicResource theme.window_size_smaller}">
-                <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Minus}" />
-              </Button>
-              <TextBlock x:Name="WindowSizeText" MinWidth="52" TextAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
-                         FlowDirection="LeftToRight" Text="{Binding WindowSize, StringFormat={}{0:0}%}" />
-              <Button x:Name="ZoomInButton" Classes="icon" Command="{Binding ZoomInCommand}"
-                      ToolTip.Tip="{DynamicResource theme.window_size_larger}"
-                      AutomationProperties.Name="{DynamicResource theme.window_size_larger}">
-                <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Plus}" />
-              </Button>
-              <Button x:Name="ResetZoomButton" Margin="8,0,0,0" Command="{Binding ResetZoomCommand}"
-                      Content="{DynamicResource theme.window_size_reset}" />
+          <StackPanel Spacing="14">
+            <TextBlock Classes="label" Text="{DynamicResource theme.preview}" />
+            <!-- The donut over a stand-in for the desktop, so its opacity shows. -->
+            <Border Background="{Binding PreviewBackdrop}" CornerRadius="{DynamicResource SoftRadiusLarge}" Padding="0,10" ClipToBounds="True">
+              <c:DonutMenu x:Name="PreviewDonut" Items="{Binding PreviewItems}" OuterRadius="120" CenterTitle="JPG × 3" HorizontalAlignment="Center"
+                           SliceOpacity="{Binding DonutOpacity, Converter={x:Static vm:ToolbarConverters.Percent}}"
+                           ShowCaptions="{Binding DonutCaptions}" />
+            </Border>
+            <!-- Sample buttons react to hover and press like the real ones, but nothing is saved; Save shows the same tick as the
+                 Save buttons elsewhere, and the switch below is an isolated interactive demo too. -->
+            <StackPanel Spacing="14">
+              <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center"
+                          Focusable="False">
+                <Button x:Name="PreviewPrimaryButton" Classes="accent" Click="OnPreviewSaveClick"
+                        AutomationProperties.Name="{DynamicResource common.save}"
+                        Focusable="False" IsTabStop="False">
+                  <c:SaveFeedback x:Name="PreviewSaveFeedback" Text="{DynamicResource common.save}" />
+                </Button>
+                <Button x:Name="PreviewSecondaryButton" Content="{DynamicResource common.cancel}"
+                        Focusable="False" IsTabStop="False" />
+              </StackPanel>
+              <!-- On / Off come from the ToggleSwitch style, in the user's language. -->
+              <ToggleSwitch x:Name="PreviewToggle"
+                            IsChecked="False"
+                            HorizontalAlignment="Center"
+                            AutomationProperties.Name="{DynamicResource theme.preview_toggle}"
+                            AutomationProperties.HelpText="{DynamicResource theme.preview_toggle_hint}" />
             </StackPanel>
-            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding WindowSizeHint}" />
+          </StackPanel>
+        </Border>
+
+        <!-- Display: the system font (#1065), reduced motion and the window size (UiZoom, saved by itself; Ctrl + wheel and the keys change it too). -->
+        <Border Classes="card">
+          <StackPanel Spacing="14">
+            <TextBlock Classes="label" Text="{DynamicResource theme.display}" />
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="2" Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="{DynamicResource theme.system_font}" />
+                <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.system_font_hint}" />
+              </StackPanel>
+              <ToggleSwitch Grid.Column="1" IsChecked="{Binding UseSystemFont}" VerticalAlignment="Center"
+                            AutomationProperties.Name="{DynamicResource theme.system_font}" />
+            </Grid>
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="2" Margin="0,0,16,0" VerticalAlignment="Center">
+                <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="{DynamicResource theme.reduce_motion}" />
+                <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.reduce_motion_hint}" />
+              </StackPanel>
+              <ToggleSwitch Grid.Column="1" IsChecked="{Binding ReduceMotion}" VerticalAlignment="Center"
+                            AutomationProperties.Name="{DynamicResource theme.reduce_motion}" />
+            </Grid>
+            <Border Height="1" Background="{DynamicResource SubtleBorderBrush}" />
+            <StackPanel Spacing="8">
+              <TextBlock FontWeight="SemiBold" Text="{DynamicResource theme.window_size}" />
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Button x:Name="ZoomOutButton" Classes="icon" Command="{Binding ZoomOutCommand}"
+                          ToolTip.Tip="{DynamicResource theme.window_size_smaller}"
+                          AutomationProperties.Name="{DynamicResource theme.window_size_smaller}">
+                    <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Minus}" />
+                  </Button>
+                  <TextBlock x:Name="WindowSizeText" MinWidth="52" TextAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
+                             FlowDirection="LeftToRight" Text="{Binding WindowSize, StringFormat={}{0:0}%}" />
+                  <Button x:Name="ZoomInButton" Classes="icon" Command="{Binding ZoomInCommand}"
+                          ToolTip.Tip="{DynamicResource theme.window_size_larger}"
+                          AutomationProperties.Name="{DynamicResource theme.window_size_larger}">
+                    <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Plus}" />
+                  </Button>
+                </StackPanel>
+                <Button x:Name="ResetZoomButton" Grid.Column="1" Command="{Binding ResetZoomCommand}"
+                        Content="{DynamicResource theme.window_size_reset}" />
+              </Grid>
+              <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding WindowSizeHint}" />
+            </StackPanel>
           </StackPanel>
         </Border>
       </StackPanel>
-
-      <!-- Live preview -->
-      <Border Grid.Row="1" Grid.Column="2" Classes="card" VerticalAlignment="Top">
-        <StackPanel Spacing="14">
-          <TextBlock Classes="label" Text="{DynamicResource theme.preview}" />
-          <!-- The donut over a stand-in for the desktop, so its opacity shows. -->
-          <Border Background="{Binding PreviewBackdrop}" CornerRadius="{DynamicResource SoftRadiusLarge}" Padding="0,10" ClipToBounds="True">
-            <c:DonutMenu x:Name="PreviewDonut" Items="{Binding PreviewItems}" OuterRadius="120" CenterTitle="JPG × 3" HorizontalAlignment="Center"
-                         SliceOpacity="{Binding DonutOpacity, Converter={x:Static vm:ToolbarConverters.Percent}}"
-                         ShowCaptions="{Binding DonutCaptions}" />
-          </Border>
-          <!-- Sample buttons are decorative; the switch below is an isolated interactive demo. -->
-          <StackPanel Spacing="14">
-            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center"
-                        IsHitTestVisible="False" Focusable="False">
-              <Button x:Name="PreviewPrimaryButton" Classes="accent" Content="{DynamicResource common.save}"
-                      Focusable="False" IsTabStop="False" />
-              <Button x:Name="PreviewSecondaryButton" Content="{DynamicResource common.cancel}"
-                      Focusable="False" IsTabStop="False" />
-            </StackPanel>
-            <!-- On / Off come from the ToggleSwitch style, in the user's language. -->
-            <ToggleSwitch x:Name="PreviewToggle"
-                          IsChecked="False"
-                          HorizontalAlignment="Center"
-                          AutomationProperties.Name="{DynamicResource theme.preview_toggle}"
-                          AutomationProperties.HelpText="{DynamicResource theme.preview_toggle_hint}" />
-          </StackPanel>
-        </StackPanel>
-      </Border>
     </Grid>
   </ScrollViewer>
 </UserControl>

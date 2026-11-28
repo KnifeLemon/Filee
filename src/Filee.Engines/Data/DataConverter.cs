@@ -1,10 +1,11 @@
 // Structured data between JSON, JSON Lines, YAML, TOML and XML (and CSV for tables), plus vCard contacts and iCalendar ↔ CSV,
-// in-process. Every format is read into one tree (DataTree) and written from it, so structure and types carry over as
-// far as the target can hold them; see the format files for what each one loses (TOML has no null, XML no types,
-// CSV only tables). Output is UTF-8 without BOM (CSV: with BOM, like the spreadsheet engine), indented by two spaces.
-// Spreadsheets reach JSON and the others through CSV (XLSX → CSV → JSON), contacts and calendars through CSV as well. HAR
-// network logs are read as JSON, and become a table of their requests (HarData). Property lists (.plist, XML or binary) are
-// read by PlistData and reach the same targets, and plain text as the YAML listing of their tree.
+// and NEXUS, FASTA and PHYLIP biological sequence alignments ↔ each other, in-process. Every tree format is read into
+// one tree (DataTree) and written from it, so structure and types carry over as far as the target can hold them; see the
+// format files for what each one loses (TOML has no null, XML no types, CSV only tables). Output is UTF-8 without BOM
+// (CSV: with BOM, like the spreadsheet engine), indented by two spaces. Spreadsheets reach JSON and the others through
+// CSV (XLSX → CSV → JSON), contacts and calendars through CSV as well. HAR network logs are read as JSON, and become a
+// table of their requests (HarData). Property lists (.plist, XML or binary) are read by PlistData and reach the same
+// targets, and plain text as the YAML listing of their tree. Sequence alignments are read and written by SequenceAlignment.
 
 using System.Text;
 using Filee.Core.Conversion;
@@ -14,10 +15,11 @@ using Filee.Engines.Office.Sheets;
 
 namespace Filee.Engines.Data;
 
-/// <summary>JSON, JSON Lines, YAML, TOML, XML and CSV into each other; vCard and iCalendar ↔ CSV; HAR and property lists → all of them.</summary>
+/// <summary>JSON, JSON Lines, YAML, TOML, XML and CSV into each other; vCard and iCalendar ↔ CSV; HAR and property lists → all of them; NEXUS, FASTA and PHYLIP alignments ↔ each other.</summary>
 public sealed class DataConverter : IConverter
 {
     private static readonly string[] Trees = ["json", "jsonl", "yaml", "toml", "xml"];
+    private static readonly string[] Alignments = ["nex", "fasta", "phy"];
 
     public string Id => "data";
     public string DisplayName => "Data (built-in)";
@@ -35,10 +37,11 @@ public sealed class DataConverter : IConverter
         new("ics", "csv"),
         new("csv", "ics"),
         new("txt", "csv", DirectOnly: true),
+        .. Alignments.SelectMany(from => Alignments.Where(to => to != from).Select(to => new ConversionEdge(from, to))),
     ];
 
     public EngineStatus GetStatus() =>
-        EngineStatus.Available("JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other; vCard and iCalendar ↔ CSV; property lists → each of them and TXT",
+        EngineStatus.Available("JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other; vCard and iCalendar ↔ CSV; property lists → each of them and TXT; NEXUS, FASTA and PHYLIP alignments ↔ each other",
             $"{EngineVersions.BuiltIn} · {EngineVersions.Library("YamlDotNet", typeof(YamlDotNet.RepresentationModel.YamlStream))}"
             + $" · {EngineVersions.Library("Tomlyn", typeof(Tomlyn.TomlSerializer))}");
 
@@ -48,6 +51,19 @@ public sealed class DataConverter : IConverter
         Task.Run<IReadOnlyList<string>>(() =>
         {
             progress?.Report(0.1);
+            if (step.From is "nex" or "fasta" or "phy")
+            {
+                var source = HwpxConverter.DecodeText(File.ReadAllBytes(step.InputPath));
+                var alignment = SequenceAlignment.Read(source, step.From, cancellationToken);
+                progress?.Report(0.6);
+                var rendered = SequenceAlignment.Write(alignment, step.To, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (step.Output.Allocate(step.To) is not { } outputPath)
+                    return [];
+                WriteAtomically(outputPath, rendered, cancellationToken);
+                progress?.Report(1);
+                return [outputPath];
+            }
             if (step.From == "txt" && step.To == "csv")
             {
                 var source = HwpxConverter.DecodeText(File.ReadAllBytes(step.InputPath));
@@ -149,6 +165,22 @@ public sealed class DataConverter : IConverter
         "plist" => PlistData.Read(path),
         _ => ReadText(HwpxConverter.DecodeText(File.ReadAllBytes(path)), format),
     };
+
+    private static void WriteAtomically(string outputPath, string text, CancellationToken cancellationToken)
+    {
+        var temp = outputPath + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
+        try
+        {
+            File.WriteAllText(temp, text, Utf8);
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(temp, outputPath, overwrite: true);
+        }
+        catch
+        {
+            try { File.Delete(temp); } catch (IOException) { }
+            throw;
+        }
+    }
 
     private static object? ReadText(string text, string format) => format switch
     {

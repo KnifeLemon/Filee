@@ -64,7 +64,7 @@ public class EngineUpdateTests
         using (var frame = notice.CaptureRenderedFrame())
         {
             Assert.NotNull(frame);
-            using var stream = File.Create(Path.Combine(TestServices.ScreenshotDirectory, "engine-update-notice-ko.png"));
+            using var stream = File.Create(TestServices.ScreenshotPath("engine-update-notice-ko.png"));
             frame.Save(stream, new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
         }
         var update = notice.GetVisualDescendants().OfType<Avalonia.Controls.Button>()

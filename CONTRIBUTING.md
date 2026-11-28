@@ -115,7 +115,8 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. In short:
   `DocxBuilder.cs`.
 - `tests/Filee.App.Tests` – gesture state machine, donut geometry, translations and headless UI rendering.
   Screenshots of every page land in `tests/Filee.App.Tests/bin/<config>/net10.0/screenshots` — attach them to
-  UI pull requests.
+  UI pull requests. A screenshot whose name has a language code (`page-theme-en.png`) is in a folder for that
+  language, such as `screenshots/en` or `screenshots/pt-BR`; the others are in `screenshots` itself.
 
 ## Pull requests
 
@@ -183,7 +184,7 @@ A release with features worth showing gets slides, which Filee shows once after 
 
    `FILEE_WHATSNEW_ONLY=crop,theme` renders only those clips. Each file must stay under 400 KB (the test checks it,
    and `WhatsNewTests` checks all of them together stay under 2 MB); look at the first frames in
-   `bin/.../screenshots/whatsnew-*.png` and at the window in `whatsnew-window-*.png`.
+   `bin/.../screenshots/<language>/whatsnew-*.png` and at the window in `whatsnew-window-*.png`.
 5. Run `dotnet test`: `WhatsNewTests` checks that every slide's media and keys exist.
 
 To try it in the app, build with the new version (`dotnet run --project src/Filee.App -p:Version=X.Y.Z`) against a

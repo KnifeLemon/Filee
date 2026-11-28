@@ -108,6 +108,46 @@ public class ThemePageTests
     }
 
     [AvaloniaFact]
+    public void Appearance_buttons_switch_the_mode_and_mark_the_one_that_is_on()
+    {
+        TestServices.EnsureInitialized();
+        var directory = Directory.CreateTempSubdirectory("filee-theme-mode-").FullName;
+        var store = new UserDataStore(directory);
+        store.Load();
+        store.Settings.Theme.Mode = ThemeMode.Dark;
+        AppHost.Get<ThemeService>().Apply(store.Settings.Theme, "en");
+        var vm = new ThemePageViewModel(store, AppHost.Get<ILocalizer>(), AppHost.Get<IPlatformServices>());
+        var page = new ThemePage { DataContext = vm };
+        var window = new Window { Content = page, Width = 940, Height = 700 };
+
+        try
+        {
+            window.Show();
+            RenderTests.Pump();
+
+            var buttons = page.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("mode-btn")).ToList();
+            Assert.Equal(3, buttons.Count);
+            Assert.Equal(new[] { ThemeMode.System, ThemeMode.Light, ThemeMode.Dark }, buttons.Select(b => (ThemeMode)b.CommandParameter!));
+            Assert.Equal(new[] { false, false, true }, buttons.Select(b => b.Classes.Contains("selected")));
+
+            var light = buttons[1];
+            var point = light.TranslatePoint(new Point(light.Bounds.Width / 2, light.Bounds.Height / 2), window)!.Value;
+            window.MouseDown(point, MouseButton.Left);
+            window.MouseUp(point, MouseButton.Left);
+            RenderTests.Pump();
+
+            Assert.Equal(ThemeMode.Light, vm.Mode.Value);
+            Assert.Equal(ThemeMode.Light, store.Settings.Theme.Mode);
+            Assert.Equal(new[] { false, true, false }, buttons.Select(b => b.Classes.Contains("selected")));
+        }
+        finally
+        {
+            window.Close();
+            vm.Dispose();
+        }
+    }
+
+    [AvaloniaFact]
     public void Preview_toggle_is_interactive_but_does_not_change_settings()
     {
         TestServices.EnsureInitialized();
@@ -153,6 +193,16 @@ public class ThemePageTests
                 Assert.NotNull(button);
                 Assert.False(button.Focusable);
                 Assert.False(button.IsTabStop);
+
+                // They take the pointer (hover and press look), but a click does nothing.
+                Assert.True(button.IsHitTestVisible);
+                Assert.True(((Control)button.Parent!).IsHitTestVisible);
+                var buttonPoint = button.TranslatePoint(
+                    new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), window)!.Value;
+                window.MouseDown(buttonPoint, MouseButton.Left);
+                window.MouseUp(buttonPoint, MouseButton.Left);
+                RenderTests.Pump();
+                Assert.Equal(settingsBefore, System.Text.Json.JsonSerializer.Serialize(store.Settings));
             }
         }
         finally

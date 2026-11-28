@@ -545,6 +545,73 @@ public class EbookTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(["001.png", "002.jpg", "003.png"], repacked.Entries.Select(e => e.FullName));
     }
 
+    [Fact]
+    public void A_zip_becomes_a_cbz_and_a_rar_a_cbr_only_as_a_route_of_its_own()
+    {
+        var planner = BuiltInPlanner();
+
+        Assert.Equal("ebook", Assert.Single(planner.Plan("zip", "cbz")!.Steps).Converter.Id);
+        Assert.Equal("ebook", Assert.Single(planner.Plan("rar", "cbr")!.Steps).Converter.Id);
+        // The copy is never a step: a ZIP isn't read as a comic on its way to a PDF, and nothing else becomes a CBR.
+        Assert.Null(planner.Plan("zip", "pdf"));
+        Assert.Null(planner.Plan("rar", "cbz"));
+        Assert.Null(planner.Plan("cbz", "cbr"));
+        Assert.Null(planner.Plan("7z", "cbz"));
+    }
+
+    [Fact]
+    public async Task A_zip_and_a_rar_of_pictures_are_copied_byte_for_byte_under_the_comic_name()
+    {
+        var dir = fx.NewFolder();
+        foreach (var (archive, target) in new[] { (EbookBuilders.ZipOfPictures(dir), "cbz"), (EbookBuilders.RarOfPictures(dir), "cbr") })
+        {
+            var original = File.ReadAllBytes(archive);
+
+            var comic = await ConvertAsync(archive, target);
+
+            Assert.Equal(Path.GetFileNameWithoutExtension(archive) + "." + target, Path.GetFileName(comic));
+            Assert.Equal(original, File.ReadAllBytes(comic));
+            Assert.Equal(original, File.ReadAllBytes(archive)); // the source stays
+        }
+    }
+
+    [Fact]
+    public async Task A_comic_copied_from_a_rar_reads_as_a_comic()
+    {
+        var dir = fx.NewFolder();
+        var cbr = await ConvertAsync(EbookBuilders.RarOfPictures(dir), "cbr");
+
+        using var document = PdfReader.Open(await ConvertAsync(cbr, "pdf"), PdfDocumentOpenMode.Import);
+        Assert.Equal(EbookBuilders.ComicPages.Length, document.PageCount);
+    }
+
+    [Fact]
+    public async Task An_archive_without_pictures_or_with_a_password_is_not_copied_as_a_comic()
+    {
+        var dir = fx.NewFolder();
+        var zip = Path.Combine(dir, "papers.zip");
+        using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
+        {
+            EbookBuilders.Entry(archive, "report.txt", "Not a comic");
+            EbookBuilders.Entry(archive, "__MACOSX/._cover.jpg", [0, 1, 2]);
+        }
+        var locked = Path.Combine(dir, "locked");
+        Directory.CreateDirectory(locked);
+
+        foreach (var (archive, target, error) in new[]
+        {
+            (zip, "cbz", "error.comic_no_pictures"),
+            (EbookBuilders.RarOfPictures(locked, encrypted: true), "cbr", "error.comic_password"),
+        })
+        {
+            var job = await fx.ConvertAsync([archive], new Preset { TargetFormat = target });
+
+            Assert.Equal(JobState.Failed, job.State);
+            Assert.Equal(error, job.Files.Single().ErrorKey);
+            Assert.Empty(job.Outputs);
+        }
+    }
+
     // ───────────────────────── Calibre ─────────────────────────
 
     [Fact]

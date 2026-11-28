@@ -23,6 +23,9 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
 
     /// <summary>The job the progress ring shows, for the download badge above it; null when the ring shows none.</summary>
     [ObservableProperty] private JobViewModel? _progressJob;
+
+    /// <summary>The label in the middle of the tick dial, "MP4 → WEBP"; set when a job starts and left until the next one.</summary>
+    [ObservableProperty] private string? _progressCaption;
     [ObservableProperty] private double _outerRadius = 150;
     [ObservableProperty] private double _holeRatio = 0.42;
     [ObservableProperty] private double _sliceOpacity = 0.96;

@@ -329,8 +329,8 @@ public sealed class BackgroundWindowTests : IDisposable
             var (mean, worst) = Difference(file, drawn, (int)compareWidth, (int)compareHeight);
             if (mean >= 2.5 || worst >= 7)
             {
-                file.Write(Path.Combine(TestServices.ScreenshotDirectory, $"background-file-{picture}-{background}.png"));
-                drawn.Write(Path.Combine(TestServices.ScreenshotDirectory, $"background-window-{picture}-{background}.png"));
+                file.Write(TestServices.ScreenshotPath($"background-file-{picture}-{background}.png"));
+                drawn.Write(TestServices.ScreenshotPath($"background-window-{picture}-{background}.png"));
             }
             Assert.True(mean < 2.5, $"mean difference {mean:0.00} of 255");
             // Each part of the canvas on its own: a gradient running the other way, a shadow fallen half as far or a

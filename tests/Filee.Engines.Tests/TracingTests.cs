@@ -465,10 +465,10 @@ public class TracingTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(checkedRoutes > 1000);
     }
 
-    // SVGZ is unpacked, a plot file's pen moves (HpglPlot) and an embroidery design's stitches (DstEmbroidery) are
-    // drawn as lines, an Obsidian board (JSON Canvas) as its cards: none of them is tracing.
+    // SVGZ is unpacked, a plot file's pen moves (HpglPlot) and an embroidery design's stitches (DstEmbroidery,
+    // JefEmbroidery) are drawn as lines, an Obsidian board (JSON Canvas) as its cards: none of them is tracing.
     private static bool IsTracing(RouteStep step) =>
-        step.Converter is VectorConverter && step.To == "svg" && step.From is not ("svgz" or "plt" or "dst" or "gerber" or "canvas");
+        step.Converter is VectorConverter && step.To == "svg" && step.From is not ("svgz" or "plt" or "dst" or "jef" or "gerber" or "canvas");
 
     /// <summary>The vector engine without its tracing edges.</summary>
     private sealed class WithoutTracing(IConverter inner) : IConverter

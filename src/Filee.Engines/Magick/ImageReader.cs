@@ -5,7 +5,8 @@
 // debayered as the preset says), SRTM elevation tiles (HGT, Filee's own reader), the photo of an iPhone LIVP, the
 // merged picture of a Krita KRA, the layers of a Paint.NET PDN merged as Paint.NET shows them, those of a GIMP XCF
 // as GIMP shows them (Filee's own reader, as ImageMagick reads only 8-bit files without zlib and merges them its own
-// way), the frames of a Valve texture (VTF) and the icon of a Windows program. Used by every engine that takes a raster image as input.
+// way), the frames of a Valve texture (VTF), a Blizzard texture (BLP) and the icon of a Windows program. Used by every
+// engine that takes a raster image as input.
 
 using Filee.Core.Formats;
 using Filee.Core.Presets;
@@ -44,12 +45,16 @@ internal static class ImageReader
             return [Xcf.ReadFlattened(path, cancellationToken)];
         if (formatId == "vtf")
             return Vtf.Read(path);
+        if (formatId == "blp")
+            return Blp.Read(path);
         if (formatId == FormatRegistry.Program)
             return ReadPackaged(ProgramIcon.Read(path), "ico", preset);
         if (formatId == "fits")
             return [FitsRendering.ToMagick(Fits.Read(path), preset.Image.FitsDebayer)];
         if (formatId == "hgt")
             return [Hgt.ToMagick(path, cancellationToken)];
+        if (formatId == "tiff" && GeoTiff.TryRead(path, cancellationToken) is { } geoTiff)
+            return [geoTiff];
 
         var images = new MagickImageCollection();
         var settings = Settings(formatId, preset);

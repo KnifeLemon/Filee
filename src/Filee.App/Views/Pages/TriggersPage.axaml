@@ -128,6 +128,17 @@
                 </StackPanel>
               </DockPanel>
 
+              <!-- Drag only: the modifier keys may also be pressed once the drag is under way, unless turned off (#1863) -->
+              <DockPanel IsVisible="{Binding UsesLateModifier}">
+                <ToggleSwitch DockPanel.Dock="Right" OnContent="{x:Null}" OffContent="{x:Null}" MinWidth="0" Margin="12,0,0,0"
+                              VerticalAlignment="Center" IsChecked="{Binding AllowLateModifier}"
+                              AutomationProperties.Name="{DynamicResource triggers.late_modifier}" />
+                <StackPanel Spacing="2">
+                  <TextBlock Text="{DynamicResource triggers.late_modifier}" TextWrapping="Wrap" />
+                  <TextBlock Classes="caption" Text="{DynamicResource triggers.late_modifier_note}" TextWrapping="Wrap" />
+                </StackPanel>
+              </DockPanel>
+
               <StackPanel IsVisible="{Binding UsesThreshold}">
                 <DockPanel>
                   <TextBlock DockPanel.Dock="Right" Text="{Binding ThresholdText}" FontWeight="SemiBold" />
