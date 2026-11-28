@@ -1,8 +1,112 @@
 #!/bin/sh
 set -eu
 
+# Filee's macOS standalone installer. A normal install owns ~/Applications; --upgrade replaces only the Filee bundle
+# the running app identified, so an app dragged to /Applications can update after the administrator approves macOS's prompt.
+
 source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
-install_dir="$HOME/Applications/Filee.app"
+default_install_dir="$HOME/Applications/Filee.app"
+install_dir=$default_install_dir
+upgrade=false
+
+case "${1:-}" in
+    '')
+        ;;
+    --upgrade)
+        upgrade=true
+        if [ "$#" -gt 2 ]; then
+            printf '%s\n' 'Usage: install.sh [--upgrade [Filee.app path]]' >&2
+            exit 1
+        fi
+        if [ "$#" -eq 2 ]; then
+            install_dir=$2
+        fi
+        ;;
+    --help|-h)
+        printf '%s\n' 'Usage: install.sh [--upgrade [Filee.app path]]'
+        exit 0
+        ;;
+    *)
+        printf '%s\n' 'Usage: install.sh [--upgrade [Filee.app path]]' >&2
+        exit 1
+        ;;
+esac
+
+bundle_id() {
+    /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$1/Contents/Info.plist" 2>/dev/null || true
+}
+
+is_filee_bundle() {
+    [ -d "$1" ] && [ ! -L "$1" ] && [ -x "$1/Contents/MacOS/Filee" ] && [ "$(bundle_id "$1")" = 'com.filee.app' ]
+}
+
+has_valid_signature() {
+    /usr/bin/codesign --verify --deep --strict "$1" >/dev/null 2>&1
+}
+
+if ! is_filee_bundle "$source_dir/Filee.app"; then
+    printf '%s\n' "Payload validation failed: $source_dir/Filee.app is not a Filee application bundle." >&2
+    exit 1
+fi
+
+if [ "$upgrade" = true ]; then
+    # Do not let a downloaded archive replace an arbitrary app: Filee only supports its two documented locations.
+    if [ "$install_dir" != "$HOME/Applications/Filee.app" ] && [ "$install_dir" != '/Applications/Filee.app' ]; then
+        printf '%s\n' "Cannot upgrade an app outside the supported Applications folders: $install_dir" >&2
+        exit 1
+    fi
+    if ! is_filee_bundle "$install_dir"; then
+        printf '%s\n' "No existing Filee application bundle was found at $install_dir." >&2
+        exit 1
+    fi
+
+    parent_dir=$(dirname -- "$install_dir")
+    # /Applications is normally root-owned. The privileged shell first copies the payload into a root-owned workspace,
+    # verifies both bundles there, and performs the swap itself. No payload script runs with administrator privileges.
+    if [ ! -w "$parent_dir" ]; then
+        exec /usr/bin/osascript - "$source_dir" "$install_dir" <<'APPLESCRIPT'
+on run argv
+  set rootCommand to "set -eu; work_dir=$(/usr/bin/mktemp -d /private/tmp/filee-update.XXXXXX); cleanup() { /bin/rm -rf -- \"$work_dir\"; }; trap cleanup EXIT HUP INT TERM; /usr/bin/ditto \"$1\" \"$work_dir/payload\"; source_app=\"$work_dir/payload/Filee.app\"; staged_app=\"$work_dir/staged.app\"; previous_app=\"$work_dir/previous.app\"; source_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \"$source_app/Contents/Info.plist\" 2>/dev/null || true); target_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \"$2/Contents/Info.plist\" 2>/dev/null || true); [ -d \"$source_app\" ] && [ ! -L \"$source_app\" ] && [ -x \"$source_app/Contents/MacOS/Filee\" ] && [ \"$source_id\" = com.filee.app ] && [ -d \"$2\" ] && [ ! -L \"$2\" ] && [ -x \"$2/Contents/MacOS/Filee\" ] && [ \"$target_id\" = com.filee.app ] && /usr/bin/codesign --verify --deep --strict \"$source_app\" || exit 1; /usr/bin/ditto \"$source_app\" \"$staged_app\"; /usr/bin/codesign --verify --deep --strict \"$staged_app\"; /bin/mv \"$2\" \"$previous_app\"; if ! /bin/mv \"$staged_app\" \"$2\"; then if ! /bin/mv \"$previous_app\" \"$2\"; then trap - EXIT HUP INT TERM; printf '%s\n' \"Could not activate the update or restore the previous Filee app. Your previous app remains at $previous_app\" >&2; exit 1; fi; exit 1; fi; /usr/bin/xattr -dr com.apple.quarantine \"$2\" 2>/dev/null || true"
+  do shell script "/bin/sh -c " & quoted form of rootCommand & " filee-root-update " & (quoted form of item 1 of argv) & " " & (quoted form of item 2 of argv) with administrator privileges
+end run
+APPLESCRIPT
+    fi
+
+    work_dir=$(mktemp -d "$parent_dir/.filee-update.XXXXXX")
+    staged_app="$work_dir/Filee.app"
+    previous_app="$work_dir/previous.app"
+    cleanup() { rm -rf -- "$work_dir"; }
+    trap cleanup EXIT HUP INT TERM
+
+    /usr/bin/ditto "$source_dir/Filee.app" "$staged_app"
+    if ! is_filee_bundle "$staged_app"; then
+        printf '%s\n' 'Staged payload validation failed.' >&2
+        exit 1
+    fi
+    if ! has_valid_signature "$staged_app"; then
+        printf '%s\n' 'Staged payload signature verification failed; the existing Filee app was not changed.' >&2
+        exit 1
+    fi
+    if ! mv "$install_dir" "$previous_app"; then
+        printf '%s\n' "Could not prepare $install_dir for the update." >&2
+        exit 1
+    fi
+    if ! mv "$staged_app" "$install_dir"; then
+        if ! mv "$previous_app" "$install_dir"; then
+            trap - EXIT HUP INT TERM
+            printf '%s\n' "Could not activate the update or restore the previous Filee app. Your previous app remains at $previous_app" >&2
+            exit 1
+        fi
+        printf '%s\n' "Could not activate the update; the previous Filee app was restored." >&2
+        exit 1
+    fi
+    /usr/bin/xattr -dr com.apple.quarantine "$install_dir" 2>/dev/null || true
+    trap - EXIT HUP INT TERM
+    cleanup
+    printf '%s\n' "Updated $install_dir"
+    exit 0
+fi
+
 bin_dir="$HOME/.local/bin"
 if [ -e "$install_dir" ] || [ -L "$install_dir" ]; then
     printf '%s\n' "An installation already exists at $install_dir. Run uninstall.sh first."
@@ -20,7 +124,6 @@ if [ "$stale_link" = false ] && { [ -e "$bin_dir/filee" ] || [ -L "$bin_dir/file
     printf '%s\n' "$bin_dir/filee already exists. Remove or rename it before installing Filee."
     exit 1
 fi
-test -x "$source_dir/Filee.app/Contents/MacOS/Filee"
 mkdir -p "$HOME/Applications" "$bin_dir"
 /usr/bin/ditto "$source_dir/Filee.app" "$install_dir"
 # ditto keeps the download's quarantine flag: macOS would then start Filee from a translocated copy and could stop

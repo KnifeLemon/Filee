@@ -874,3 +874,22 @@ Filee Connect (`Filee.App.Services.Connect`) is an embedded local Wi-Fi server p
 - **Security & Scope**: Runs locally without cloud dependencies. Secured with cryptographically random pairing tokens, LAN-only binding, and strict relative-path normalization preventing directory traversal.
 - **Shared Folder Manager**: Enforces a 2 GB total quota in `UserDataStore.Directory / ConnectShared` (fully supporting Portable mode) with instant ZIP streaming on folder download. Files outside the safe allowlist are stored as `{id}.bin` to prevent Explorer NTLM leak attacks.
 - **Workflow**: A global trigger gesture (`Ctrl + Alt + Left Click` on Windows/Linux, `⌥ Option + ⇧ Shift + Left Click` on macOS, or custom configuration for new installs) opens the Donut with the Filee Connect slice. Selecting it presents a QR code modal (`FileeConnectQrWindow`), and scanning it from any phone browser automatically transitions to the desktop Filee Connect application window (`FileeConnectWindow`) and mobile light-mode web client.
+
+## macOS installer and updates
+
+macOS packages contain a signed `Filee.app` in both the disk image and the architecture-specific archive. The archive's
+`install.sh` installs to `~/Applications/Filee.app` and adds the `filee` command; dragging from the disk image installs
+the app in `/Applications/Filee.app` without the command. Both locations are managed by the in-app updater.
+
+- **In-app updates** (`UpdateService`): Selects the matching `osx-x64` or `osx-arm64` archive and its
+  `<rid>-SHA256SUMS.txt`, then uses the system tar extractor so code-signature extended attributes are retained. The
+  extracted tree is checked for symlinks that escape the staging directory and for a `Filee.app` bundle with the
+  `com.filee.app` identifier. It waits for Filee to exit and runs `install.sh --upgrade` through a detached helper. The
+  script verifies the staged app with `codesign --verify --deep --strict` before replacement, rolls back if activation
+  fails, and restarts Filee with `--background --whats-new`.
+- **Permissions**: Updating `~/Applications` needs no elevation. Replacing an app in `/Applications` uses macOS's
+  administrator prompt; the privileged operation copies the payload to a root-owned temporary directory, verifies both
+  bundle IDs and the new code signature there, then swaps only the `/Applications/Filee.app` bundle. The update never
+  replaces an app outside those two documented locations.
+- **Trust**: Official builds also verify the release checksum signature with Filee's update key. macOS packages remain
+  a preview until Developer ID signing and notarization are available; the update path does not weaken that warning.
