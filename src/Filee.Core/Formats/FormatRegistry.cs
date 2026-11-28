@@ -74,6 +74,8 @@ public static class FormatRegistry
         // Valve's texture for the Source engine (Garry's Mod, Counter-Strike: Source, Team Fortress 2), read and written by
         // Filee: DXT1 or DXT5 with every mipmap, the frames of an animated texture.
         new("vtf", "Valve Texture (VTF)", FormatCategory.Image, ["vtf"]),
+        // Blizzard's texture for Warcraft III and World of Warcraft, read by Filee: JPEG, palette and DXT.
+        new("blp", "Blizzard Texture (BLP)", FormatCategory.Image, ["blp"], Writable: false),
         // iPhone Live Photo as one ZIP (iCloud downloads): the photo, or its video with FFmpeg.
         new("livp", "Live Photo (LIVP)", FormatCategory.Image, ["livp"], Writable: false),
         // A Windows program or library (#1188), read as its icon: the picture Explorer shows for the file.
@@ -231,7 +233,8 @@ public static class FormatRegistry
         new("prc", "PRC", FormatCategory.Ebook, ["prc"], Writable: false),
         new("fb2", "FB2", FormatCategory.Ebook, ["fb2"]),
         new("cbz", "CBZ", FormatCategory.Ebook, ["cbz"]),
-        new("cbr", "CBR", FormatCategory.Ebook, ["cbr"], Writable: false),
+        // Filee never writes RAR: a CBR comes only from a RAR of pictures, copied as it is under the comic name (#1482).
+        new("cbr", "CBR", FormatCategory.Ebook, ["cbr"]),
         new("cb7", "CB7", FormatCategory.Ebook, ["cb7"], Writable: false),
         new("cbt", "CBT", FormatCategory.Ebook, ["cbt"], Writable: false),
         new("cbc", "CBC", FormatCategory.Ebook, ["cbc"], Writable: false),

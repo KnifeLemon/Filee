@@ -139,7 +139,8 @@ public sealed class GestureDetector
     /// then press Ctrl to copy). Treat it like a drag gesture that just passed the threshold. Caller holds the lock.
     /// Only during a press: on macOS a move right after the release can still report the button held (the hook reads
     /// the mask of each event from the session's state), and a drag gesture starting then wiped the donut before the
-    /// drop reached it (#784).
+    /// drop reached it (#784). A gesture with <see cref="TriggerGesture.AllowLateModifier"/> off is skipped: its modifiers
+    /// count only when held as the button went down (#1863).
     /// </summary>
     private TriggerGesture? DetectLateModifier(int x, int y, ModifierKeys modifiers, TriggerMouseButton heldButton)
     {
@@ -147,7 +148,7 @@ public sealed class GestureDetector
             return null;
 
         var late = _gestures.FirstOrDefault(g =>
-            g.Kind == TriggerKind.Drag && g.Button == heldButton && g.Modifiers == modifiers);
+            g.Kind == TriggerKind.Drag && g.AllowLateModifier && g.Button == heldButton && g.Modifiers == modifiers);
         if (late is null)
             return null;
         if (ScopeFilter(late, x, y))

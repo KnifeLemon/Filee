@@ -33,6 +33,9 @@
 
 1. **Trigger** – `TriggerService` receives global input from SharpHook and feeds `GestureDetector`.
    A drag gesture (modifier + drag past the threshold) opens the donut *before* files are known.
+   The modifier may also be pressed once the drag is under way (Explorer users often press Ctrl then); a gesture
+   with `TriggerGesture.AllowLateModifier` off counts it only when held as the button goes down, which leaves a key
+   pressed during a drag to the file manager (#1863).
 2. **Donut** – `RadialWindow` is transparent, topmost and not activated, so Explorer's drag continues.
    The first `DragEnter` delivers the file list; `RadialViewModel` picks a `ToolbarProfile` by extension
    (`ProfileSelector`: the first normal profile that has every file's extension; for a mix of types the first

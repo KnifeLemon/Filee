@@ -5,7 +5,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 
 | Engine | How it gets there | Handles |
 |---|---|---|
-| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), **SRTM elevation tiles (`.hgt`)** (Filee's own reader; signed 16-bit GeoTIFF by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), a **GIMP XCF** (Filee's own reader and writer: layers merged as GIMP shows them, or kept between XCF, PDN and PSD/PSB), a **Valve Texture VTF** (Filee's own reader and writer, for the Source engine and Garry's Mod), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
+| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), **SRTM elevation tiles (`.hgt`)** (Filee's own reader; signed 16-bit GeoTIFF by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), a **GIMP XCF** (Filee's own reader and writer: layers merged as GIMP shows them, or kept between XCF, PDN and PSD/PSB), a **Valve Texture VTF** (Filee's own reader and writer, for the Source engine and Garry's Mod), a **Blizzard Texture BLP** (Filee's own reader, for Warcraft III and World of Warcraft), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST and Janome JEF embroidery → SVG** (stitches as lines; DST has no thread colours, so a palette colour per thread, JEF in its threads' Janome chart colours; → PNG, JPG, PDF from there), **Obsidian boards (JSON Canvas `.canvas`) → SVG** (→ PDF, PNG, … from there) **and Markdown** (→ DOCX, HTML, TXT, … from there), **Gerber PCB layers → SVG** (RS-274X / X2, see [below](#gerber-pcb-layers); → PDF, PNG, DXF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
@@ -25,7 +25,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; **NEXUS, FASTA, PHYLIP sequence alignments ↔ each other**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
-| **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ → EPUB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
+| **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ → EPUB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; ZIP → CBZ, RAR → CBR (copied as they are); AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | G-code | built in | **G-code (3D printers, CNC machines) → PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, …: the toolpath from above or isometric, or the preview the slicer saved in the file |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, KuGou KRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
@@ -450,6 +450,13 @@ so a separate ARM64 one would break their updates.
   writer keeps to the same budget (16 frames at 4096 × 4096), so Filee reads back every texture it writes. The `.vmt`
   material that points to a texture is not written: its path depends on where the texture goes under `materials/`. A
   VTF is a target only where the Games field is on.
+- **BLP** (Blizzard Texture, #644: Warcraft III's BLP1 and World of Warcraft's BLP2) is read by Filee itself (`Blp`,
+  read only). The largest mipmap (level 0) is decoded as one picture. **BLP1** reads palette-indexed textures (0, 1, 4
+  or 8 alpha bits) and JPEG-compressed textures (shared header plus mipmap 0 decoded by ImageMagick, blue-first 3- and
+  4-channel data mapped back to RGBA, opaque when `alphaBits` is 0). **BLP2** reads palette-indexed textures, DXT1,
+  DXT3 and DXT5 (reusing `Vtf`'s block decoder) and uncompressed BGRA textures, opaque when `alphaDepth` is 0. BLP0
+  (Warcraft III beta, mipmaps in separate files), dimensions of 0 or over 65,535 px, textures over the 256-million-pixel
+  budget and files whose offsets or sizes extend past the end are refused before allocating pixel buffers.
 - **EXE / DLL** (a Windows program or library, #1188) is read as its icon, the one Explorer shows: the first icon group
   of its resources, put back together as an `.ico` in memory (`ProgramIcon`, Filee's own reader for 32 and 64-bit PE
   files; only the headers and the icon are read, at most 64 MB, and the file is never loaded or run). To ICO it is
@@ -1838,6 +1845,8 @@ writer, so every e-book also reaches HWPX, PDF and images. The document model is
 - **Comics**: CBZ, CBR, CB7, CBT and CBC (a ZIP of CBZ files) are opened with SharpCompress; pages are sorted
   naturally ("page2" before "page10"). → PDF has one page per picture sized like the picture (JPEGs are embedded
   as they are), → EPUB is fixed-layout, → CBZ repacks. PDF → CBZ renders the pages with PDFium at the preset DPI.
+  ZIP → CBZ and RAR → CBR copy the archive byte for byte under the comic extension (#1482), only as a route of their
+  own (`DirectOnly`); an archive with no picture or a password-protected entry is refused. Filee never writes RAR.
 - Books with DRM (Adobe, Apple, Kindle) are refused with a clear message; Filee does not remove DRM. KFX and
   Topaz books are recognised and refused too.
 

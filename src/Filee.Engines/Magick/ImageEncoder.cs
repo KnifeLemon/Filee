@@ -98,10 +98,10 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Packages of a picture and more, of which the picture is read (<see cref="ImageReader"/>): an iPhone LIVP, a Krita
-    /// KRA, a Paint.NET PDN (<see cref="PaintNet"/>), a Valve texture (VTF, <see cref="Vtf"/>), the icon of a Windows
-    /// program or library (<see cref="ProgramIcon"/>).
+    /// KRA, a Paint.NET PDN (<see cref="PaintNet"/>), a Valve texture (VTF, <see cref="Vtf"/>), a Blizzard texture
+    /// (BLP, <see cref="Blp"/>), the icon of a Windows program or library (<see cref="ProgramIcon"/>).
     /// </summary>
-    public static readonly string[] Packages = ["livp", "kra", "pdn", "vtf", FormatRegistry.Program];
+    public static readonly string[] Packages = ["livp", "kra", "pdn", "vtf", "blp", FormatRegistry.Program];
 
     /// <summary>
     /// Every format ImageMagick reads as input: the raster formats, the picture of <see cref="Packages"/> and, on

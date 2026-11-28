@@ -70,9 +70,25 @@ ko: 생물정보학 서열 정렬 형식(NEXUS, FASTA, PHYLIP)을 서로 변환�
 en: NEXUS, FASTA and PHYLIP sequence alignments convert between each other
 ko: 16비트 정수·부동소수점 GeoTIFF 래스터를 PNG, JPG 같은 그림으로 변환하면 값 범위에 맞춰 선명하게 나와요
 en: 16-bit and floating-point GeoTIFF rasters convert to pictures stretched across their data range
+ko: 드래그 제스처가 드래그 중에 누른 수정키로는 도넛을 열지 않게 설정할 수 있어요
+en: A drag gesture can be set to open the donut only when its keys are held before you press the mouse button
+ko: Blizzard 텍스처(.blp)를 PNG, JPG 같은 이미지로 변환할 수 있어요
+en: Blizzard textures (.blp) convert to PNG, JPG and other image formats
+ko: 그림이 든 ZIP은 CBZ로, RAR은 CBR로 다시 압축하지 않고 이름만 바꿔 저장할 수 있어요
+en: A ZIP of pictures becomes a CBZ and a RAR a CBR as it is, without packing it again
+ko: CSV의 NaN, Infinity, 앞뒤에 공백이 있는 값, +007 같은 코드가 숫자로 바뀌지 않고 글자 그대로 남아요
+en: CSV cells like NaN, Infinity, " 007" or +007 stay as written instead of turning into numbers
+ko: 명령줄에서 --to=jpg처럼 쓸 수 있고, 값 자리에 옵션이 오면 값이 빠졌다고 알려 줘요
+en: The command line takes --to=jpg and says when an option's value is missing
 ko: PDF·Word·웹 페이지의 표를 Excel로 바꿀 때 머리글의 병합은 남기고, 여러 행에 걸친 분류는 행마다 채워서 필터와 피벗 테이블에 쓸 수 있어요
 en: Tables from PDF, Word and web pages keep their header merges in Excel and fill categories into every row, ready for filters and pivot tables
 -->
+
+- **Keep Ctrl for copying during a drag** (#1863). A drag gesture also opens the donut when its modifier keys are
+  pressed after the drag started, so pressing Ctrl in the middle of a drag to copy in File Explorer opened the donut
+  instead. In **Settings → Shortcuts**, turn off **Also open when the keys are pressed during a drag** on that
+  gesture: it then opens only when the keys are already held as you press the mouse button, and a key pressed during
+  the drag goes to the file manager as usual. On by default, so nothing changes until you turn it off.
 
 - **Merged cells in spreadsheets made from tables (PDF, DOCX, HTML → XLSX, ODS, CSV)** (#1016). A new *Merged cells*
   choice in the preset: **Smart** (the default) keeps the merges that help reading (the header rows, including two-level
@@ -259,7 +275,8 @@ en: Tables from PDF, Word and web pages keep their header merges in Excel and fi
 
 - **A progress ring with ticks** (by @adnan-bhaldar, #1747). *Settings → Theme → Progress ring* can show the ring
   while a file converts as ticks that light up one by one around the percentage. *Arc*, the ring so far, stays the
-  default.
+  default. In the middle of the ticks, under the percentage, the source format and the preset show, like `MP4 → WEBP`
+  (by @adnan-bhaldar, #1848); with files of different kinds, only the preset.
 
 - **Theme page** (by @adnan-bhaldar): *Appearance* is three buttons, System, Light and Dark, instead of a list. The
   preview's Save and Cancel buttons react to the mouse like real ones, and still save nothing.
@@ -289,6 +306,7 @@ en: Tables from PDF, Word and web pages keep their header merges in Excel and fi
   folder can't be written is readable in every language and says on the terminal which folder and why (#1590).
 
 - **macOS:** the menu bar icon has no tooltip, which on macOS 27.2 could stay on screen far from the icon (#1193).
+  Finder's right-click item and the permission explanations are in Arabic too (by @collodev21).
 
 - **Merging into one PDF or a multi-page TIFF** (by @Marouane-elfadli): cancelling the merge marks the files as
   cancelled instead of failing the job, and an error during it (a full disk, a locked output file) now shows on each
@@ -323,6 +341,29 @@ en: Tables from PDF, Word and web pages keep their header merges in Excel and fi
   horizontal or floating-point predictors) are now read directly and stretched linearly per band to grayscale (1–2
   bands) or RGB (3+ bands), with `GDAL_NODATA` and NaN cells drawn black instead of coming out nearly black or clipped
   white. Ordinary 8-bit TIFFs and non-GeoTIFFs stay on ImageMagick unchanged.
+
+- **Blizzard textures (`.blp`)** (#644). Warcraft III (BLP1: JPEG and palette) and World of Warcraft (BLP2: palette,
+  DXT1/DXT3/DXT5 and uncompressed BGRA) textures now open on the images donut and convert to PNG, JPG, TGA, DDS and the
+  other image formats. Filee reads the largest mipmap and does not write BLP files; Warcraft III beta BLP0 files with
+  separate mipmap files are not supported.
+
+- **A ZIP of pictures becomes a CBZ, a RAR a CBR, as it is** (#1482). A comic in a ZIP or RAR is the same file as a CBZ
+  or CBR under another name, so the **CBZ** preset now takes a ZIP and the new **CBR** preset (in the palette) takes a
+  RAR, and both copy the file byte for byte with the comic extension: nothing is unpacked or packed again, and the
+  original stays. An archive with no pictures in it, or one protected with a password, is refused with a reason. Other
+  files next to the pictures (`ComicInfo.xml`, a readme) are kept. Filee still doesn't write RAR: a CBR comes only from
+  your own RAR. CB7 and CBT become CBZ as before.
+
+- **CSV cells that only look like numbers stay text** (by @trungduc22). Converting a CSV or TSV to XLSX or ODS turned
+  `NaN`, `Infinity`, a value too large to hold (`1e309`), a number with spaces around it (` 007`) and a code like
+  `+007` into numbers, so the leading zeros and the `+` were lost and the non-numbers came out broken. These cells are
+  now text, as written.
+
+- **Command line options** (by @yavuzmeteafsar, #1709). A long option takes its value after `=` too (`--to=jpg`,
+  `--iso-label=My disc`); a flag without a value, such as `--json=x`, is an unknown option. An option followed by
+  another option instead of its value, such as `-o --json`, now says it needs a value instead of saving into a folder
+  named `--json`. Everything after `--` is a file to convert, even if it starts with `-`. The examples in
+  `filee help` use Windows paths on Windows and `~/` paths on macOS and Linux.
 
 ## 2.5.0
 

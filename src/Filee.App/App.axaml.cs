@@ -32,6 +32,7 @@ public partial class App : Application
     {
         AvaloniaXamlLoader.Load(this);
         SingleSelectionGuard.Register();
+        ClickAwayFocus.Register();
     }
 
     public override async void OnFrameworkInitializationCompleted()
