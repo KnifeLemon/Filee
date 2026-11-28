@@ -3,6 +3,7 @@ using Filee.Core.Presets;
 using Filee.Core.Settings;
 using Filee.Engines;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Text;
 using ImageMagick;
 
 namespace Filee.Engines.Tests;
@@ -14,7 +15,10 @@ public sealed class EngineFixture : IDisposable
     {
         Directory.CreateDirectory(Root);
         var env = new EngineEnvironment(Path.Combine(Root, "data"));
-        Converters = EngineRegistry.CreateAll(env);
+        // Keep the existing engine-route tests independent of the host's system browser. MarkdownPdfTests opts in
+        // explicitly and covers that route separately, including a host without a browser.
+        Converters = EngineRegistry.CreateAll(env)
+            .Select(c => c is MarkdownConverter ? new MarkdownConverter { BrowserPdfEnabled = false } : c).ToList();
         Catalog = new ConverterCatalog(Converters) { Priority = new AppSettings().EnginePriority };
     }
 

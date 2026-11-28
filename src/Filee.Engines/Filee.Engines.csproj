@@ -55,6 +55,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Text/MathJax/tex-svg-full.js" LogicalName="Filee.Engines.MathJax.tex-svg-full.js" />
     <!-- Reference HWPX (styles, page setup) from pypandoc-hwpx (MIT), see Hwp/Hwpx/HwpxWriter.cs. -->
     <EmbeddedResource Include="Hwp\Hwpx\blank.hwpx" LogicalName="Filee.Engines.Hwpx.blank.hwpx" />
     <!-- Pinned downloads of optional engines, also read by build/fetch-engines.ps1. -->
